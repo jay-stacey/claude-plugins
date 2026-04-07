@@ -1,0 +1,71 @@
+{
+  "_comment": "Minimal configuration with few integrations",
+  "_description": "Simple setup for users who only need calendar and notes",
+
+  "features": {
+    "gmail": { "enabled": false },
+    "googleCalendar": { "enabled": true },
+    "slack": { "enabled": false },
+    "jira": { "enabled": false },
+    "linear": { "enabled": false },
+    "notes": {
+      "enabled": true,
+      "provider": "markdown"
+    }
+  },
+
+  "personality": {
+    "name": "Assistant",
+    "style": "professional",
+    "useEmojis": false,
+    "celebrateWins": false,
+    "humorLevel": "none",
+    "greetingStyle": "simple"
+  },
+
+  "user": {
+    "name": "",
+    "timezone": "UTC",
+    "workingHours": {
+      "start": "09:00",
+      "end": "17:00"
+    }
+  },
+
+  "calendar": {
+    "enabled": true,
+    "workingHours": {
+      "start": "09:00",
+      "end": "17:00"
+    },
+    "breaks": {
+      "enabled": false
+    }
+  },
+
+  "calendarManager": {
+    "timeboxing": {
+      "enabled": false
+    },
+    "recurringBlocks": []
+  },
+
+  "notes": {
+    "enabled": true,
+    "provider": "markdown",
+    "markdown": {
+      "basePath": "./notes",
+      "dailyNotesFolder": "daily",
+      "dateFormat": "YYYY-MM-DD"
+    }
+  },
+
+  "dayPlanning": {
+    "enabled": false
+  },
+
+  "automation": {
+    "autoRunOnSessionStart": false,
+    "confirmBeforeWrite": true
+  }
+}

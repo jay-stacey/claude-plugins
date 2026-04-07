@@ -1,0 +1,24 @@
+# Local config overrides (may contain personal settings)
+.config.local.json
+
+# Generated user profiles (contain personal info)
+plugins/*/user-profile.md
+
+# Temp files
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Memory files (personal conversation memory)
+.claude/projects/*/memory/
+
+# Build artifacts
+*.zip

@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/executive-assistant/config-schema",
+  "title": "Executive Assistant Configuration",
+  "description": "Configuration schema for the Executive Assistant plugin",
+  "type": "object",
+  "properties": {
+    "features": {
+      "type": "object",
+      "description": "Feature toggles for enabled integrations",
+      "properties": {
+        "gmail": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "googleCalendar": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "slack": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "jira": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "linear": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "notes": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "provider": {
+              "type": "string",
+              "enum": ["obsidian", "notion", "logseq", "roam", "markdown", "none"]
+            }
+          },
+          "required": ["enabled", "provider"]
+        }
+      },
+      "required": ["gmail", "googleCalendar", "slack", "jira", "linear", "notes"]
+    },
+    "personality": {
+      "type": "object",
+      "description": "Assistant personality configuration",
+      "properties": {
+        "name": { "type": "string" },
+        "preset": {
+          "type": "string",
+          "enum": ["claudia", "professional", "friendly", "formal", "minimal"]
+        },
+        "style": {
+          "type": "string",
+          "enum": ["professional", "friendly", "casual", "formal"]
+        },
+        "useEmojis": { "type": "boolean" },
+        "celebrateWins": { "type": "boolean" },
+        "humorLevel": {
+          "type": "string",
+          "enum": ["none", "light", "moderate"]
+        },
+        "greetingStyle": {
+          "type": "string",
+          "enum": ["simple", "time-aware", "weather-aware", "custom"]
+        },
+        "customGreetings": {
+          "type": "object",
+          "properties": {
+            "morning": { "type": "string" },
+            "afternoon": { "type": "string" },
+            "evening": { "type": "string" }
+          }
+        }
+      }
+    },
+    "user": {
+      "type": "object",
+      "description": "User profile information",
+      "properties": {
+        "name": { "type": "string" },
+        "nickname": { "type": "string" },
+        "role": { "type": "string" },
+        "timezone": { "type": "string" },
+        "workingHours": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$" },
+            "end": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$" }
+          }
+        },
+        "accessibilityPreferences": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "vipContacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "gmail": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "scanMode": {
+          "type": "string",
+          "enum": ["unread", "all", "time-based"]
+        },
+        "scanHours": { "type": "integer", "minimum": 1, "maximum": 168 },
+        "maxEmails": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "whitelist": {
+          "type": "object",
+          "properties": {
+            "domains": { "type": "array", "items": { "type": "string" } },
+            "senders": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "blacklist": {
+          "type": "object",
+          "properties": {
+            "domains": { "type": "array", "items": { "type": "string" } },
+            "senders": { "type": "array", "items": { "type": "string" } },
+            "subjectPatterns": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "calendar": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "workingHours": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "string" },
+            "end": { "type": "string" }
+          }
+        },
+        "breaks": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minBufferMinutes": { "type": "integer" },
+            "lunchBreak": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string" },
+                "duration": { "type": "integer" }
+              }
+            },
+            "enforceBufferBetweenMeetings": { "type": "boolean" }
+          }
+        },
+        "colorCodes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "eventFiltering": {
+          "type": "object",
+          "properties": {
+            "whitelist": { "type": "array", "items": { "type": "string" } },
+            "blacklist": { "type": "array", "items": { "type": "string" } },
+            "hideDeclined": { "type": "boolean" },
+            "hideCancelled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "slack": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "workspaceUrl": { "type": "string" },
+        "scanHours": { "type": "integer" },
+        "includeChannels": { "type": "array", "items": { "type": "string" } },
+        "excludeChannels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "jira": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cloudId": { "type": "string" },
+        "activeSprintOnly": { "type": "boolean" },
+        "includedProjects": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "linear": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "teams": { "type": "array", "items": { "type": "string" } },
+        "activeSprintOnly": { "type": "boolean" },
+        "priorityThreshold": { "type": "string" }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": {
+          "type": "string",
+          "enum": ["obsidian", "notion", "logseq", "roam", "markdown", "none"]
+        },
+        "obsidian": { "type": "object" },
+        "notion": { "type": "object" },
+        "logseq": { "type": "object" },
+        "roam": { "type": "object" },
+        "markdown": { "type": "object" }
+      }
+    },
+    "outlook": {
+      "type": "object",
+      "description": "Microsoft Outlook integration (coming soon)",
+      "properties": {
+        "enabled": { "type": "boolean", "const": false },
+        "_status": { "type": "string", "const": "coming_soon" },
+        "email": {
+          "type": "object",
+          "properties": {
+            "scanHours": { "type": "integer" },
+            "folders": { "type": "array", "items": { "type": "string" } },
+            "unreadOnly": { "type": "boolean" },
+            "maxEmails": { "type": "integer" }
+          }
+        },
+        "calendar": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "whitelist": {
+          "type": "object",
+          "properties": {
+            "domains": { "type": "array", "items": { "type": "string" } },
+            "senders": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "blacklist": {
+          "type": "object",
+          "properties": {
+            "domains": { "type": "array", "items": { "type": "string" } },
+            "senders": { "type": "array", "items": { "type": "string" } },
+            "subjectPatterns": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "teams": {
+      "type": "object",
+      "description": "Microsoft Teams integration (coming soon)",
+      "properties": {
+        "enabled": { "type": "boolean", "const": false },
+        "_status": { "type": "string", "const": "coming_soon" },
+        "channels": { "type": "array", "items": { "type": "string" } },
+        "prioritizeMentions": { "type": "boolean" },
+        "prioritizeDMs": { "type": "boolean" },
+        "scanHours": { "type": "integer" },
+        "excludeChannels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "description": "Safety protocols and restrictions",
+      "properties": {
+        "neverDeleteEmailsPermanently": { "type": "boolean" },
+        "neverDeleteSlackMessages": { "type": "boolean" },
+        "neverUpdateJiraAutomatically": { "type": "boolean" },
+        "neverUpdateLinearAutomatically": { "type": "boolean" },
+        "requireConfirmationForVaultWrite": { "type": "boolean" },
+        "createBackupBeforeMajorChanges": { "type": "boolean" },
+        "neverCreateCalendarEventsWithoutApproval": { "type": "boolean" },
+        "neverModifyExistingCalendarEvents": { "type": "boolean" },
+        "neverAcceptDeclineMeetings": { "type": "boolean" }
+      }
+    }
+  },
+  "required": ["features"]
+}

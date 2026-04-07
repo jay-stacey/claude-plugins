@@ -1,0 +1,27 @@
+{
+  "name": "executive-assistant",
+  "version": "4.0.0",
+  "description": "Highly configurable executive assistant for productivity workflow automation. Uses GWS CLI for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools (Obsidian, Notion, Logseq, Roam, Markdown).",
+  "author": {
+    "name": "Jay",
+    "email": "jay@example.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "productivity",
+    "workflow",
+    "executive-assistant",
+    "obsidian",
+    "notion",
+    "logseq",
+    "roam",
+    "email",
+    "calendar",
+    "slack",
+    "jira",
+    "linear",
+    "adhd",
+    "personal-assistant",
+    "time-management"
+  ]
+}

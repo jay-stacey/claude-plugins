@@ -1,0 +1,13 @@
+{
+  "name": "personal-plugins",
+  "owner": {
+    "name": "Jay"
+  },
+  "plugins": [
+    {
+      "name": "executive-assistant",
+      "source": "./plugins/executive-assistant",
+      "description": "Highly configurable executive assistant for productivity workflow automation. Uses GWS CLI for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools."
+    }
+  ]
+}

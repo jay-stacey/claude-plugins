@@ -1,0 +1,474 @@
+{
+  "_comment": "Executive Assistant Plugin Configuration v4.0.0",
+  "_description": "Highly configurable executive assistant for productivity workflow automation. Uses GWS CLI for Gmail and Calendar.",
+
+  "gws": {
+    "_comment": "GWS CLI configuration. Install: npm i -g @googleworkspace/cli. Auth: gws auth login -s gmail,calendar",
+    "outputFormat": "json",
+    "timezone": "America/Toronto",
+    "gmail": {
+      "maxResults": 100
+    },
+    "calendar": {
+      "calendarId": "primary"
+    }
+  },
+
+  "features": {
+    "gmail": { "enabled": true },
+    "googleCalendar": { "enabled": true },
+    "slack": { "enabled": false },
+    "jira": { "enabled": true },
+    "linear": { "enabled": false },
+    "notes": {
+      "enabled": true,
+      "provider": "obsidian"
+    }
+  },
+
+  "personality": {
+    "_comment": "To use a personality preset like Claudia, set: preset: 'claudia'. See config/presets/ for available presets.",
+    "preset": null,
+    "name": "Assistant",
+    "style": "professional",
+    "useEmojis": true,
+    "celebrateWins": true,
+    "humorLevel": "light",
+    "greetingStyle": "time-aware",
+    "professionalForExternal": true,
+    "customGreetings": {
+      "morning": "Good morning! Ready to tackle the day?",
+      "afternoon": "Good afternoon! Let's make progress.",
+      "evening": "Good evening! Wrapping up for today?"
+    }
+  },
+
+  "user": {
+    "name": "",
+    "nickname": "",
+    "role": "",
+    "timezone": "America/Toronto",
+    "workingHours": {
+      "start": "08:00",
+      "end": "17:00"
+    },
+    "accessibilityPreferences": [],
+    "vipContacts": []
+  },
+
+  "gmail": {
+    "enabled": true,
+    "scanMode": "unread",
+    "scanHours": 24,
+    "unreadOnly": true,
+    "maxEmails": 100,
+    "skipLabels": ["Promotions", "Social", "Updates"],
+    "urgentKeywords": ["urgent", "asap", "deadline", "today", "critical"],
+    "importantKeywords": ["feature", "bug", "review", "question"],
+
+    "whitelist": {
+      "domains": [],
+      "senders": []
+    },
+    "blacklist": {
+      "domains": [],
+      "senders": [],
+      "subjectPatterns": []
+    },
+
+    "newsletters": {
+      "enabled": true,
+      "tldrSources": [
+        "TLDR",
+        "TLDR AI",
+        "TLDR Web Dev",
+        "TLDR DevOps",
+        "TLDR Founders"
+      ],
+      "senderPatterns": ["@tldr.tech", "@tldrnewsletter.com"],
+      "topicFilters": ["AI/ML", "LLMs", "Web Development", "Full-Stack", "DevOps", "Cloud", "Business/CTO", "Leadership"],
+      "maxArticlesPerDay": 3,
+      "requireApprovalBeforeAdding": true
+    },
+
+    "cleanup": {
+      "enabled": true,
+      "batchApprovalRequired": true,
+      "autoArchive": {
+        "enabled": false,
+        "afterDays": 7,
+        "categories": ["notifications", "automated"]
+      },
+      "categories": {
+        "informational": {
+          "enabled": true,
+          "action": "archive",
+          "addSummaryToDaily": true,
+          "senderPatterns": ["no-reply@", "noreply@", "notifications@", "updates@"],
+          "subjectPatterns": ["FYI", "update", "status", "report", "weekly"]
+        },
+        "marketing": {
+          "enabled": true,
+          "action": "delete",
+          "attemptUnsubscribe": true,
+          "subjectPatterns": ["promo", "deal", "offer", "sale", "discount", "% off", "limited time"]
+        },
+        "azureAlerts": {
+          "enabled": true,
+          "action": "archive",
+          "addSummaryToDaily": true,
+          "senderPatterns": ["azure-noreply@microsoft.com", "azurealerts@microsoft.com", "microsoft-noreply@microsoft.com"]
+        },
+        "githubNotifications": {
+          "enabled": true,
+          "action": "archive",
+          "addSummaryToDaily": true,
+          "senderPatterns": ["notifications@github.com"]
+        },
+        "jiraNotifications": {
+          "enabled": true,
+          "action": "conditional",
+          "deleteFieldChangesOnly": true,
+          "keepIfMentionOrQuestion": true,
+          "senderPatterns": ["jira@", "@atlassian.net", "atlassian.com"]
+        }
+      }
+    }
+  },
+
+  "calendar": {
+    "enabled": true,
+    "workingHours": {
+      "start": "08:00",
+      "end": "17:00"
+    },
+    "timezone": "America/Toronto",
+    "minFreeBlockMinutes": 30,
+
+    "breaks": {
+      "enabled": true,
+      "minBufferMinutes": 15,
+      "lunchBreak": {
+        "start": "12:00",
+        "duration": 60
+      },
+      "enforceBufferBetweenMeetings": true
+    },
+
+    "colorCodes": {
+      "deepWork": "#4CAF50",
+      "meeting": "#2196F3",
+      "personal": "#9C27B0",
+      "blocked": "#F44336",
+      "tentative": "#FFC107"
+    },
+
+    "eventFiltering": {
+      "whitelist": [],
+      "blacklist": [],
+      "hideDeclined": true,
+      "hideCancelled": true
+    },
+
+    "energyPatterns": {
+      "morning": { "start": "08:00", "end": "11:00", "label": "Deep Work", "icon": "battery", "type": "deep_work" },
+      "midday": { "start": "11:00", "end": "14:00", "label": "Meetings/Collab", "icon": "people", "type": "collaboration" },
+      "afternoon": { "start": "14:00", "end": "17:00", "label": "Focus Time", "icon": "clipboard", "type": "admin" }
+    },
+
+    "timeboxing": {
+      "enabled": true,
+      "maxUtilization": 0.75,
+      "bufferMinutes": 10,
+      "preferredFocusTime": "morning"
+    }
+  },
+
+  "calendarManager": {
+    "timeboxing": {
+      "enabled": true,
+      "maxUtilization": 0.75,
+      "bufferMinutes": 10,
+      "preferredFocusTime": "morning"
+    },
+    "recurringBlocks": [
+      {
+        "name": "Security Audit",
+        "frequency": "monthly",
+        "dayOfMonth": 15,
+        "duration": 120,
+        "description": "Monthly security review: dependencies, vulnerabilities, access audit",
+        "color": "red",
+        "priority": "high"
+      },
+      {
+        "name": "DevSecOps Review",
+        "frequency": "quarterly",
+        "monthOfQuarter": 3,
+        "dayOfMonth": 28,
+        "duration": 180,
+        "description": "Quarterly DevSecOps review: pipeline security, deployment processes, infrastructure hardening",
+        "color": "orange",
+        "priority": "high"
+      },
+      {
+        "name": "Process Improvement",
+        "frequency": "monthly",
+        "dayOfMonth": 1,
+        "duration": 90,
+        "description": "Monthly process review: identify bottlenecks, optimize workflows, implement improvements",
+        "color": "blue",
+        "priority": "medium"
+      },
+      {
+        "name": "Professional Development",
+        "frequency": "weekly",
+        "dayOfWeek": "Friday",
+        "timeSlot": "15:00",
+        "duration": 60,
+        "description": "Weekly learning time: courses, reading, skill development",
+        "color": "green",
+        "priority": "medium"
+      }
+    ],
+    "bottleneckThresholds": {
+      "overcommitment": 0.85,
+      "minDeepWorkHours": 2,
+      "backToBackMeetingHours": 2.5,
+      "fragmentationThreshold": 4
+    },
+    "protectedTime": {
+      "morningDeepWork": {
+        "enabled": false,
+        "days": ["Monday", "Wednesday", "Friday"],
+        "timeRange": "08:00-10:00"
+      }
+    }
+  },
+
+  "slack": {
+    "enabled": false,
+    "apiMode": true,
+    "workspaceUrl": "",
+    "scanHours": 24,
+    "unreadOnly": true,
+    "includeChannels": [],
+    "excludeChannels": ["random", "watercooler", "social"],
+    "prioritizeDMs": true,
+    "prioritizeMentions": true
+  },
+
+  "jira": {
+    "enabled": true,
+    "cloudId": "",
+    "activeSprintOnly": true,
+    "includedProjects": [],
+    "priorityThreshold": "Medium",
+    "checkComments": true,
+    "commentHoursThreshold": 24,
+    "mentions": {
+      "enabled": true,
+      "includeResolved": false,
+      "maxAgeDays": 7,
+      "maxResults": 25
+    }
+  },
+
+  "linear": {
+    "enabled": false,
+    "teams": [],
+    "activeSprintOnly": true,
+    "priorityThreshold": "Medium",
+    "includeArchived": false,
+    "mentions": {
+      "enabled": true,
+      "maxAgeDays": 7
+    }
+  },
+
+  "outlook": {
+    "enabled": false,
+    "_status": "coming_soon",
+    "_description": "Microsoft Outlook integration (coming in future release). Requires Microsoft Graph API MCP server.",
+    "email": {
+      "scanHours": 24,
+      "folders": ["Inbox", "Important"],
+      "unreadOnly": true,
+      "maxEmails": 100
+    },
+    "calendar": {
+      "enabled": false,
+      "includeCategories": [],
+      "excludeCategories": []
+    },
+    "whitelist": {
+      "domains": [],
+      "senders": []
+    },
+    "blacklist": {
+      "domains": [],
+      "senders": [],
+      "subjectPatterns": []
+    }
+  },
+
+  "teams": {
+    "enabled": false,
+    "_status": "coming_soon",
+    "_description": "Microsoft Teams integration (coming in future release). Requires Microsoft Graph API MCP server.",
+    "channels": [],
+    "prioritizeMentions": true,
+    "prioritizeDMs": true,
+    "scanHours": 24,
+    "excludeChannels": []
+  },
+
+  "notes": {
+    "enabled": true,
+    "provider": "obsidian",
+
+    "obsidian": {
+      "vaultPath": "",
+      "dailyNotesPath": "Daily Notes",
+      "templatePath": "Templates/Daily Note.md",
+      "quickCapturesPath": "Inbox/Quick Captures.md"
+    },
+
+    "notion": {
+      "databaseId": "",
+      "dailyNotesDatabase": "Daily Notes",
+      "templateId": ""
+    },
+
+    "logseq": {
+      "graphPath": "",
+      "journalsPath": "journals",
+      "dateFormat": "YYYY_MM_DD"
+    },
+
+    "roam": {
+      "graphName": "",
+      "apiToken": ""
+    },
+
+    "markdown": {
+      "basePath": "",
+      "dailyNotesFolder": "daily",
+      "dateFormat": "YYYY-MM-DD"
+    }
+  },
+
+  "memory": {
+    "enabled": true,
+    "readingPreferencesPath": "Memory/reading-preferences.md",
+    "retentionDays": 30,
+    "minDataForLearning": 5
+  },
+
+  "categorization": {
+    "urgentPriorities": ["Critical", "Highest"],
+    "importantPriorities": ["High", "Medium"],
+    "dueTodayIsUrgent": true,
+    "dueTomorrowIsUrgent": true,
+    "dueThisWeekIsImportant": true
+  },
+
+  "dayPlanning": {
+    "enabled": true,
+    "autoSuggestTimeBlocks": true,
+    "requireApprovalForEvents": true,
+    "maxSchedulePercent": 75,
+    "bufferMinutes": 10,
+    "focusBlockPrefix": "[Focus]",
+    "taskDurationEstimates": {
+      "emailResponse": 15,
+      "slackFollowup": 15,
+      "codeReview": 45,
+      "jiraBug": 90,
+      "jiraFeature": 180,
+      "meeting": 60
+    }
+  },
+
+  "automation": {
+    "autoRunOnSessionStart": false,
+    "confirmBeforeWrite": true,
+    "createDailyNoteIfMissing": true,
+    "addTimestampToSummary": true,
+    "showPreviewBeforeConsolidation": true
+  },
+
+  "output": {
+    "includeSourceLinks": true,
+    "useEmojis": true,
+    "groupByPriority": true,
+    "showSummaryStatistics": true,
+    "maxTasksPerSection": 50
+  },
+
+  "gmailOrganizer": {
+    "enabled": true,
+    "autoCreateLabels": true,
+    "labelHierarchy": {
+      "Action": ["Urgent", "This Week"],
+      "FYI": ["Read Later", "Newsletters", "Reports"],
+      "Monitoring": ["Azure", "Critical", "Warning"],
+      "Development": ["GitHub", "Code Review"],
+      "Work": ["Jira", "High Priority", "Medium Priority", "Low Priority"],
+      "Projects": []
+    },
+    "urgentKeepInInbox": true,
+    "starUrgentEmails": true,
+    "archiveAfterLabeling": true,
+    "batchSize": 50,
+    "useKeyboardShortcuts": true
+  },
+
+  "inboxZero": {
+    "enabled": true,
+    "runWithDailyPrep": true,
+    "scanMode": "unread",
+    "processNewsletters": true,
+    "runCleanup": true,
+    "applyLabels": true,
+    "archiveProcessed": true,
+    "keepUrgentInInbox": true,
+    "starUrgentEmails": true,
+    "batchSize": 50,
+    "requireApproval": true
+  },
+
+  "safety": {
+    "neverDeleteEmailsPermanently": true,
+    "neverDeleteSlackMessages": true,
+    "neverUpdateJiraAutomatically": true,
+    "neverUpdateLinearAutomatically": true,
+    "requireConfirmationForVaultWrite": true,
+    "createBackupBeforeMajorChanges": true,
+    "neverCreateCalendarEventsWithoutApproval": true,
+    "neverModifyExistingCalendarEvents": true,
+    "neverAcceptDeclineMeetings": true,
+    "batchApprovalForEmailActions": true
+  },
+
+  "tts": {
+    "_comment": "Text-to-Speech integration using ElevenLabs. Requires ELEVENLABS_API_KEY environment variable.",
+    "enabled": true,
+    "provider": "elevenlabs",
+    "voice_id": "EXAVITQu4vr4xnSDxMaL",
+    "voice_name": "Bella",
+    "voice_description": "Warm, conversational tone - perfect for Claudia's personality",
+    "model_id": "eleven_multilingual_v2",
+    "output_format": "mp3_22050_32",
+    "max_length": 3000,
+    "min_length": 10,
+    "skip_code_heavy": true,
+    "available_voices": {
+      "Rachel": { "id": "21m00Tcm4TlvDq8ikWAM", "style": "Calm, professional" },
+      "Adam": { "id": "pNInz6obpgDQGcFmaJgB", "style": "Deep, authoritative" },
+      "Elli": { "id": "MF3mGyEYCl7XYWbV9V6O", "style": "Young, energetic" },
+      "Josh": { "id": "TxGEqnHWrfWFTfGW9XjX", "style": "Casual, friendly" },
+      "Bella": { "id": "EXAVITQu4vr4xnSDxMaL", "style": "Warm, conversational" }
+    }
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "_comment": "Example configuration for software developers",
+  "_description": "Optimized for development workflows with Jira, GitHub notifications, and code-focused productivity",
+
+  "features": {
+    "gmail": { "enabled": true },
+    "googleCalendar": { "enabled": true },
+    "slack": { "enabled": true },
+    "jira": { "enabled": true },
+    "linear": { "enabled": false },
+    "notes": {
+      "enabled": true,
+      "provider": "obsidian"
+    }
+  },
+
+  "personality": {
+    "name": "Assistant",
+    "style": "professional",
+    "useEmojis": true,
+    "celebrateWins": true,
+    "humorLevel": "light",
+    "greetingStyle": "time-aware"
+  },
+
+  "user": {
+    "name": "",
+    "role": "Software Developer",
+    "timezone": "America/New_York",
+    "workingHours": {
+      "start": "09:00",
+      "end": "17:00"
+    },
+    "accessibilityPreferences": ["adhd-friendly"]
+  },
+
+  "gmail": {
+    "enabled": true,
+    "scanMode": "unread",
+    "maxEmails": 100,
+    "cleanup": {
+      "enabled": true,
+      "categories": {
+        "githubNotifications": {
+          "enabled": true,
+          "action": "archive",
+          "addSummaryToDaily": true
+        },
+        "jiraNotifications": {
+          "enabled": true,
+          "action": "conditional",
+          "deleteFieldChangesOnly": true,
+          "keepIfMentionOrQuestion": true
+        }
+      }
+    }
+  },
+
+  "calendar": {
+    "enabled": true,
+    "workingHours": {
+      "start": "09:00",
+      "end": "17:00"
+    },
+    "breaks": {
+      "enabled": true,
+      "minBufferMinutes": 15,
+      "enforceBufferBetweenMeetings": true
+    },
+    "energyPatterns": {
+      "morning": { "start": "09:00", "end": "12:00", "label": "Deep Work", "type": "deep_work" },
+      "midday": { "start": "12:00", "end": "14:00", "label": "Meetings/Lunch", "type": "collaboration" },
+      "afternoon": { "start": "14:00", "end": "17:00", "label": "Focus Time", "type": "admin" }
+    }
+  },
+
+  "calendarManager": {
+    "timeboxing": {
+      "enabled": true,
+      "maxUtilization": 0.70,
+      "preferredFocusTime": "morning"
+    },
+    "recurringBlocks": [
+      {
+        "name": "Code Review Time",
+        "frequency": "daily",
+        "duration": 60,
+        "description": "Daily code review session"
+      },
+      {
+        "name": "Professional Development",
+        "frequency": "weekly",
+        "dayOfWeek": "Friday",
+        "timeSlot": "15:00",
+        "duration": 60
+      }
+    ],
+    "protectedTime": {
+      "morningDeepWork": {
+        "enabled": true,
+        "days": ["Monday", "Tuesday", "Wednesday", "Thursday"],
+        "timeRange": "09:00-11:00"
+      }
+    }
+  },
+
+  "slack": {
+    "enabled": true,
+    "scanHours": 24,
+    "includeChannels": ["engineering", "team", "dev-ops"],
+    "excludeChannels": ["random", "social"],
+    "prioritizeDMs": true,
+    "prioritizeMentions": true
+  },
+
+  "jira": {
+    "enabled": true,
+    "activeSprintOnly": true,
+    "priorityThreshold": "Medium",
+    "mentions": {
+      "enabled": true,
+      "maxAgeDays": 7
+    }
+  },
+
+  "notes": {
+    "enabled": true,
+    "provider": "obsidian",
+    "obsidian": {
+      "vaultPath": "",
+      "dailyNotesPath": "Daily Notes",
+      "templatePath": "Templates/Daily Note.md"
+    }
+  },
+
+  "dayPlanning": {
+    "enabled": true,
+    "taskDurationEstimates": {
+      "emailResponse": 15,
+      "slackFollowup": 15,
+      "codeReview": 45,
+      "jiraBug": 120,
+      "jiraFeature": 240
+    }
+  }
+}

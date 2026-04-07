@@ -1,0 +1,152 @@
+{
+  "_comment": "Example configuration for managers and team leads",
+  "_description": "Optimized for management workflows with emphasis on communication, meetings, and team oversight",
+
+  "features": {
+    "gmail": { "enabled": true },
+    "googleCalendar": { "enabled": true },
+    "slack": { "enabled": true },
+    "jira": { "enabled": true },
+    "linear": { "enabled": false },
+    "notes": {
+      "enabled": true,
+      "provider": "notion"
+    }
+  },
+
+  "personality": {
+    "name": "Assistant",
+    "style": "professional",
+    "useEmojis": true,
+    "celebrateWins": true,
+    "humorLevel": "light",
+    "greetingStyle": "time-aware"
+  },
+
+  "user": {
+    "name": "",
+    "role": "Engineering Manager",
+    "timezone": "America/New_York",
+    "workingHours": {
+      "start": "08:00",
+      "end": "18:00"
+    },
+    "vipContacts": []
+  },
+
+  "gmail": {
+    "enabled": true,
+    "scanMode": "unread",
+    "maxEmails": 150,
+    "urgentKeywords": ["urgent", "escalation", "executive", "deadline", "budget"],
+    "importantKeywords": ["review", "approval", "decision", "1:1", "team"],
+    "cleanup": {
+      "enabled": true,
+      "categories": {
+        "informational": {
+          "enabled": true,
+          "action": "archive",
+          "addSummaryToDaily": true
+        }
+      }
+    }
+  },
+
+  "calendar": {
+    "enabled": true,
+    "workingHours": {
+      "start": "08:00",
+      "end": "18:00"
+    },
+    "breaks": {
+      "enabled": true,
+      "minBufferMinutes": 10,
+      "lunchBreak": {
+        "start": "12:00",
+        "duration": 45
+      },
+      "enforceBufferBetweenMeetings": true
+    },
+    "energyPatterns": {
+      "morning": { "start": "08:00", "end": "10:00", "label": "Strategic Work", "type": "deep_work" },
+      "midday": { "start": "10:00", "end": "16:00", "label": "Meetings", "type": "collaboration" },
+      "afternoon": { "start": "16:00", "end": "18:00", "label": "Admin/Planning", "type": "admin" }
+    }
+  },
+
+  "calendarManager": {
+    "timeboxing": {
+      "enabled": true,
+      "maxUtilization": 0.80,
+      "preferredFocusTime": "morning"
+    },
+    "recurringBlocks": [
+      {
+        "name": "Team 1:1s Review",
+        "frequency": "weekly",
+        "dayOfWeek": "Friday",
+        "duration": 30,
+        "description": "Review and prepare for upcoming 1:1s"
+      },
+      {
+        "name": "Strategic Planning",
+        "frequency": "weekly",
+        "dayOfWeek": "Monday",
+        "timeSlot": "08:00",
+        "duration": 60,
+        "description": "Weekly strategic planning and prioritization"
+      },
+      {
+        "name": "Skip-Level Check-In Prep",
+        "frequency": "monthly",
+        "dayOfMonth": 1,
+        "duration": 30,
+        "description": "Prepare for executive meetings"
+      }
+    ],
+    "bottleneckThresholds": {
+      "overcommitment": 0.90,
+      "minDeepWorkHours": 1.5,
+      "backToBackMeetingHours": 3
+    }
+  },
+
+  "slack": {
+    "enabled": true,
+    "scanHours": 24,
+    "includeChannels": ["leadership", "engineering", "product", "team"],
+    "excludeChannels": ["random"],
+    "prioritizeDMs": true,
+    "prioritizeMentions": true
+  },
+
+  "jira": {
+    "enabled": true,
+    "activeSprintOnly": false,
+    "priorityThreshold": "High",
+    "mentions": {
+      "enabled": true,
+      "maxAgeDays": 14
+    }
+  },
+
+  "notes": {
+    "enabled": true,
+    "provider": "notion",
+    "notion": {
+      "databaseId": "",
+      "dailyNotesDatabase": "Daily Notes"
+    }
+  },
+
+  "dayPlanning": {
+    "enabled": true,
+    "taskDurationEstimates": {
+      "emailResponse": 10,
+      "slackFollowup": 10,
+      "codeReview": 30,
+      "meeting": 45,
+      "oneonone": 30
+    }
+  }
+}
