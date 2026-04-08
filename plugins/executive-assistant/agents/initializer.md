@@ -58,11 +58,12 @@ Contains:
 ## After Setup Complete
 
 Inform user of next steps:
-1. Set up GWS CLI for Gmail/Calendar (`npm i -g @googleworkspace/cli && gws auth login`)
-2. Configure MCP servers for other integrations (Slack, Jira, Linear)
-3. Set up notes provider (vault path, etc.)
-4. Run `/ea --dry-run` to preview
-5. Run `/ea` for first real session
+1. Verify Google Workspace MCP server is connected (`/mcp`) - bundled with this plugin
+2. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables
+3. Configure MCP servers for other integrations (Slack, Jira, Linear)
+4. Set up notes provider (vault path, etc.)
+5. Run `/ea --dry-run` to preview
+6. Run `/ea` for first real session
 
 ## Error Handling
 

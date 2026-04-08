@@ -171,14 +171,15 @@ Run `/init` to set up your personalized profile. The initialization questionnair
 
 ### Command not responding as expected
 - Check that the plugin is properly installed
-- Verify GWS CLI is installed and authenticated (`gws auth login -s gmail,calendar`)
+- Verify Google Workspace MCP server is connected (`/mcp`)
 - Verify MCP servers are configured for Slack, Atlassian, Linear
 - Run `/init` to ensure your profile is set up
 
 ### Can't connect to Gmail or Calendar
-- Check GWS CLI auth: `gws auth login -s gmail,calendar`
-- Verify installation: `gws --version`
-- Test directly: `gws gmail +triage --max 1` or `gws calendar +agenda --today`
+- Check MCP server status: `/mcp`
+- Verify Google Workspace MCP server is connected
+- Check OAuth credentials are configured (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`)
+- Re-authenticate if needed
 
 ### Can't connect to other services
 - Check that the relevant MCP servers are configured (Slack, Atlassian, Linear)
@@ -190,6 +191,13 @@ Run `/init` to set up your personalized profile. The initialization questionnair
 - Run `/init` to update your configuration
 
 ## Version History
+
+**v5.0.0** - Google Workspace MCP Migration
+- Migrated Gmail and Calendar from GWS CLI to Google Workspace MCP server
+- Removed GWS CLI dependency (`npm i -g @googleworkspace/cli` no longer required)
+- Added `.mcp.json` for MCP server configuration
+- Co-Work compatible (no Bash tool dependency for Gmail/Calendar)
+- Breaking change: GWS CLI no longer used; requires Google Workspace MCP server
 
 **v4.0.0** - GWS CLI Migration
 - Migrated Gmail and Calendar from MCP tools to GWS CLI (`gws` command)

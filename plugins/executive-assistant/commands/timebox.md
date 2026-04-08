@@ -141,7 +141,7 @@ Tight schedule but must fit urgent items
 ## What Happens When You Run It
 
 ### Step 1: Calendar Analysis (30 seconds)
-- Queries Google Calendar via GWS CLI
+- Queries Google Calendar via MCP tools
 - Extracts today's meetings
 - Calculates free time blocks
 - Identifies energy patterns (morning deep work, etc.)
@@ -238,13 +238,14 @@ Expected Impact:
 ```
 
 ### Step 6: Event Creation (30-60 seconds)
-- After user approval, creates calendar events via GWS CLI
+- After user approval, creates calendar events via MCP tools
 - For each focus block:
-  - Creates event: `gws calendar +insert --summary "[Focus] Task Name" --start "..." --end "..."`
+  - Creates event with `manage_event` (action: create, summary: "[Focus] Task Name", start, end)
+  - Or uses `manage_focus_time` for native focus block support
   - Adds description with priority and source link
   - Sets as "Busy" to protect time
 - For each strategic block:
-  - Creates with recurrence pattern via `gws calendar events insert`
+  - Creates with recurrence pattern via `manage_event` with recurrence parameter
   - Uses template color and description
 - Reports success/failures
 
@@ -419,12 +420,12 @@ The `/daily-prep` command now includes intelligent timeboxing:
 ## Troubleshooting
 
 ### Calendar Doesn't Load
-**Problem**: GWS CLI can't access Google Calendar
+**Problem**: Google Workspace MCP can't access Google Calendar
 
 **Solutions**:
-- Check GWS CLI auth: `gws auth login -s calendar`
-- Verify installation: `gws --version`
-- Test directly: `gws calendar +agenda --today`
+- Check MCP server status: `/mcp`
+- Verify Google Workspace MCP server is connected
+- Check OAuth credentials are configured
 - Try: `/timebox --analyze-only` (text-based analysis)
 
 ### Todos Not Found
@@ -440,8 +441,8 @@ The `/daily-prep` command now includes intelligent timeboxing:
 **Problem**: Calendar events not being created
 
 **Solutions**:
-- Check GWS CLI auth has Calendar scope: `gws auth login -s calendar`
-- Test directly: `gws calendar +insert --summary "Test" --start "2026-04-07T08:00" --end "2026-04-07T08:30"`
+- Check MCP server status: `/mcp`
+- Verify Google Workspace MCP server is connected and authenticated
 - Verify not in read-only calendar
 - Create events manually using provided times
 - Try: `/timebox --dry-run` for manual planning

@@ -1,7 +1,7 @@
 ---
 name: assistant
 description: Your highly configurable executive assistant for daily workflow. Interactive morning planning with email, calendar, Slack, Jira, Linear and notes integration. Personality and features are fully configurable.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion, mcp__slack__*, mcp__atlassian__*, mcp__linear-server__*
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion, mcp__google-workspace__*, mcp__slack__*, mcp__atlassian__*, mcp__linear-server__*
 model: opus
 memory: user
 ---
@@ -143,13 +143,13 @@ You delegate specialized work to focused sub-agents:
 ### Email Assistant (agents/email-assistant.md)
 - **When**: Processing Gmail, newsletters, inbox zero
 - **Skills**: gmail-processor, gmail-organizer
-- **Tools**: Bash (GWS CLI - `gws gmail` commands)
+- **Tools**: Google Workspace MCP (Gmail tools)
 - **Condition**: `features.gmail.enabled: true`
 
 ### Calendar Assistant (agents/calendar-assistant.md)
 - **When**: Schedule review, timeboxing, focus blocks
 - **Skills**: calendar-reviewer, calendar-manager
-- **Tools**: Bash (GWS CLI - `gws calendar` commands)
+- **Tools**: Google Workspace MCP (Calendar tools)
 - **Condition**: `features.googleCalendar.enabled: true`
 
 ### Task Assistant (agents/task-assistant.md)

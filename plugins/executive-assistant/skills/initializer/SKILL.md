@@ -137,7 +137,7 @@ Options:
 Which email provider do you use?
 
 Options:
-1. Gmail (Recommended - full integration via GWS CLI)
+1. Gmail (Recommended - full integration via Google Workspace MCP)
 2. Outlook / Microsoft 365 (Coming soon)
 3. Other / None
 ```
@@ -147,7 +147,7 @@ Options:
 Which calendar do you use?
 
 Options:
-1. Google Calendar (Recommended - full integration via GWS CLI)
+1. Google Calendar (Recommended - full integration via Google Workspace MCP)
 2. Outlook Calendar (Coming soon)
 3. Other / None
 ```
@@ -396,11 +396,12 @@ Your executive assistant is now personalized. Here's what I've configured:
 
 ## Next Steps
 
-1. **Set Up GWS CLI** (for Gmail and Google Calendar):
+1. **Google Workspace MCP** (for Gmail and Google Calendar):
    {{#if gmail_enabled or calendar_enabled}}
-   - Install: `npm install -g @googleworkspace/cli`
-   - Authenticate: `gws auth login -s gmail,calendar`
-   - Verify: `gws --version`
+   - The Google Workspace MCP server is bundled with this plugin
+   - Set environment variables: `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`
+   - Verify connection: Run `/mcp` to check server status
+   - Authenticate when prompted on first use
    {{/if}}
 
 2. **Configure MCP Servers** (for other integrations):

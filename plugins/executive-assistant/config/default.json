@@ -1,10 +1,10 @@
 {
-  "_comment": "Executive Assistant Plugin Configuration v4.0.0",
-  "_description": "Highly configurable executive assistant for productivity workflow automation. Uses GWS CLI for Gmail and Calendar.",
+  "_comment": "Executive Assistant Plugin Configuration v5.0.0",
+  "_description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar.",
 
-  "gws": {
-    "_comment": "GWS CLI configuration. Install: npm i -g @googleworkspace/cli. Auth: gws auth login -s gmail,calendar",
-    "outputFormat": "json",
+  "mcpServer": {
+    "_comment": "Google Workspace MCP server configuration. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables. Server is bundled via .mcp.json.",
+    "serverName": "google-workspace",
     "timezone": "America/Toronto",
     "gmail": {
       "maxResults": 100

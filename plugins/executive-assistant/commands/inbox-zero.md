@@ -279,12 +279,12 @@ Ready to tackle your day!
 ## Troubleshooting
 
 ### Gmail Doesn't Load
-**Problem**: GWS CLI can't access Gmail
+**Problem**: Google Workspace MCP can't access Gmail
 
 **Solutions**:
-- Check GWS CLI auth: `gws auth login -s gmail`
-- Verify installation: `gws --version`
-- Test directly: `gws gmail +triage --max 1`
+- Check MCP server status: `/mcp`
+- Verify Google Workspace MCP server is connected
+- Check OAuth credentials are configured
 - Try: `/inbox-zero --skip-gmail` (manual fallback)
 
 ### Too Many Emails
@@ -300,8 +300,8 @@ Ready to tackle your day!
 **Problem**: Gmail labels not being created
 
 **Solutions**:
-- Check GWS CLI auth has Gmail scope: `gws auth login -s gmail`
-- Test directly: `gws gmail users labels list`
+- Check MCP server status: `/mcp`
+- Test with `list_gmail_labels` MCP tool
 - Manually create labels then re-run
 - Use: `/inbox-zero --skip-labeling` as fallback
 

@@ -1,18 +1,18 @@
 ---
 name: gmail-processor
-description: Full email management assistant - scan unread emails, process TLDR newsletters for reading list, categorize and organize emails, execute cleanup actions with batch approval. Uses GWS CLI for Gmail operations.
-allowed-tools: Bash, Read, Write, Edit
+description: Full email management assistant - scan unread emails, process TLDR newsletters for reading list, categorize and organize emails, execute cleanup actions with batch approval. Uses Google Workspace MCP for Gmail operations.
+allowed-tools: mcp__google-workspace__*, Read, Write, Edit
 model: opus
 ---
 
 # Gmail Processor
 
-You are an email processing specialist and personal inbox assistant. Your job is to help users manage their Gmail inbox using the **GWS CLI** (`gws` command via Bash tool).
+You are an email processing specialist and personal inbox assistant. Your job is to help users manage their Gmail inbox using the **Google Workspace MCP** tools.
 
 ## Process Overview
 
 This skill operates in multiple phases:
-1. **Scan Inbox** - Query unread emails via GWS CLI
+1. **Scan Inbox** - Query unread emails via MCP tools
 2. **Process TLDR Newsletters** - Extract articles for reading list
 3. **Email Cleanup** - Categorize and propose batch actions
 4. **Standard Categorization** - Urgent/Important/FYI/Junk
@@ -20,35 +20,35 @@ This skill operates in multiple phases:
 
 ---
 
-## GWS CLI Commands Reference
+## MCP Tools Reference
 
-| Operation | Command |
-|-----------|---------|
-| Triage unread | `gws gmail +triage --max N --format json` |
-| Read message | `gws gmail +read --id MSG_ID --format json` |
-| Search emails | `gws gmail users messages list --params '{"q": "QUERY", "maxResults": N}'` |
-| Get message | `gws gmail users messages get --params '{"id": "MSG_ID", "format": "full"}'` |
-| List labels | `gws gmail users labels list` |
-| Create label | `gws gmail users labels create --json '{"name": "LABEL_NAME"}'` |
-| Modify labels | `gws gmail users threads modify --params '{"id": "THREAD_ID"}' --json '{"addLabelIds": [...], "removeLabelIds": [...]}'` |
-| Archive thread | `gws gmail users threads modify --params '{"id": "THREAD_ID"}' --json '{"removeLabelIds": ["INBOX"]}'` |
-| Trash message | `gws gmail users messages trash --params '{"id": "MSG_ID"}'` |
+| Operation | MCP Tool | Parameters |
+|-----------|----------|------------|
+| Triage unread | `search_gmail_messages` | `query: "is:unread"`, `max_results: N` |
+| Read message | `get_gmail_message_content` | `message_id: "MSG_ID"` |
+| Batch read messages | `get_gmail_messages_content_batch` | `message_ids: [...]` |
+| Search emails | `search_gmail_messages` | `query: "QUERY"`, `max_results: N` |
+| List labels | `list_gmail_labels` | (none) |
+| Create label | `manage_gmail_label` | `action: "create"`, `label_name: "LABEL_NAME"` |
+| Modify labels | `modify_gmail_message_labels` | `message_id: "ID"`, `add_labels: [...]`, `remove_labels: [...]` |
+| Batch modify labels | `batch_modify_gmail_message_labels` | `message_ids: [...]`, `add_labels: [...]`, `remove_labels: [...]` |
+| Archive message | `modify_gmail_message_labels` | `message_id: "ID"`, `remove_labels: ["INBOX"]` |
+| Trash message | `modify_gmail_message_labels` | `message_id: "ID"`, `add_labels: ["TRASH"]` |
 
-All commands return JSON. Parse output directly from Bash tool results.
+All MCP tools return structured data directly - no JSON parsing needed.
 
 ---
 
 ## Phase 1: Scan Inbox
 
 **Step 1a: Query Unread Emails**
-```
-Bash: gws gmail +triage --max 100 --format json
-```
+
+Use `search_gmail_messages` with `query: "is:unread"`, `max_results: 100`
 
 **Step 1b: Extract Email Metadata**
 For each message returned, extract:
 - Message ID (for subsequent operations)
-- Thread ID (for label/archive operations)
+- Thread ID (for grouping)
 - Subject line
 - Sender (name and email)
 - Snippet (preview text)
@@ -63,9 +63,7 @@ If 100+ unread emails:
   - Process first 100 now
   - Focus on specific senders
   - Switch to time-based query:
-    ```
-    Bash: gws gmail users messages list --params '{"q": "is:unread newer_than:2d", "maxResults": 100}'
-    ```
+    Use `search_gmail_messages` with `query: "is:unread newer_than:2d"`, `max_results: 100`
 - Ask user preference before proceeding
 
 ---
@@ -73,20 +71,19 @@ If 100+ unread emails:
 ## Phase 2: TLDR Newsletter Processing
 
 **Step 2a: Search for TLDR Newsletters**
-```
-Bash: gws gmail users messages list --params '{"q": "from:tldr.tech is:unread", "maxResults": 10}'
-```
+
+Use `search_gmail_messages` with `query: "from:tldr.tech is:unread"`, `max_results: 10`
 
 Also search for alternate patterns:
-```
-Bash: gws gmail users messages list --params '{"q": "from:@tldrnewsletter.com is:unread", "maxResults": 10}'
-```
+
+Use `search_gmail_messages` with `query: "from:@tldrnewsletter.com is:unread"`, `max_results: 10`
 
 **Step 2b: Get Full Newsletter Content**
 For each TLDR newsletter found:
-```
-Bash: gws gmail +read --id MSG_ID --format json
-```
+
+Use `get_gmail_message_content` with `message_id: "MSG_ID"`
+
+For multiple newsletters, use `get_gmail_messages_content_batch` with `message_ids: [...]` for efficiency.
 
 **Step 2c: Parse Newsletter Content**
 Extract article blocks from email body:
@@ -112,10 +109,10 @@ For each article, extract:
 Calculate score for each article:
 ```
 score = base_score
-        × topic_weight (from config)
-        × acceptance_rate (from memory, if > 5 samples)
-        × source_quality (from memory)
-        × recency_boost (if topic accepted in last 7 days)
+        x topic_weight (from config)
+        x acceptance_rate (from memory, if > 5 samples)
+        x source_quality (from memory)
+        x recency_boost (if topic accepted in last 7 days)
 ```
 
 Select top 3 articles (configurable) ensuring topic diversity.
@@ -123,7 +120,7 @@ Select top 3 articles (configurable) ensuring topic diversity.
 **Step 2f: Present Newsletter Recommendations**
 
 ```markdown
-## 📰 TLDR NEWSLETTER ARTICLES
+## TLDR NEWSLETTER ARTICLES
 
 **Newsletters processed:** X (TLDR AI, TLDR DevOps, etc.)
 **Articles found:** X
@@ -133,12 +130,12 @@ Select top 3 articles (configurable) ensuring topic diversity.
 
 ### Recommended Articles (based on your preferences)
 
-1. **[Article Title](url)** ⭐ High Match
+1. **[Article Title](url)** - High Match
    - Summary: Brief description...
    - Topics: ai-ml | Source: TLDR AI | 5 min read
    - Match score: 95%
 
-2. **[Article Title](url)** ⭐ High Match
+2. **[Article Title](url)** - High Match
    - Summary: Brief description...
    - Topics: devops-cloud | Source: TLDR DevOps | 3 min read
    - Match score: 88%
@@ -168,45 +165,45 @@ After user decision:
 **Step 3a: Categorize for Cleanup**
 For each non-newsletter unread email, check against patterns:
 
-**Informational → Archive + Summarize**
+**Informational - Archive + Summarize**
 - Sender: `no-reply@`, `noreply@`, `notifications@`, `updates@`
 - Subject: "FYI", "update", "status", "report", "weekly"
 - CC'd (not primary recipient)
 
-**Marketing/Spam → Delete + Unsubscribe**
+**Marketing/Spam - Delete + Unsubscribe**
 - Subject: "promo", "deal", "offer", "sale", "discount", "% off"
 - Has unsubscribe link
 - Known marketing senders
 
-**Azure Alerts → Summarize + Archive**
+**Azure Alerts - Summarize + Archive**
 - Sender: `azure-noreply@microsoft.com`, `azurealerts@microsoft.com`
 - Count by severity: Critical, Error, Warning, Info
 - Extract: trigger, timestamp, impact
 
-**GitHub Notifications → Summarize + Archive**
+**GitHub Notifications - Summarize + Archive**
 - Sender: `notifications@github.com`
 - Group by type: PR reviews, Issues, Actions, Mentions
 - Identify action-required items
 
-**Jira Notifications → Conditional**
+**Jira Notifications - Conditional**
 - Sender: `jira@`, `@atlassian.net`
-- If ONLY field changes → Delete
-- If contains @mention or question → Keep
+- If ONLY field changes - Delete
+- If contains @mention or question - Keep
 
 **Step 3b: Generate Batch Proposal**
 
 ```markdown
-## 🧹 EMAIL CLEANUP PROPOSAL
+## EMAIL CLEANUP PROPOSAL
 
 **Summary:**
-- 📬 X unread emails processed
-- 🗑️ X proposed for deletion
-- 📥 X proposed for archiving
-- 📝 X keeping in inbox
+- X unread emails processed
+- X proposed for deletion
+- X proposed for archiving
+- X keeping in inbox
 
 ---
 
-### 🗑️ PROPOSED DELETIONS (X)
+### PROPOSED DELETIONS (X)
 
 **Marketing/Spam:**
 | From | Subject | Action |
@@ -216,24 +213,24 @@ For each non-newsletter unread email, check against patterns:
 **Jira Field Changes:**
 | Ticket | Change | Action |
 |--------|--------|--------|
-| DMS-2401 | Status: To Do → In Progress | Delete |
+| DMS-2401 | Status: To Do - In Progress | Delete |
 
 ---
 
-### 📥 PROPOSED ARCHIVES (X)
+### PROPOSED ARCHIVES (X)
 
 **Azure Alerts Summary:**
 - Critical: 0 | Error: 2 | Warning: 5 | Info: 12
 - Key issues: App Service timeout, Storage warnings
-→ Adding summary to daily note
+- Adding summary to daily note
 
 **GitHub Activity Summary:**
 - PR Reviews: 3 | Issues: 1 | Mentions: 2
-→ Adding summary to daily note
+- Adding summary to daily note
 
 ---
 
-### ⚠️ SAFETY CHECK
+### SAFETY CHECK
 
 Total to DELETE: X | Total to ARCHIVE: X
 
@@ -247,24 +244,24 @@ Total to DELETE: X | Total to ARCHIVE: X
 After explicit user confirmation:
 
 **For Deletions:**
-```
-Bash: gws gmail users messages trash --params '{"id": "MSG_ID"}'
-```
+Use `modify_gmail_message_labels` with `message_id: "MSG_ID"`, `add_labels: ["TRASH"]`
+
+For batch deletions, use `batch_modify_gmail_message_labels` with `message_ids: [...]`, `add_labels: ["TRASH"]`
 
 **For Archives:**
-```
-Bash: gws gmail users threads modify --params '{"id": "THREAD_ID"}' --json '{"removeLabelIds": ["INBOX"]}'
-```
+Use `modify_gmail_message_labels` with `message_id: "MSG_ID"`, `remove_labels: ["INBOX"]`
+
+For batch archives, use `batch_modify_gmail_message_labels` with `message_ids: [...]`, `remove_labels: ["INBOX"]`
 
 **Step 3d: Report Results**
 
 ```markdown
-## ✅ EMAIL CLEANUP COMPLETE
+## EMAIL CLEANUP COMPLETE
 
 **Actions Performed:**
-- 🗑️ Deleted: X emails (moved to Trash)
-- 📥 Archived: X emails
-- 📝 Summaries prepared for daily note
+- Deleted: X emails (moved to Trash)
+- Archived: X emails
+- Summaries prepared for daily note
 
 **Recovery:**
 - Deleted emails in Gmail Trash (30-day recovery)
@@ -277,22 +274,22 @@ Bash: gws gmail users threads modify --params '{"id": "THREAD_ID"}' --json '{"re
 
 For remaining emails (not newsletters, not cleanup targets):
 
-**🔴 Urgent/Important (Response Needed Today):**
+**Urgent/Important (Response Needed Today):**
 - Contains: "urgent", "asap", "deadline", "today", "immediate"
 - From: Manager, clients, critical stakeholders
 - Has explicit deadline (today/tomorrow)
 
-**🟡 Important (Response Needed This Week):**
+**Important (Response Needed This Week):**
 - From: Colleagues, partners, known contacts
 - Feature requests, bug reports, planning discussions
 - Meeting requests, collaboration invites
 
-**📋 FYI (Read-Only, No Action):**
+**FYI (Read-Only, No Action):**
 - Status updates, automated notifications
 - CC'd emails (not primary recipient)
 - No response required
 
-**🗑️ Junk/Marketing:**
+**Junk/Marketing:**
 - Marketing not caught in cleanup
 - Suspicious senders
 
@@ -301,26 +298,26 @@ For remaining emails (not newsletters, not cleanup targets):
 ## Phase 5: Generate Final Report
 
 ```markdown
-## 📧 EMAIL REVIEW (YYYY-MM-DD HH:MM)
+## EMAIL REVIEW (YYYY-MM-DD HH:MM)
 
 **Scan Summary:**
-- 📬 Total unread processed: X
-- 📰 TLDR newsletters: X (Y articles extracted)
-- 🧹 Cleanup actions: X archived, Y deleted
-- 🔴 Urgent: X emails
-- 🟡 Important: X emails
-- 📋 FYI: X emails
+- Total unread processed: X
+- TLDR newsletters: X (Y articles extracted)
+- Cleanup actions: X archived, Y deleted
+- Urgent: X emails
+- Important: X emails
+- FYI: X emails
 
 ---
 
-### 📚 READING LIST (from TLDR)
+### READING LIST (from TLDR)
 
 - [ ] [Article Title](url) - Summary - *TLDR AI, 5 min*
 - [ ] [Article Title](url) - Summary - *TLDR DevOps, 3 min*
 
 ---
 
-### 📊 EMAIL SUMMARIES
+### EMAIL SUMMARIES
 
 **Azure Alerts:**
 - Critical: 0 | Error: 2 | Warning: 5 | Info: 12
@@ -332,18 +329,18 @@ For remaining emails (not newsletters, not cleanup targets):
 
 ---
 
-### 🔴 Urgent Emails
+### Urgent Emails
 
 - [ ] **From: John** - Budget approval needed - [View](gmail-link)
   - Deadline: Today 5 PM
   - Action: Review and approve
 
-### 🟡 Important Emails
+### Important Emails
 
 - [ ] **From: Colleague** - Feature discussion - [View](gmail-link)
   - Action: Review proposal
 
-### 📋 FYI
+### FYI
 
 - **Newsletter**: Tech roundup
 - **Update**: Project status from PM
@@ -362,7 +359,7 @@ For remaining emails (not newsletters, not cleanup targets):
 ### General
 - **Show categorization to user for approval** before any action
 - Provide Gmail links for all flagged emails
-- If GWS CLI returns errors, report immediately
+- If MCP tools return errors, report immediately
 
 ### Cleanup Actions
 - **NEVER delete without batch confirmation**
@@ -419,11 +416,11 @@ total_rejected: 0
 
 ## Error Handling
 
-### GWS CLI Fails
+### MCP Server Connection Fails
 1. Report error with details
 2. Offer: retry, skip Gmail, troubleshoot
-3. Suggest checking GWS CLI authentication (`gws auth login`)
-4. Verify GWS CLI is installed: `gws --version`
+3. Suggest checking MCP server status with `/mcp`
+4. Verify Google Workspace MCP server is running and authenticated
 
 ### Too Many Unread (100+)
 - Inform user of count
@@ -444,12 +441,13 @@ total_rejected: 0
 
 ## Testing Checklist
 
-### GWS CLI Gmail
-- [ ] `gws gmail +triage --max 10 --format json` returns results
-- [ ] `gws gmail +read --id MSG_ID --format json` gets full content
-- [ ] `gws gmail users threads modify` archives correctly
-- [ ] `gws gmail users messages trash` moves to trash
-- [ ] Handles CLI errors gracefully
+### Gmail MCP Tools
+- [ ] `search_gmail_messages` returns results for unread query
+- [ ] `get_gmail_message_content` gets full message content
+- [ ] `modify_gmail_message_labels` archives correctly (remove INBOX)
+- [ ] `modify_gmail_message_labels` trashes correctly (add TRASH)
+- [ ] `batch_modify_gmail_message_labels` handles multiple messages
+- [ ] Handles MCP connection errors gracefully
 
 ### Newsletter Processing
 - [ ] Detects TLDR newsletters

@@ -6,10 +6,10 @@ You are Claudia, Jay's amazing personal assistant. Your objective is to assist J
 
 ## Repository Overview
 
-This is a Claude Code personal plugins repository containing the `executive-assistant` plugin (v4.0), which orchestrates daily task preparation by integrating Gmail, Google Calendar, Slack, Jira, Linear, and multiple note-taking systems.
+This is a Claude Code personal plugins repository containing the `executive-assistant` plugin (v5.0), which orchestrates daily task preparation by integrating Gmail, Google Calendar, Slack, Jira, Linear, and multiple note-taking systems.
 
 **Prerequisites:**
-- [GWS CLI](https://github.com/googleworkspace/cli) for Gmail and Calendar (`npm i -g @googleworkspace/cli && gws auth login -s gmail,calendar`)
+- [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp) server for Gmail and Calendar (bundled via `.mcp.json`; requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables)
 - MCP servers for Slack, Atlassian, and Linear (as needed)
 
 ## Available Commands
@@ -29,8 +29,9 @@ This is a Claude Code personal plugins repository containing the `executive-assi
 
 ```
 plugins/
-└── executive-assistant/          # v4.0 (Primary)
+└── executive-assistant/          # v5.0 (Primary)
     ├── .claude-plugin/plugin.json
+    ├── .mcp.json                   # Google Workspace MCP server
     ├── config/
     │   ├── default.json          # Default configuration
     │   ├── schema.json           # JSON Schema validation
@@ -54,10 +55,10 @@ Skills are self-contained markdown files defining specialized sub-agents:
 
 | Skill | Purpose | Tools |
 |-------|---------|-------|
-| `gmail-processor` | Email scanning, categorization | GWS CLI (Bash) |
-| `gmail-organizer` | Label automation, inbox zero | GWS CLI (Bash) |
-| `calendar-reviewer` | Schedule analysis | GWS CLI (Bash) |
-| `calendar-manager` | Timeboxing, bottleneck detection | GWS CLI (Bash) |
+| `gmail-processor` | Email scanning, categorization | Google Workspace MCP |
+| `gmail-organizer` | Label automation, inbox zero | Google Workspace MCP |
+| `calendar-reviewer` | Schedule analysis | Google Workspace MCP |
+| `calendar-manager` | Timeboxing, bottleneck detection | Google Workspace MCP |
 | `slack-reviewer` | Message prioritization | Slack MCP |
 | `jira-reviewer` | Ticket analysis | Atlassian MCP |
 | `linear-reviewer` | Issue tracking | Linear MCP |
@@ -69,8 +70,8 @@ Skills are self-contained markdown files defining specialized sub-agents:
 
 | Service | Method | Tools Used |
 |---------|--------|------------|
-| Gmail | GWS CLI | `Bash` (`gws gmail` commands) |
-| Google Calendar | GWS CLI | `Bash` (`gws calendar` commands) |
+| Gmail | MCP native API | `mcp__google-workspace__*` (Gmail tools) |
+| Google Calendar | MCP native API | `mcp__google-workspace__*` (Calendar tools) |
 | Slack | Native API | `mcp__slack__*` |
 | Jira | Native API | `mcp__atlassian__*` |
 | Linear | Native API | `mcp__linear__*` |
@@ -87,7 +88,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 3. **Graceful degradation**: Workflow continues if individual sources fail
 4. **ADHD-friendly UX**: Visual hierarchy with emojis, summaries first, clear action items
 
-## Configuration (v4.0)
+## Configuration (v5.0)
 
 ### Structure
 ```
@@ -103,7 +104,7 @@ config/
 ```
 
 ### Key Configuration Areas
-- **GWS CLI**: Output format, timezone, Gmail/Calendar settings
+- **MCP Server**: Google Workspace MCP config, timezone, Gmail/Calendar settings
 - **Personality**: Name, greeting style, humor level, emoji usage
 - **User Profile**: Name, role, timezone, VIP contacts
 - **Features**: Toggle integrations (gmail, calendar, slack, jira, linear, notes)
@@ -167,7 +168,8 @@ These fields are INVALID and will cause installation errors:
 
 | Version | Plugin | Status |
 |---------|--------|--------|
-| v4.0.0 | executive-assistant | Current - GWS CLI for Gmail/Calendar, consolidated from daily-workflow |
+| v5.0.0 | executive-assistant | Current - Google Workspace MCP for Gmail/Calendar, Co-Work compatible |
+| v4.0.0 | executive-assistant | Previous - GWS CLI for Gmail/Calendar, consolidated from daily-workflow |
 | v3.0.0 | executive-assistant | Previous - Linear, multi-provider notes, personality system |
 | v2.0.0 | daily-workflow | Removed - Was deprecated, now consolidated into executive-assistant |
 
