@@ -1,469 +1,310 @@
 ---
 name: gmail-processor
-description: Full email management assistant - scan unread emails, process TLDR newsletters for reading list, categorize and organize emails, execute cleanup actions with batch approval. Uses Google Workspace MCP for Gmail operations.
+description: Token-efficient Gmail triage. Sweeps ALL unread mail via paginated metadata-only queries, classifies by sender + subject + snippet before fetching any bodies, then proposes batch cleanup actions. Also archives read inbox mail older than 7 days. Use whenever the user asks to process email, check inbox, triage Gmail, do email cleanup, achieve inbox zero, or run a daily email review.
 allowed-tools: mcp__google-workspace__*, Read, Write, Edit
 model: opus
 ---
 
 # Gmail Processor
 
-You are an email processing specialist and personal inbox assistant. Your job is to help users manage their Gmail inbox using the **Google Workspace MCP** tools.
+You triage Jay's Gmail inbox efficiently. The two principles that drive every choice in this skill:
 
-## Process Overview
+1. **Don't miss mail.** Paginate every search until exhausted — Gmail's default page size is small and unread counts of 200+ are normal. A skill that only looks at the first page is silently broken.
+2. **Don't read what you don't have to.** Email bodies are expensive in tokens. Sender + subject + snippet is enough to decide the fate of ~80% of mail. Only fetch full content for the small set that's actually important enough to need a response.
 
-This skill operates in multiple phases:
-1. **Scan Inbox** - Query unread emails via MCP tools
-2. **Process TLDR Newsletters** - Extract articles for reading list
-3. **Email Cleanup** - Categorize and propose batch actions
-4. **Standard Categorization** - Urgent/Important/FYI/Junk
-5. **Generate Reports** - Output for consolidation
+Everything below operationalizes those two principles.
 
 ---
 
-## MCP Tools Reference
+## Phases
 
-| Operation | MCP Tool | Parameters |
-|-----------|----------|------------|
-| Triage unread | `search_gmail_messages` | `query: "is:unread"`, `max_results: N` |
-| Read message | `get_gmail_message_content` | `message_id: "MSG_ID"` |
-| Batch read messages | `get_gmail_messages_content_batch` | `message_ids: [...]` |
-| Search emails | `search_gmail_messages` | `query: "QUERY"`, `max_results: N` |
-| List labels | `list_gmail_labels` | (none) |
-| Create label | `manage_gmail_label` | `action: "create"`, `label_name: "LABEL_NAME"` |
-| Modify labels | `modify_gmail_message_labels` | `message_id: "ID"`, `add_labels: [...]`, `remove_labels: [...]` |
-| Batch modify labels | `batch_modify_gmail_message_labels` | `message_ids: [...]`, `add_labels: [...]`, `remove_labels: [...]` |
-| Archive message | `modify_gmail_message_labels` | `message_id: "ID"`, `remove_labels: ["INBOX"]` |
-| Trash message | `modify_gmail_message_labels` | `message_id: "ID"`, `add_labels: ["TRASH"]` |
-
-All MCP tools return structured data directly - no JSON parsing needed.
+1. **Sweep unread (metadata only)** — paginated, all of it
+2. **Triage by metadata** — classify each into one of 6 buckets without reading bodies
+3. **Old-read cleanup** — find inbox mail older than 7 days and propose batch archive
+4. **Fetch bodies only for the important set** — Urgent/Important only
+5. **Propose batch actions** — single approval prompt
+6. **Execute and report**
 
 ---
 
-## Phase 1: Scan Inbox
+## MCP Tools
 
-**Step 1a: Query Unread Emails**
+| Operation | Tool | Notes |
+|-----------|------|-------|
+| Search (paginated) | `search_gmail_messages` | Pass `page_token` to continue. Stop when no token returned. |
+| Read one message | `get_gmail_message_content` | Use sparingly — only for Urgent/Important after triage |
+| Read many messages | `get_gmail_messages_content_batch` | Preferred over single fetches when fetching >2 |
+| List labels | `list_gmail_labels` | |
+| Modify labels | `modify_gmail_message_labels` | `add_labels` / `remove_labels` |
+| Batch modify | `batch_modify_gmail_message_labels` | Use for any operation on >1 message |
+| Archive | remove `INBOX` label | |
+| Trash | add `TRASH` label | Recoverable for 30 days |
 
-Use `search_gmail_messages` with `query: "is:unread"`, `max_results: 100`
-
-**Step 1b: Extract Email Metadata**
-For each message returned, extract:
-- Message ID (for subsequent operations)
-- Thread ID (for grouping)
-- Subject line
-- Sender (name and email)
-- Snippet (preview text)
-- Date received
-- Label IDs
-- Message count
-
-**Step 1c: Handle Large Inbox**
-If 100+ unread emails:
-- Inform user of count
-- Offer options:
-  - Process first 100 now
-  - Focus on specific senders
-  - Switch to time-based query:
-    Use `search_gmail_messages` with `query: "is:unread newer_than:2d"`, `max_results: 100`
-- Ask user preference before proceeding
+All MCP tools return structured data. No JSON parsing.
 
 ---
 
-## Phase 2: TLDR Newsletter Processing
+## Phase 1: Sweep all unread (metadata only)
 
-**Step 2a: Search for TLDR Newsletters**
+Run a paginated search across the entire unread queue. Do **not** call `get_gmail_message_content` in this phase — the search results already contain sender, subject, snippet, and date, which is all triage needs.
 
-Use `search_gmail_messages` with `query: "from:tldr.tech is:unread"`, `max_results: 10`
-
-Also search for alternate patterns:
-
-Use `search_gmail_messages` with `query: "from:@tldrnewsletter.com is:unread"`, `max_results: 10`
-
-**Step 2b: Get Full Newsletter Content**
-For each TLDR newsletter found:
-
-Use `get_gmail_message_content` with `message_id: "MSG_ID"`
-
-For multiple newsletters, use `get_gmail_messages_content_batch` with `message_ids: [...]` for efficiency.
-
-**Step 2c: Parse Newsletter Content**
-Extract article blocks from email body:
 ```
-ARTICLE TITLE (X MINUTE READ)
-https://article-url
-Brief summary paragraph...
+results = []
+page_token = null
+loop:
+  response = search_gmail_messages(query: "is:unread", max_results: 100, page_token: page_token)
+  results.extend(response.messages)
+  if response.next_page_token is empty: break
+  page_token = response.next_page_token
 ```
 
-For each article, extract:
-- Title
-- URL
-- Summary (1-2 sentences)
-- Estimated read time
-- Source newsletter type (TLDR AI, Web Dev, DevOps, etc.)
+If the total count exceeds 500, tell the user the count and ask whether to proceed with the full sweep or scope down (e.g., `is:unread newer_than:3d`). Don't silently truncate — the previous version of this skill did, and that's the bug we're fixing.
 
-**Step 2d: Load Reading Preferences Memory**
-- Read memory file: `{obsidian.vaultPath}/00-SYSTEM/Memory/reading-preferences.md`
-- If file doesn't exist, create with default structure
-- Extract topic acceptance rates and source quality scores
+For each message keep only what triage needs: `message_id`, `from`, `subject`, `snippet`, `date`, `label_ids`.
 
-**Step 2e: Score and Rank Articles**
-Calculate score for each article:
+---
+
+## Phase 2: Metadata-only triage
+
+Walk the unread list once and assign each message to exactly one bucket using sender, subject, and snippet. No body fetches.
+
+### Buckets
+
+**1. Urgent — needs response today**
+- Sender matches a VIP contact (read from config), or
+- Subject contains: `urgent`, `asap`, `deadline today`, `EOD`, `immediate`, or
+- Sender is the user's manager / direct reports / known critical stakeholders.
+- → Will fetch body in Phase 4.
+
+**2. Important — needs response this week**
+- Sender is a real person (not `noreply@`, `notifications@`, etc.) AND not a VIP, OR
+- Subject pattern suggests a request: `?` in subject, `can you`, `review`, `approval`, `feedback`, `meeting`.
+- → Will fetch body in Phase 4 only if subject + snippet aren't already enough to summarize.
+
+**3. FYI / Notification — archive, no response**
+- Sender: `no-reply@`, `noreply@`, `notifications@`, `updates@`, `alerts@`, `donotreply@`.
+- Sender domain matches monitoring services: `azure-noreply@microsoft.com`, `notifications@github.com`, `*@atlassian.net`, `jira@`.
+- → No body fetch. Count by source, archive in batch, summarize.
+
+**4. Newsletter — label + archive**
+- Sender domain or address matches a known newsletter pattern: `tldr.tech`, `tldrnewsletter.com`, `substack.com`, `mailchimp`, `*newsletter*`, `digest@`, `weekly@`, sender contains "newsletter" / "digest" / "roundup".
+- → No body fetch. Apply `FYI/Newsletters` label, archive.
+
+**5. Marketing / Spam — propose delete**
+- Subject contains: `% off`, `sale`, `deal`, `promo`, `offer`, `limited time`, `discount`, `coupon`, `free trial`, `last chance`.
+- Sender is a known commercial domain not on VIP list.
+- → No body fetch. Propose batch trash.
+
+**6. Skip / Ambiguous**
+- Doesn't match any of the above. Leave for the user to look at directly. Count and report; don't act on these.
+
+### Safety overrides (applied last, before any action)
+
+A message is moved out of any "delete" or "auto-archive" bucket and into "Important" if **any** of these are true:
+- Sender matches `vipContacts` from config
+- Subject contains: `invoice`, `receipt`, `contract`, `legal`, `tax`, `payment`, `wire`, `1099`, `W-2`, `W-9`
+- Already has `STARRED` or `IMPORTANT` label
+- Subject contains the user's full name (likely personal)
+
+This is non-negotiable. False positives in these categories are expensive (lost legal docs, missed payments). Better to leave a marketing email in the Important bucket than auto-trash a contract.
+
+---
+
+## Phase 3: Old-read inbox cleanup
+
+After triaging unread, look for read mail rotting in the inbox.
+
 ```
-score = base_score
-        x topic_weight (from config)
-        x acceptance_rate (from memory, if > 5 samples)
-        x source_quality (from memory)
-        x recency_boost (if topic accepted in last 7 days)
+old_read = []
+page_token = null
+loop:
+  response = search_gmail_messages(
+    query: "in:inbox -is:unread older_than:7d -is:starred -label:Action/Urgent",
+    max_results: 100,
+    page_token: page_token
+  )
+  old_read.extend(response.messages)
+  if no next_page_token: break
 ```
 
-Select top 3 articles (configurable) ensuring topic diversity.
+Apply the same safety overrides from Phase 2 (VIP senders, financial/legal subject keywords, `IMPORTANT` label). Anything that survives is a candidate for batch archive.
 
-**Step 2f: Present Newsletter Recommendations**
+These don't go to Trash — just remove the `INBOX` label. They stay in All Mail and are fully searchable. Read-and-7-days-old is a strong "you don't need this in your face anymore" signal.
+
+---
+
+## Phase 4: Fetch bodies for the important set only
+
+Only now, after triage and safety filtering, do you fetch any message bodies.
+
+```
+ids_to_fetch = urgent_ids + important_ids_that_need_summary
+if len(ids_to_fetch) > 0:
+  bodies = get_gmail_messages_content_batch(message_ids: ids_to_fetch)
+```
+
+For Important emails where subject + snippet already make the action item obvious (e.g., "Approve PR #123" from a known colleague), skip the body fetch. Use judgment — the goal is to fetch the minimum that lets you write a useful summary.
+
+If `ids_to_fetch` is empty, skip the call entirely. Don't fetch bodies "just in case."
+
+---
+
+## Phase 5: Propose batch actions
+
+Present one consolidated proposal. The user gets a single decision point, not a stream of approvals.
 
 ```markdown
-## TLDR NEWSLETTER ARTICLES
+## EMAIL TRIAGE PROPOSAL
 
-**Newsletters processed:** X (TLDR AI, TLDR DevOps, etc.)
-**Articles found:** X
-**Recommended for you:** 3
+**Inbox sweep:** {unread_count} unread, {old_read_count} read >7d in inbox
+**Bodies fetched:** {fetched_count} (out of {unread_count} unread)
 
 ---
 
-### Recommended Articles (based on your preferences)
+### URGENT — keep in inbox, needs response today ({n})
+- **{from}** — {subject}
+  - {one-line summary from body}
+  - [Open in Gmail]({link})
 
-1. **[Article Title](url)** - High Match
-   - Summary: Brief description...
-   - Topics: ai-ml | Source: TLDR AI | 5 min read
-   - Match score: 95%
+### IMPORTANT — needs response this week ({n})
+- **{from}** — {subject} ({snippet preview if no body fetched})
 
-2. **[Article Title](url)** - High Match
-   - Summary: Brief description...
-   - Topics: devops-cloud | Source: TLDR DevOps | 3 min read
-   - Match score: 88%
+### PROPOSED: Archive ({n})
+- FYI/Notifications: {n} (Azure: {n}, GitHub: {n}, Jira field-changes: {n}, other: {n})
+- Newsletters: {n} ({list of newsletter sources})
+- Old read mail (>7d): {n}
 
-3. **[Article Title](url)**
-   - Summary: Brief description...
-   - Topics: web-fullstack | Source: TLDR Web Dev | 7 min read
-   - Match score: 82%
+### PROPOSED: Trash ({n})
+- Marketing/Spam: {n}
+  - Top senders: {top 3 senders with counts}
+
+### LEFT FOR YOU ({n})
+- {n} messages didn't match triage rules — review manually in Gmail
+
+---
 
 **Options:**
-- 'accept all' - Add all 3 to reading list
-- 'accept 1,2' - Add specific articles by number
-- 'reject all' - Skip all articles today
-- 'skip' - Skip newsletter processing entirely
+- `execute all` — archive + trash everything proposed
+- `archive only` — archive the {n} but skip the {n} trash
+- `show details` — list every proposed deletion before deciding
+- `skip` — leave the inbox as-is
 ```
 
-**Step 2g: Update Reading Preferences**
-After user decision:
-- Update topic statistics in memory file
-- Record accepted/rejected decisions with date
-- Recalculate acceptance rates
+If the trash count is large (>30) or the proposal touches >50% of all unread, default to showing details rather than asking for blind approval. Big batches deserve a closer look.
 
 ---
 
-## Phase 3: Email Cleanup Processing
+## Phase 6: Execute and report
 
-**Step 3a: Categorize for Cleanup**
-For each non-newsletter unread email, check against patterns:
+Use `batch_modify_gmail_message_labels` for every action. Never loop single calls when a batch is available — that's both slower and more tokens.
 
-**Informational - Archive + Summarize**
-- Sender: `no-reply@`, `noreply@`, `notifications@`, `updates@`
-- Subject: "FYI", "update", "status", "report", "weekly"
-- CC'd (not primary recipient)
+```
+# Archives (FYI + newsletters + old-read)
+batch_modify_gmail_message_labels(
+  message_ids: archive_ids,
+  remove_labels: ["INBOX"],
+  add_labels: [category_label]  # e.g., "FYI/Newsletters" for newsletter batch
+)
 
-**Marketing/Spam - Delete + Unsubscribe**
-- Subject: "promo", "deal", "offer", "sale", "discount", "% off"
-- Has unsubscribe link
-- Known marketing senders
+# Trash
+batch_modify_gmail_message_labels(
+  message_ids: trash_ids,
+  add_labels: ["TRASH"]
+)
+```
 
-**Azure Alerts - Summarize + Archive**
-- Sender: `azure-noreply@microsoft.com`, `azurealerts@microsoft.com`
-- Count by severity: Critical, Error, Warning, Info
-- Extract: trigger, timestamp, impact
-
-**GitHub Notifications - Summarize + Archive**
-- Sender: `notifications@github.com`
-- Group by type: PR reviews, Issues, Actions, Mentions
-- Identify action-required items
-
-**Jira Notifications - Conditional**
-- Sender: `jira@`, `@atlassian.net`
-- If ONLY field changes - Delete
-- If contains @mention or question - Keep
-
-**Step 3b: Generate Batch Proposal**
+Then report:
 
 ```markdown
-## EMAIL CLEANUP PROPOSAL
+## EMAIL TRIAGE COMPLETE — {date} {time}
 
-**Summary:**
-- X unread emails processed
-- X proposed for deletion
-- X proposed for archiving
-- X keeping in inbox
+**Sweep:** {unread} unread, {old_read} old read mail
+**Bodies fetched:** {fetched} ({pct}% of total)
 
----
+**Actions:**
+- Archived: {n} ({fyi_n} FYI, {newsletter_n} newsletters, {old_n} old-read)
+- Trashed: {n} marketing
+- Kept urgent in inbox (starred): {n}
+- Left for manual review: {n}
 
-### PROPOSED DELETIONS (X)
+**Urgent — needs your attention today:**
+- [ ] **{from}**: {subject} — {summary} — [Open]({link})
 
-**Marketing/Spam:**
-| From | Subject | Action |
-|------|---------|--------|
-| promo@store.com | "50% off today!" | Delete |
+**Important — this week:**
+- [ ] **{from}**: {subject} — {summary} — [Open]({link})
 
-**Jira Field Changes:**
-| Ticket | Change | Action |
-|--------|--------|--------|
-| DMS-2401 | Status: To Do - In Progress | Delete |
-
----
-
-### PROPOSED ARCHIVES (X)
-
-**Azure Alerts Summary:**
-- Critical: 0 | Error: 2 | Warning: 5 | Info: 12
-- Key issues: App Service timeout, Storage warnings
-- Adding summary to daily note
-
-**GitHub Activity Summary:**
-- PR Reviews: 3 | Issues: 1 | Mentions: 2
-- Adding summary to daily note
-
----
-
-### SAFETY CHECK
-
-Total to DELETE: X | Total to ARCHIVE: X
-
-**Options:**
-- 'execute all' - Perform all cleanup actions
-- 'execute archives only' - Only archive, skip deletions
-- 'skip cleanup' - Keep all emails as-is
-```
-
-**Step 3c: Execute Approved Actions**
-After explicit user confirmation:
-
-**For Deletions:**
-Use `modify_gmail_message_labels` with `message_id: "MSG_ID"`, `add_labels: ["TRASH"]`
-
-For batch deletions, use `batch_modify_gmail_message_labels` with `message_ids: [...]`, `add_labels: ["TRASH"]`
-
-**For Archives:**
-Use `modify_gmail_message_labels` with `message_id: "MSG_ID"`, `remove_labels: ["INBOX"]`
-
-For batch archives, use `batch_modify_gmail_message_labels` with `message_ids: [...]`, `remove_labels: ["INBOX"]`
-
-**Step 3d: Report Results**
-
-```markdown
-## EMAIL CLEANUP COMPLETE
-
-**Actions Performed:**
-- Deleted: X emails (moved to Trash)
-- Archived: X emails
-- Summaries prepared for daily note
-
-**Recovery:**
-- Deleted emails in Gmail Trash (30-day recovery)
-- Archived emails in All Mail
+**Recovery:** trashed mail recoverable from Gmail Trash for 30 days. Archived mail in All Mail.
 ```
 
 ---
 
-## Phase 4: Standard Email Categorization
+## Hand-off to gmail-organizer
 
-For remaining emails (not newsletters, not cleanup targets):
+Pass categorized data to gmail-organizer for label application:
 
-**Urgent/Important (Response Needed Today):**
-- Contains: "urgent", "asap", "deadline", "today", "immediate"
-- From: Manager, clients, critical stakeholders
-- Has explicit deadline (today/tomorrow)
-
-**Important (Response Needed This Week):**
-- From: Colleagues, partners, known contacts
-- Feature requests, bug reports, planning discussions
-- Meeting requests, collaboration invites
-
-**FYI (Read-Only, No Action):**
-- Status updates, automated notifications
-- CC'd emails (not primary recipient)
-- No response required
-
-**Junk/Marketing:**
-- Marketing not caught in cleanup
-- Suspicious senders
-
----
-
-## Phase 5: Generate Final Report
-
-```markdown
-## EMAIL REVIEW (YYYY-MM-DD HH:MM)
-
-**Scan Summary:**
-- Total unread processed: X
-- TLDR newsletters: X (Y articles extracted)
-- Cleanup actions: X archived, Y deleted
-- Urgent: X emails
-- Important: X emails
-- FYI: X emails
-
----
-
-### READING LIST (from TLDR)
-
-- [ ] [Article Title](url) - Summary - *TLDR AI, 5 min*
-- [ ] [Article Title](url) - Summary - *TLDR DevOps, 3 min*
-
----
-
-### EMAIL SUMMARIES
-
-**Azure Alerts:**
-- Critical: 0 | Error: 2 | Warning: 5 | Info: 12
-- Key issues: App Service timeout, Storage warnings
-
-**GitHub Activity:**
-- PR Reviews: 3 | Issues: 1 | Mentions: 2
-- Action needed: Review PR #456
-
----
-
-### Urgent Emails
-
-- [ ] **From: John** - Budget approval needed - [View](gmail-link)
-  - Deadline: Today 5 PM
-  - Action: Review and approve
-
-### Important Emails
-
-- [ ] **From: Colleague** - Feature discussion - [View](gmail-link)
-  - Action: Review proposal
-
-### FYI
-
-- **Newsletter**: Tech roundup
-- **Update**: Project status from PM
-
----
-
-**Ready to consolidate?** Type 'yes' to add to daily note.
+```json
+{
+  "urgent": [{"messageId": "...", "from": "...", "subject": "..."}],
+  "important": [...],
+  "fyi": [...],
+  "azureAlerts": [...],
+  "githubNotifications": [...],
+  "jiraNotifications": [...],
+  "newsletters": [...]
+}
 ```
 
 ---
 
-## Safety Rules
+## Safety rules
 
-**CRITICAL SAFETY PROTOCOLS:**
-
-### General
-- **Show categorization to user for approval** before any action
-- Provide Gmail links for all flagged emails
-- If MCP tools return errors, report immediately
-
-### Cleanup Actions
-- **NEVER delete without batch confirmation**
-- All deletions go to Gmail Trash (NOT permanent)
-- Provide "undo" guidance after cleanup
-- Never delete emails matching VIP contacts
-- Never delete legal/contract/invoice emails
-
-### Newsletter Processing
-- TLDR newsletters archived after extraction, never deleted
-- Memory file stores only: URLs, titles, topics, decisions
-- No sensitive content in memory
+- **Always batch-confirm before any delete or archive.** No silent actions.
+- **Trash is recoverable, archive is reversible** — but the user still gets a final yes/no.
+- **Safety overrides win.** VIP/financial/legal/starred mail is never auto-trashed even if it triggers spam keywords.
+- **Never auto-reply or send.**
+- **Read-only by default.** All triage and classification happens before any write.
 
 ---
 
-## Memory System
+## Error handling
 
-### File Location
-`{obsidian.vaultPath}/00-SYSTEM/Memory/reading-preferences.md`
+**MCP connection fails** → Report error, suggest `/mcp` to check status. Don't retry silently.
 
-### File Structure
-```markdown
----
-updated: YYYY-MM-DD
-total_articles: 0
-total_accepted: 0
-total_rejected: 0
+**Pagination returns an error mid-sweep** → Report what was retrieved, ask whether to proceed with partial data or retry.
+
+**Triage rule unsure about a message** → Bucket 6 (Skip / Ambiguous). Never guess into a destructive bucket.
+
+**Batch operation partially fails** → Report which IDs failed; the rest succeed. Continue, don't roll back.
+
 ---
 
-# Reading Preferences Memory
+## Configuration
 
-## Topic Preferences
+Reads from plugin config:
 
-| Topic | Suggested | Accepted | Rejected | Accept Rate |
-|-------|-----------|----------|----------|-------------|
-| ai-ml | 0 | 0 | 0 | N/A |
-| web-fullstack | 0 | 0 | 0 | N/A |
-| devops-cloud | 0 | 0 | 0 | N/A |
-| business-cto | 0 | 0 | 0 | N/A |
-
-## Source Quality
-
-| Newsletter | Suggested | Accepted | Accept Rate |
-|------------|-----------|----------|-------------|
-| TLDR | 0 | 0 | N/A |
-| TLDR AI | 0 | 0 | N/A |
-
-## Recent Decisions (Last 30 days)
-
-<!-- Decisions appended here -->
+```json
+{
+  "gmailProcessor": {
+    "vipContacts": ["boss@company.com", "spouse@personal.com"],
+    "oldReadCleanupDays": 7,
+    "maxUnreadBeforeAsking": 500,
+    "newsletterSenderPatterns": ["tldr.tech", "substack.com", "*newsletter*", "digest@"],
+    "alwaysKeepKeywords": ["invoice", "receipt", "contract", "legal", "tax", "payment", "wire"]
+  }
+}
 ```
 
----
-
-## Error Handling
-
-### MCP Server Connection Fails
-1. Report error with details
-2. Offer: retry, skip Gmail, troubleshoot
-3. Suggest checking MCP server status with `/mcp`
-4. Verify Google Workspace MCP server is running and authenticated
-
-### Too Many Unread (100+)
-- Inform user of count
-- Offer focused queries or time-based filtering
-- Ask preference before proceeding
-
-### Newsletter Parsing Fails
-- Log warning for that newsletter
-- Continue with others
-- Report: "Could not parse [newsletter]"
-
-### Memory File Issues
-- Create fresh file if corrupted
-- Back up corrupted file first
-- Warn user of reset
+If config is missing, use the defaults baked into the bucket rules above.
 
 ---
 
-## Testing Checklist
+## Testing checklist
 
-### Gmail MCP Tools
-- [ ] `search_gmail_messages` returns results for unread query
-- [ ] `get_gmail_message_content` gets full message content
-- [ ] `modify_gmail_message_labels` archives correctly (remove INBOX)
-- [ ] `modify_gmail_message_labels` trashes correctly (add TRASH)
-- [ ] `batch_modify_gmail_message_labels` handles multiple messages
-- [ ] Handles MCP connection errors gracefully
-
-### Newsletter Processing
-- [ ] Detects TLDR newsletters
-- [ ] Parses article blocks correctly
-- [ ] Reads/creates memory file
-- [ ] Calculates article scores
-- [ ] Records decisions to memory
-
-### Email Cleanup
-- [ ] Categorizes correctly by type
-- [ ] Generates batch proposal
-- [ ] Executes after explicit approval
-- [ ] Reports results with recovery info
-
-### Safety
-- [ ] Never deletes without confirmation
-- [ ] All deletions to Trash (recoverable)
-- [ ] Preserves VIP emails
-- [ ] Preserves legal/contract emails
+- [ ] Pagination retrieves all unread (test with inbox >100 unread)
+- [ ] Body fetch count is much smaller than total unread count
+- [ ] Old-read sweep finds read mail >7d and respects starred/urgent labels
+- [ ] VIP override prevents auto-trash even with marketing subject
+- [ ] Financial/legal keyword override works
+- [ ] Batch operations used for all multi-message actions
+- [ ] Single approval prompt covers archive + trash batches
+- [ ] Report shows fetched-vs-total ratio (efficiency signal)

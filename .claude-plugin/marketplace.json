@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "executive-assistant",
-      "version": "5.0.0",
+      "version": "5.1.0",
       "source": "./plugins/executive-assistant",
       "description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools. Co-Work compatible."
     }
