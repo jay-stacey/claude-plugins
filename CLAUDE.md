@@ -19,7 +19,6 @@ This is a Claude Code personal plugins repository containing the `executive-assi
 | Command | Plugin | Purpose |
 |---------|--------|---------|
 | `/daily-prep` | executive-assistant | Main workflow - full daily preparation |
-| `/ea` | executive-assistant | Short alias for /daily-prep |
 | `/init` | executive-assistant | Setup and personalization |
 | `/inbox-zero` | executive-assistant | Email cleanup (2-3 min) |
 | `/timebox` | executive-assistant | Calendar optimization (2-4 min) |
@@ -43,7 +42,7 @@ plugins/
     │   ├── initializer.md        # Setup wizard
     │   └── [domain]-assistant.md # Specialized agents
     ├── skills/                   # <name>/SKILL.md (+ optional references/)
-    │   ├── daily-prep/           # Entry points: daily-prep, ea, init,
+    │   ├── daily-prep/           # Entry points: daily-prep, init,
     │   ├── inbox-zero/           #   inbox-zero, timebox
     │   ├── notes/                # Markdown notes
     │   └── [service]-*/          # gmail, calendar, slack, jira, linear

@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "plugins": [
     {
       "name": "executive-assistant",
       "source": "./plugins/executive-assistant",
-      "version": "7.1.0",
+      "version": "7.2.0",
       "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
       "category": "productivity",
       "keywords": [

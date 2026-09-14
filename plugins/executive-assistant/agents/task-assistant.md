@@ -6,6 +6,7 @@ skills:
   - slack-reviewer
   - jira-reviewer
   - linear-reviewer
+  - response-style
 model: sonnet
 ---
 
@@ -25,30 +26,23 @@ Run enabled sources in parallel where possible — they don't share state. Skip 
 
 ## Output
 
-Return a single combined report grouped by urgency, not by source. The parent assistant doesn't care which tool a task came from; it cares what needs attention today vs. this week.
+**Follow the `response-style` skill.** One combined answer, grouped by what needs
+doing — never by which tool it came from. The user does not care whether
+something arrived in Slack or Linear.
 
-```markdown
-## TASK REVIEW COMPLETE
+> Two things need you today.
+>
+> DMS-1043 — the customer replied and they're blocked. Worth ten minutes.
+> Priya asked in #eng whether the migration ships this week. She's waiting.
+>
+> Quiet otherwise:
+> - 7 tickets moving normally
+> - 2 issues waiting on someone else
+> - 14 Slack messages, nothing addressed to you
 
-**Urgent — today:**
-- [ ] **{source}**: {title} — {context} — [link]({url})
-
-**Important — this week:**
-- [ ] **{source}**: {title} — {context} — [link]({url})
-
-**FYI / In progress:**
-- {brief item}
-
-**Blocked / needs unblocking:**
-- {item with the blocker}
-
-**Counts:**
-- Slack: {high} high / {med} med / {fyi} fyi
-- Jira: {critical} critical / {high} high / {inprog} in progress / {blocked} blocked
-- Linear: {urgent} urgent / {high} high / {med} med / {mentioned} mentioned
-```
-
-If a source is disabled or fails, omit its row from the counts.
+Link each item that needs action so the user can jump straight there. No tables,
+no per-source count rows, no emoji priority keys. If a source failed, say so in
+one line and carry on with the rest.
 
 ## Safety
 

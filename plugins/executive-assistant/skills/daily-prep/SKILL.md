@@ -20,7 +20,6 @@ Starts an interactive session with the executive assistant for daily prep across
 /daily-prep --dry-run        # preview without writing anything
 ```
 
-`/ea` is a short alias for this skill.
 
 ## Options
 

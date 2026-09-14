@@ -63,44 +63,42 @@ This will guide you through:
 Preview what the plugin will do:
 
 ```bash
-/ea --dry-run
+/daily-prep --dry-run
 ```
 
 When ready, run the full workflow:
 
 ```bash
-/ea
+/daily-prep
 ```
 
 ## Commands
 
 ### `/daily-prep` - Main Executive Assistant
 
-(`/ea` is a short alias for the same thing.)
-
 The primary command for daily workflow automation.
 
 ```bash
 # Full daily prep
-/ea
+/daily-prep
 
 # Preview without making changes
-/ea --dry-run
+/daily-prep --dry-run
 
 # Quick overview (minimal interaction)
-/ea --quick
+/daily-prep --quick
 
 # Skip specific sources
-/ea --skip-calendar
-/ea --skip-email
-/ea --skip-slack
-/ea --skip-jira
-/ea --skip-linear
+/daily-prep --skip-calendar
+/daily-prep --skip-email
+/daily-prep --skip-slack
+/daily-prep --skip-jira
+/daily-prep --skip-linear
 
 # Focus on one source
-/ea --only-email
-/ea --only-calendar
-/ea --only-jira
+/daily-prep --only-email
+/daily-prep --only-calendar
+/daily-prep --only-jira
 ```
 
 ### `/init` - Initialization Wizard
@@ -353,11 +351,12 @@ This plugin is specifically designed for ADHD users:
 ### Reduce Decision Fatigue
 - Automatic categorization - system decides what's urgent
 - Pre-organized tasks - everything sorted into sections
-- Single entry point - just run `/ea` each morning
+- Single entry point - just run `/daily-prep` each morning
 
-### Visual Hierarchy
-- Emojis for priority: 🔴 = urgent, 🟡 = important, 📋 = FYI
-- Clear sections: URGENT, IMPORTANT, INBOX
+### Low Cognitive Load
+- Plain language, short sentences - no dashboards or status tables
+- Needs you? Said in a sentence. Doesn't? One bullet.
+- At most two choices at a time, with a recommendation
 - Summary numbers at a glance
 
 ### Prevent Overwhelm
@@ -376,7 +375,7 @@ This plugin is specifically designed for ADHD users:
 
 1. Check MCP server is running: `claude mcp test <service>`
 2. Verify authentication is current
-3. Try skipping the service: `/ea --skip-<service>`
+3. Try skipping the service: `/daily-prep --skip-<service>`
 
 ### Notes Not Updated
 
@@ -395,11 +394,21 @@ This plugin is specifically designed for ADHD users:
 
 If you were using the previous `daily-workflow` plugin:
 
-1. `/ea` still works as a short alias for `/daily-prep`
+1. Use `/daily-prep` as the entry point
 2. Run `/init` to generate a new user profile
 3. Your previous `.config.json` settings should be migrated to `.config.local.json`
 
 ## Version History
+
+**v7.2.0** - September 2026
+- Notes: frontmatter tagging plus a file-based search index (no database) for
+  tag, text, title, date, and backlink recall
+- New `response-style` skill: plain-language, conversational output across all
+  agents, replacing the emoji/table report format
+- New `response_style` config option (`conversational` by default)
+- ADHD preferences now default ON and are read by every agent
+- Removed `/ea`; use `/daily-prep`
+
 
 **v3.0.0** - February 2026
 - Renamed from `daily-workflow` to `executive-assistant`
@@ -408,7 +417,7 @@ If you were using the previous `daily-workflow` plugin:
 - Added personality configuration system
 - Added initialization wizard (`/init`)
 - Added Microsoft 365 placeholders (coming soon)
-- New main command: `/ea`
+- New main command: `/ea` (removed in v7.2.0; use `/daily-prep`)
 - Comprehensive configuration schema
 
 **v2.0.0** - January 2026
@@ -434,5 +443,5 @@ MIT License - Feel free to modify and adapt for your needs.
 Then:
 
 ```bash
-/ea --dry-run
+/daily-prep --dry-run
 ```

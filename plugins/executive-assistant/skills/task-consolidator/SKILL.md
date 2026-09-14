@@ -36,7 +36,18 @@ preservation, so consolidation stays correct if that logic changes.
 - Find or create today's daily note
 - Read a note into frontmatter, body, and section ranges
 - Append content to a named `##` section without disturbing the rest
-- Search across the vault
+- Search across the vault by tag, text, or backlink
+
+After writing to the daily note, tell `notes` to record the change so the note
+stays searchable:
+
+```bash
+S="${CLAUDE_PLUGIN_ROOT}/skills/notes/scripts/notes_index.py"
+python "$S" update "$VAULT" "$RELATIVE_PATH"
+```
+
+Skipping this does not corrupt anything — the note is simply missing from search
+until the next rebuild.
 
 ---
 
