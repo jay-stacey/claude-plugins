@@ -6,8 +6,7 @@ skills:
   - slack-reviewer
   - jira-reviewer
   - linear-reviewer
-context: fork
-model: opus
+model: sonnet
 ---
 
 # Task Assistant

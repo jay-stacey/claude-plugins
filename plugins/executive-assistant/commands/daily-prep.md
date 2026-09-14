@@ -1,6 +1,7 @@
 ---
 name: daily-prep
 description: (Deprecated) Alias for /ea - your executive assistant for daily workflow preparation
+context: fork
 agent: assistant
 ---
 

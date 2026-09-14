@@ -1,6 +1,7 @@
 ---
 name: claudia
 description: (Deprecated) Alias for /ea - your executive assistant
+context: fork
 agent: assistant
 ---
 

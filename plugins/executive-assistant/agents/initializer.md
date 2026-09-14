@@ -4,7 +4,7 @@ description: Interactive questionnaire to personalize your executive assistant. 
 tools: Read, Write, Edit, AskUserQuestion
 skills:
   - initializer
-model: opus
+model: sonnet
 ---
 
 # Initializer Agent

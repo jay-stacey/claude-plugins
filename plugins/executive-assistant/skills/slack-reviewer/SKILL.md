@@ -2,7 +2,7 @@
 name: slack-reviewer
 description: Review Slack messages, identify mentions and important discussions, extract action items and decisions. Use when catching up on Slack or starting daily workflow.
 allowed-tools: mcp__slack__*, Read, Write, Edit
-model: opus
+model: sonnet
 ---
 
 # Slack Reviewer
@@ -313,20 +313,3 @@ User can specify:
 - User IDs format: Uxxxxxxxxxx
 - Consider Slack's threading system - include parent context for thread replies
 - Respect user's channel configuration (include/exclude lists in .config.json)
-
-## Testing Checklist
-
-- [ ] Successfully connects to Slack MCP API
-- [ ] Handles authentication errors gracefully
-- [ ] Lists accessible channels correctly
-- [ ] Retrieves messages from DMs via API
-- [ ] Retrieves messages from channels via API
-- [ ] Identifies @mentions correctly
-- [ ] Categorizes messages by priority
-- [ ] Extracts accurate action items
-- [ ] Captures key decisions
-- [ ] Generates well-formatted report
-- [ ] Provides working Slack deep links
-- [ ] Handles rate limits gracefully
-- [ ] Respects user adjustments
-- [ ] Takes no destructive actions (read-only)

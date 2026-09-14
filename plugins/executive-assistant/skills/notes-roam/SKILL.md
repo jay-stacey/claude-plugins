@@ -1,8 +1,8 @@
 ---
-name: roam-provider
+name: notes-roam
 description: Roam Research integration for daily pages and task management. Uses Roam API.
 allowed-tools: Read, Write, Edit
-model: opus
+model: haiku
 ---
 
 # Roam Provider
@@ -231,16 +231,3 @@ Suggest: Upgrade to Roam Pro or use different provider
 ```
 
 ---
-
-## Testing Checklist
-
-- [ ] Authenticates with Roam API
-- [ ] Finds daily page by date
-- [ ] Creates blocks with proper format
-- [ ] Reads block tree structure
-- [ ] Converts blocks to markdown
-- [ ] Appends child blocks to sections
-- [ ] Handles TODO syntax correctly
-- [ ] Creates proper page links [[]]
-- [ ] Handles rate limiting
-- [ ] Handles missing API access gracefully

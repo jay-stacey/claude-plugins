@@ -5,8 +5,7 @@ tools: mcp__google-workspace__*, Read, Write, Edit
 skills:
   - gmail-processor
   - gmail-organizer
-context: fork
-model: opus
+model: sonnet
 ---
 
 # Email Assistant

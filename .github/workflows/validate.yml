@@ -1,0 +1,31 @@
+name: Validate plugins
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate marketplace manifest
+        run: claude plugin validate . --strict
+
+      - name: Validate each plugin
+        run: |
+          status=0
+          for d in plugins/*/; do
+            echo "::group::$d"
+            claude plugin validate "$d" --strict || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Check skill structure
+        run: python3 scripts/check-skills.py

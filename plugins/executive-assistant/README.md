@@ -40,6 +40,14 @@ This plugin helps you start each day with a clear picture of what needs your att
 
 ## Quick Start
 
+### 0. Configure the plugin
+
+On install, Claude Code prompts for the plugin's settings (notes vault path,
+notes provider, timezone, and Google OAuth credentials). Credentials are stored
+in secure storage, not in `settings.json`.
+
+To change them later, reconfigure the plugin from the plugins menu.
+
 ### 1. Initialize Your Profile
 
 Run the initialization wizard to set up your preferences:
@@ -287,7 +295,7 @@ executive-assistant/
 │   ├── linear-reviewer/         # Linear issues
 │   ├── task-consolidator/       # Notes integration
 │   ├── initializer/             # Setup wizard
-│   └── notes-providers/         # Notes abstraction
+│   └── notes-*/                # One dir per notes provider
 │       ├── interface.md
 │       ├── obsidian/
 │       ├── notion/

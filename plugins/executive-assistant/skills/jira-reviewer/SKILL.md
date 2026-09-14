@@ -2,7 +2,7 @@
 name: jira-reviewer
 description: Review Jira tickets assigned to you, check for comments and updates, prioritize by urgency and deadline. Use when checking Jira or starting daily workflow.
 allowed-tools: mcp__atlassian__*, Read, Write, Edit
-model: opus
+model: sonnet
 ---
 
 # Jira Reviewer
@@ -277,45 +277,7 @@ Generate markdown report in this format:
 
 ## Error Handling
 
-### Jira Connection Fails
-1. Check authentication: `atlassianUserInfo`
-2. Verify cloudId is correct for Dealerpull instance
-3. Ask user to re-authenticate: `claude mcp test atlassian`
-4. If still failing, offer to skip Jira review and try again later
-
-### No Tickets Found
-- Report: "No active tickets currently assigned to you"
-- Suggest:
-  - Check recently closed tickets (last 7 days)
-  - Verify Jira project filter is correct
-  - Check if tickets are in "Done" status
-- Ask if user wants to query specific projects or statuses
-
-### JQL Query Fails
-- Try simpler query: `assignee = currentUser() AND resolution = Unresolved`
-- If still failing, inform user and skip Jira review
-- Provide error details for troubleshooting
-
-### Rate Limiting
-- Jira API has rate limits (can be conservative)
-- If rate limited, inform user
-- Suggest: Wait 1-2 minutes before retrying
-- Offer to process tickets in smaller batches
-
-### Mention Query Fails
-- JQL syntax for mentions can be tricky with special characters in accountId
-- If mention query fails:
-  1. Log warning: "Could not retrieve mentioned tickets: [error]"
-  2. Continue with assigned tickets report (don't fail entire review)
-  3. Note in report: "Mention detection encountered an error. Only assigned tickets shown."
-- Common issues:
-  - Invalid accountId format (should be alphanumeric)
-  - Project restrictions (user may not have access to some projects)
-  - API rate limiting (if already hit limits on assigned query)
-- Fallback: Try simpler query without project filter if initial query fails:
-  ```
-  comment ~ "[~accountid:{accountId}]" AND assignee != currentUser()
-  ```
+See `references/error-handling.md`. Read it only when you hit this situation.
 
 ## User Interaction Guidelines
 
@@ -332,28 +294,7 @@ Generate markdown report in this format:
 
 ## Advanced Features
 
-### Custom JQL Queries
-User can configure:
-- **Project filter**: Only tickets from specific projects (e.g., DMS)
-- **Sprint focus**: Only tickets in active sprint
-- **Status filter**: Include specific statuses beyond open tickets
-- **Custom JQL**: Advanced users can provide their own query
-
-### Priority Thresholds
-- **Critical threshold**: Define what makes a ticket critical (deadline, comments, etc.)
-- **Attention threshold**: How many days without update triggers "needs status" flag
-- **Blocker tracking**: Automatically flag tickets blocked for X days
-
-### Comment Analysis
-- **Keyword detection**: Flag comments containing "urgent", "blocker", "question"
-- **Stakeholder tracking**: Prioritize comments from PM, clients, or management
-- **Question detection**: Identify comments ending with "?" that need response
-
-### Integration Points
-- **Cross-reference Slack**: Match Jira tickets mentioned in Slack messages
-- **Email correlation**: Connect Jira tickets referenced in emails
-- **PR linking**: Identify tickets with associated pull requests
-- **Sprint planning**: Show tickets in current and upcoming sprints
+See `references/advanced-features.md`. Read it only when you hit this situation.
 
 ## Notes for Implementation
 
@@ -364,30 +305,3 @@ User can configure:
 - Jira ticket URL format: `https://[instance].atlassian.net/browse/[KEY]`
 - Use cloudId from `getAccessibleAtlassianResources` for all API calls
 - Respect Jira's pagination (default 50 tickets, max 100 per query)
-
-## Testing Checklist
-
-- [ ] Successfully authenticates with Atlassian MCP
-- [ ] Retrieves assigned tickets via JQL
-- [ ] Reads ticket details including comments
-- [ ] Categorizes by priority correctly
-- [ ] Identifies new comments and activity
-- [ ] Detects blocked tickets
-- [ ] Generates well-formatted report
-- [ ] Provides working Jira ticket links
-- [ ] Handles no results gracefully
-- [ ] Respects user adjustments
-- [ ] Takes no automatic actions on tickets
-
-### Mention Detection Tests
-- [ ] Successfully extracts accountId from atlassianUserInfo
-- [ ] Constructs valid JQL for mention search
-- [ ] Excludes already-assigned tickets from mention results
-- [ ] Correctly parses mention comments to find context
-- [ ] Categorizes mentions as Action Required vs FYI
-- [ ] Handles empty mention results gracefully
-- [ ] Handles mention query failure gracefully (continues with assigned)
-- [ ] Respects config toggles (enabled, includeResolved, maxAgeDays, maxResults)
-- [ ] Report shows assignee name for mentioned tickets
-- [ ] Report shows mentioner name and comment excerpt
-- [ ] Summary stats include mention count

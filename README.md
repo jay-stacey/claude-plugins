@@ -1,2 +1,55 @@
 # claude-plugins
-My personal collection of claude plugins.
+
+Jay's personal Claude Code plugin marketplace.
+
+## Install
+
+```bash
+/plugin marketplace add jay-stacey/claude-plugins
+```
+
+Then install a plugin from the list below:
+
+```bash
+/plugin install executive-assistant@personal-plugins
+```
+
+## Plugins
+
+| Plugin | Version | What it does |
+|---|---|---|
+| [executive-assistant](plugins/executive-assistant) | 6.0.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+
+### executive-assistant
+
+Commands: `/ea` (full daily prep), `/inbox-zero`, `/timebox`, `/init` (setup).
+
+Notes providers: Obsidian, Notion, Logseq, Roam, plain Markdown.
+
+Requires the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
+server for Gmail and Calendar; Slack, Atlassian, and Linear MCP servers are
+optional and enabled per feature in config.
+
+## Repository layout
+
+```
+.claude-plugin/marketplace.json   # marketplace manifest
+plugins/<name>/                   # one directory per plugin
+scripts/check-skills.py           # structural checks beyond the manifest validator
+.github/workflows/validate.yml    # CI
+```
+
+## Developing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the plugin layout, the rules that
+silently break components, and how to add a second plugin.
+
+```bash
+claude plugin validate .
+claude plugin validate ./plugins/executive-assistant
+python scripts/check-skills.py
+```
+
+## License
+
+MIT

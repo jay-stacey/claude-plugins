@@ -5,8 +5,7 @@ tools: mcp__google-workspace__*, Read, Write, Edit
 skills:
   - calendar-reviewer
   - calendar-manager
-context: fork
-model: opus
+model: sonnet
 ---
 
 # Calendar Assistant

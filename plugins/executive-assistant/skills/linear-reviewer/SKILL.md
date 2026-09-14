@@ -2,7 +2,7 @@
 name: linear-reviewer
 description: Review Linear issues assigned to you, check for comments and updates, prioritize by urgency. Use when checking Linear or starting daily workflow.
 allowed-tools: mcp__linear-server__*, Read, Write, Edit
-model: opus
+model: sonnet
 ---
 
 # Linear Reviewer
@@ -313,26 +313,3 @@ Example: `https://linear.app/myteam/issue/TEAM-123`
 - Comments are nested - get full thread context
 - Cycles are Linear's equivalent of sprints
 - Labels can indicate blockers, types, etc.
-
-## Testing Checklist
-
-- [ ] Successfully connects to Linear MCP
-- [ ] Retrieves assigned issues
-- [ ] Reads issue details including comments
-- [ ] Categorizes by priority correctly
-- [ ] Identifies new comments and activity
-- [ ] Detects blocked issues
-- [ ] Generates well-formatted report
-- [ ] Provides working Linear issue links
-- [ ] Handles no results gracefully
-- [ ] Respects user adjustments
-- [ ] Takes no automatic actions on issues
-
-### Mention Detection Tests
-- [ ] Constructs valid query for mentions
-- [ ] Excludes already-assigned issues
-- [ ] Correctly parses mention comments
-- [ ] Categorizes mentions as Action Required vs FYI
-- [ ] Handles empty results gracefully
-- [ ] Handles query failure gracefully
-- [ ] Report shows assignee and mentioner info
