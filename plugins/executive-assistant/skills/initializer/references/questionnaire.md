@@ -143,13 +143,8 @@ Options:
 Which note-taking tool do you use?
 
 Options:
-1. Obsidian (Recommended - full integration)
-2. Notion (Full integration)
-3. Logseq (Full integration)
-4. Roam Research (Full integration)
-5. Plain Markdown files
-6. Apple Notes / Other
-```
+1. Yes - I keep markdown notes in a folder
+2. No - skip notes integration
 
 ---
 

@@ -16,7 +16,7 @@ This plugin helps you start each day with a clear picture of what needs your att
 - **📰 Newsletter Curation**: Extract articles from TLDR newsletters, build reading lists
 - **💬 Messaging Review**: Slack integration (Teams coming soon) with mention prioritization
 - **🎯 Project Management**: Jira and Linear integration for ticket analysis
-- **📝 Multi-Provider Notes**: Obsidian, Notion, Logseq, Roam, or plain markdown
+- **📝 Markdown Notes**: read, write, search, and section-aware append in a folder you configure
 - **⏰ Smart Timeboxing**: Match todos to optimal time slots using energy patterns
 - **🎭 Configurable Personality**: Professional, friendly, casual, or custom presets
 - **🔒 Safety First**: Read-only operations, explicit confirmation before writes
@@ -30,11 +30,7 @@ This plugin helps you start each day with a clear picture of what needs your att
 | Slack | ✅ Ready | MCP native API |
 | Jira | ✅ Ready | Atlassian MCP |
 | Linear | ✅ Ready | Linear MCP |
-| Obsidian | ✅ Ready | Local filesystem |
-| Notion | ✅ Ready | Notion MCP |
-| Logseq | ✅ Ready | Local filesystem |
-| Roam Research | ✅ Ready | Roam API |
-| Plain Markdown | ✅ Ready | Local filesystem |
+| Markdown Notes | ✅ Ready | Local filesystem |
 | Outlook | 🔜 Coming Soon | Microsoft Graph MCP |
 | Teams | 🔜 Coming Soon | Microsoft Graph MCP |
 
@@ -78,7 +74,9 @@ When ready, run the full workflow:
 
 ## Commands
 
-### `/ea` - Main Executive Assistant
+### `/daily-prep` - Main Executive Assistant
+
+(`/ea` is a short alias for the same thing.)
 
 The primary command for daily workflow automation.
 
@@ -161,7 +159,7 @@ Enable/disable integrations in your configuration:
     "linear": { "enabled": false },
     "notes": {
       "enabled": true,
-      "provider": "obsidian"
+      "enabled": true
     }
   }
 }
@@ -175,18 +173,16 @@ Choose your note-taking tool:
 {
   "notes": {
     "enabled": true,
-    "provider": "obsidian",
-
-    "obsidian": {
-      "vaultPath": "/path/to/vault",
-      "dailyNotesPath": "Daily Notes",
-      "templatePath": "Templates/Daily Note.md"
-    }
+    "enabled": true,
+    "vaultPath": "/path/to/notes",
+    "dailyFolder": "daily",
+    "dateFormat": "YYYY-MM-DD",
+    "templatePath": "templates/daily.md"
   }
 }
 ```
 
-Supported providers: `obsidian`, `notion`, `logseq`, `roam`, `markdown`
+Notes are plain markdown files in the folder you configure.
 
 ### Personality Configuration
 
@@ -207,21 +203,14 @@ Customize the assistant's communication style:
 
 **Available Styles:**
 - `professional` - Clear, efficient, results-oriented
-- `friendly` - Warm, supportive, ADHD-friendly (Claudia preset)
+- `friendly` - Warm, supportive, ADHD-friendly
 - `casual` - Relaxed, conversational, more personality
 - `formal` - Business-appropriate, structured
 
-**Using the Claudia Preset:**
+**Using a preset:**
 
-To use the original Claudia personality:
+Set `personality.preset` in your config to any file in `config/presets/`.
 
-```json
-{
-  "personality": {
-    "preset": "claudia"
-  }
-}
-```
 
 ### Calendar Management
 
@@ -279,7 +268,7 @@ executive-assistant/
 │   │   ├── manager.json
 │   │   └── minimal.json
 │   └── presets/
-│       └── claudia.json         # Claudia personality preset
+│       └── *.json               # Personality presets
 ├── agents/
 │   ├── assistant.md             # Main orchestrator
 │   ├── email-assistant.md       # Email processing
@@ -295,12 +284,8 @@ executive-assistant/
 │   ├── linear-reviewer/         # Linear issues
 │   ├── task-consolidator/       # Notes integration
 │   ├── initializer/             # Setup wizard
-│   └── notes-*/                # One dir per notes provider
+│   └── notes/                  # Markdown notes
 │       ├── interface.md
-│       ├── obsidian/
-│       ├── notion/
-│       ├── logseq/
-│       ├── roam/
 │       └── markdown/
 ├── commands/
 │   ├── ea.md                    # Main command
@@ -360,7 +345,6 @@ appendToSection(path, section, content) - Add to section
 - Slack: MCP authentication
 - Jira: Atlassian MCP authentication
 - Linear: Linear MCP authentication
-- Notion: Notion MCP authentication
 
 ## ADHD-Friendly Design
 
@@ -411,7 +395,7 @@ This plugin is specifically designed for ADHD users:
 
 If you were using the previous `daily-workflow` plugin:
 
-1. The `/claudia` and `/daily-prep` commands still work (aliases to `/ea`)
+1. `/ea` still works as a short alias for `/daily-prep`
 2. Run `/init` to generate a new user profile
 3. Your previous `.config.json` settings should be migrated to `.config.local.json`
 
@@ -420,7 +404,7 @@ If you were using the previous `daily-workflow` plugin:
 **v3.0.0** - February 2026
 - Renamed from `daily-workflow` to `executive-assistant`
 - Added Linear integration
-- Added notes provider abstraction (Notion, Logseq, Roam, markdown)
+- Added notes support
 - Added personality configuration system
 - Added initialization wizard (`/init`)
 - Added Microsoft 365 placeholders (coming soon)

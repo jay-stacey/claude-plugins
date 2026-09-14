@@ -1,22 +1,26 @@
 ---
-name: ea
-description: Invoke your executive assistant for daily workflow preparation
+name: daily-prep
+description: Run the full daily workflow preparation across Calendar, Gmail, Slack, Jira, and Linear, then consolidate everything into the user's daily note. Use when the user asks to start their day, prep their day, run a morning review, catch up on everything, or asks what needs their attention today.
+argument-hint: "[--quick] [--dry-run] [--only-email] [--skip-calendar]"
 context: fork
 agent: assistant
+model: opus
 ---
 
-# /ea — Executive Assistant
+# Daily Prep
 
 Starts an interactive session with the executive assistant for daily prep across Calendar, Gmail, Slack, Jira, and Linear (whichever you have enabled in config).
 
 ## Usage
 
 ```
-/ea                  # full interactive prep
-/ea --quick          # urgent items only, minimal interaction
-/ea --only-email     # focus a single source
-/ea --dry-run        # preview without writing anything
+/daily-prep                  # full interactive prep
+/daily-prep --quick          # urgent items only, minimal interaction
+/daily-prep --only-email     # focus a single source
+/daily-prep --dry-run        # preview without writing anything
 ```
+
+`/ea` is a short alias for this skill.
 
 ## Options
 

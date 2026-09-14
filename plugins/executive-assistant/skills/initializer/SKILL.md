@@ -31,7 +31,7 @@ Welcome! I'll help you personalize your executive assistant with a quick questio
 This will take about 2-3 minutes and will configure:
 - Your name and preferences
 - Which tools to integrate (Gmail, Calendar, Slack, Jira, Linear)
-- Your preferred notes app (Obsidian, Notion, Logseq, Roam, Markdown)
+- Where your markdown notes folder lives (and whether to use notes at all)
 - Communication style and accessibility settings
 - Working hours and productivity preferences
 

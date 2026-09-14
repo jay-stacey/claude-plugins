@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Append tasks to specific sections of Obsidian daily note
+Append tasks to specific sections of a markdown daily note
 """
 
 import sys

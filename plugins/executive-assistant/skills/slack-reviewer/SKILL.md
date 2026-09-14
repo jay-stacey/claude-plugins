@@ -95,7 +95,7 @@ You are a Slack message processor helping users stay on top of workplace communi
    - **What's the action?** (respond, review, fix, discuss, provide info, etc.)
    - **What's the context?** Previous discussion or related work
 
-   Create tasks in Obsidian format:
+   Create tasks in markdown format:
    ```
    - [ ] **#channel-name** - @person: [Question/Request] - [Slack Link]
      - From: [Person Name] - [Time ago]
@@ -217,7 +217,7 @@ Generate markdown report in this format:
 2. Provide input on medium priority discussions this week
 3. Note key decisions for your records
 
-**Ready to consolidate?** Type 'yes' to add these to your Obsidian daily note, or 'adjust' to modify prioritization.
+**Ready to consolidate?** Type 'yes' to add these to your daily note, or 'adjust' to modify prioritization.
 ```
 
 ## Error Handling

@@ -1,35 +1,45 @@
-# Provider Integration Points
+# Markdown Conventions
 
-### Provider-Specific Features
+Notes are plain markdown, so consolidated content should use syntax that stays
+readable in any editor. These conventions are widely supported by markdown note
+apps, but nothing here depends on a particular one.
 
-**Obsidian:**
-- **WikiLinks**: Use `[[YYYY-MM-DD]]` format for daily note references
-- **Tags**: Add tags like #urgent, #waiting-for, #follow-up
-- **Backlinks**: Create links to project notes, people notes
-- **Dataview**: Structure for query compatibility
+## Linking
 
-**Notion:**
-- **Database Properties**: Update Status, Tags, Urgent Count
-- **Links**: Use `[Page Title](notion://...)` format
-- **Mentions**: Link to @people and pages
+| Purpose | Syntax |
+|---|---|
+| Link to another note | `[2026-01-15](daily/2026-01-15.md)` |
+| Link to a heading in a note | `[Schedule](daily/2026-01-15.md#schedule)` |
+| External link | `[Title](https://example.com)` |
 
-**Logseq:**
-- **Block References**: Use `((block-uid))` for references
-- **Page Links**: Use `[[page-name]]` format
-- **Properties**: Add block properties for metadata
+Some vaults use wiki-style `[[2026-01-15]]` links instead. Match whatever the
+existing notes already use — read a nearby note first rather than imposing a
+style, because mixed link syntax breaks a vault's navigation.
 
-**Roam Research:**
-- **Page References**: Use `[[page-name]]` format
-- **Block References**: Use `((block-uid))`
-- **Attributes**: Use `attribute:: value` format
+## Tags
 
-**Plain Markdown:**
-- **Links**: Use standard `[text](path)` format
-- **Cross-references**: Use relative paths `./YYYY-MM-DD.md`
+Inline `#urgent`, `#waiting-for`, `#follow-up` work in most editors. Tags
+declared in frontmatter (`tags: [daily, work]`) are better for anything a tool
+needs to query. Use both only if the vault already does.
 
-### Fallback Behavior
-- If consolidation fails, save to provider's designated inbox/capture location
-- User can manually process later
-- Include full report in fallback location
+## Tasks
 
----
+Standard checkbox syntax renders and is machine-readable:
+
+```markdown
+- [ ] Open task
+- [x] Completed task
+```
+
+Add source attribution so an item can be traced back:
+
+```markdown
+- [ ] Reply to vendor contract email ([email](https://mail.google.com/...))
+- [ ] Review PR #482 ([DMS-1043](https://linear.app/...))
+```
+
+## Grouping
+
+Group consolidated items under the `##` section they belong to rather than
+appending everything to the end of the note. The `notes` skill appends within a
+section, which is what keeps a daily note usable after several runs.

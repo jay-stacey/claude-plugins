@@ -13,10 +13,10 @@ Developer-facing verification steps for this skill. Not needed at runtime.
 
 ### Notes Provider Integration
 - [ ] Reads provider from configuration
-- [ ] Handles Obsidian provider correctly
-- [ ] Handles Notion provider correctly
-- [ ] Handles Logseq provider correctly
-- [ ] Handles Roam provider correctly
+- [ ] Finds an existing daily note
+- [ ] Creates a daily note when none exists
+- [ ] Appends to a section without disturbing other sections
+- [ ] Handles a note with no frontmatter
 - [ ] Handles plain markdown provider correctly
 - [ ] Graceful degradation if notes.enabled: false
 

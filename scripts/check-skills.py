@@ -78,6 +78,7 @@ for plugin in sorted(glob.glob("plugins/*/")):
         errors.append(f"{deep}: nested too deep - will not be discovered")
 
     skills: set[str] = set()
+    skill_agent_refs: list[tuple[str, str | None]] = []
     for f in sorted(glob.glob(f"{plugin}skills/*/SKILL.md")):
         d = os.path.basename(os.path.dirname(f))
         skills.add(d)
@@ -91,6 +92,9 @@ for plugin in sorted(glob.glob("plugins/*/")):
         n_lines = sum(1 for _ in open(f, encoding="utf-8"))
         if n_lines > 500:
             warnings.append(f"{f}: {n_lines} lines (>500; move detail to references/)")
+        if field(fm, "agent") and "context: fork" not in fm:
+            errors.append(f"{f}: 'agent:' requires 'context: fork' to take effect")
+        skill_agent_refs.append((f, field(fm, "agent")))
 
     agents: set[str] = set()
     for f in sorted(glob.glob(f"{plugin}agents/*.md")):
@@ -104,6 +108,10 @@ for plugin in sorted(glob.glob("plugins/*/")):
         for s in re.findall(r"^\s+-\s+(\S+)\s*$", fm, re.M):
             if s not in skills:
                 errors.append(f"{f}: references unknown skill '{s}'")
+
+    for path, ref in skill_agent_refs:
+        if ref and ref not in agents:
+            errors.append(f"{path}: routes to unknown agent '{ref}'")
 
     for f in sorted(glob.glob(f"{plugin}commands/*.md")):
         fm = frontmatter(f)

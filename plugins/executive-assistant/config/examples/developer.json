@@ -1,19 +1,26 @@
 {
   "_comment": "Example configuration for software developers",
   "_description": "Optimized for development workflows with Jira, GitHub notifications, and code-focused productivity",
-
   "features": {
-    "gmail": { "enabled": true },
-    "googleCalendar": { "enabled": true },
-    "slack": { "enabled": true },
-    "jira": { "enabled": true },
-    "linear": { "enabled": false },
+    "gmail": {
+      "enabled": true
+    },
+    "googleCalendar": {
+      "enabled": true
+    },
+    "slack": {
+      "enabled": true
+    },
+    "jira": {
+      "enabled": true
+    },
+    "linear": {
+      "enabled": false
+    },
     "notes": {
-      "enabled": true,
-      "provider": "obsidian"
+      "enabled": true
     }
   },
-
   "personality": {
     "name": "Assistant",
     "style": "professional",
@@ -22,7 +29,6 @@
     "humorLevel": "light",
     "greetingStyle": "time-aware"
   },
-
   "user": {
     "name": "",
     "role": "Software Developer",
@@ -31,9 +37,10 @@
       "start": "09:00",
       "end": "17:00"
     },
-    "accessibilityPreferences": ["adhd-friendly"]
+    "accessibilityPreferences": [
+      "adhd-friendly"
+    ]
   },
-
   "gmail": {
     "enabled": true,
     "scanMode": "unread",
@@ -55,7 +62,6 @@
       }
     }
   },
-
   "calendar": {
     "enabled": true,
     "workingHours": {
@@ -68,16 +74,30 @@
       "enforceBufferBetweenMeetings": true
     },
     "energyPatterns": {
-      "morning": { "start": "09:00", "end": "12:00", "label": "Deep Work", "type": "deep_work" },
-      "midday": { "start": "12:00", "end": "14:00", "label": "Meetings/Lunch", "type": "collaboration" },
-      "afternoon": { "start": "14:00", "end": "17:00", "label": "Focus Time", "type": "admin" }
+      "morning": {
+        "start": "09:00",
+        "end": "12:00",
+        "label": "Deep Work",
+        "type": "deep_work"
+      },
+      "midday": {
+        "start": "12:00",
+        "end": "14:00",
+        "label": "Meetings/Lunch",
+        "type": "collaboration"
+      },
+      "afternoon": {
+        "start": "14:00",
+        "end": "17:00",
+        "label": "Focus Time",
+        "type": "admin"
+      }
     }
   },
-
   "calendarManager": {
     "timeboxing": {
       "enabled": true,
-      "maxUtilization": 0.70,
+      "maxUtilization": 0.7,
       "preferredFocusTime": "morning"
     },
     "recurringBlocks": [
@@ -98,21 +118,31 @@
     "protectedTime": {
       "morningDeepWork": {
         "enabled": true,
-        "days": ["Monday", "Tuesday", "Wednesday", "Thursday"],
+        "days": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday"
+        ],
         "timeRange": "09:00-11:00"
       }
     }
   },
-
   "slack": {
     "enabled": true,
     "scanHours": 24,
-    "includeChannels": ["engineering", "team", "dev-ops"],
-    "excludeChannels": ["random", "social"],
+    "includeChannels": [
+      "engineering",
+      "team",
+      "dev-ops"
+    ],
+    "excludeChannels": [
+      "random",
+      "social"
+    ],
     "prioritizeDMs": true,
     "prioritizeMentions": true
   },
-
   "jira": {
     "enabled": true,
     "activeSprintOnly": true,
@@ -122,17 +152,13 @@
       "maxAgeDays": 7
     }
   },
-
   "notes": {
     "enabled": true,
-    "provider": "obsidian",
-    "obsidian": {
-      "vaultPath": "",
-      "dailyNotesPath": "Daily Notes",
-      "templatePath": "Templates/Daily Note.md"
-    }
+    "vaultPath": "",
+    "dailyFolder": "Daily Notes",
+    "dateFormat": "YYYY-MM-DD",
+    "templatePath": "Templates/Daily Note.md"
   },
-
   "dayPlanning": {
     "enabled": true,
     "taskDurationEstimates": {

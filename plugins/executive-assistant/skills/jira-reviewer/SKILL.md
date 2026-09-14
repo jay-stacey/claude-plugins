@@ -156,7 +156,7 @@ You are a Jira ticket analyst helping users stay on top of assigned work and pri
    - **Are there blockers to resolve?** External dependencies
    - **Is code ready for review?** PR linked and needs attention
 
-   Create tasks in Obsidian format:
+   Create tasks in markdown format:
    ```
    - [ ] **[DMS-XXXX](jira-link)** [Summary] - Status: [Current Status]
      - [Detail about what needs attention]
@@ -248,19 +248,19 @@ Generate markdown report in this format:
 
 - [ ] **[DMS-2456](https://dealerpulldms.atlassian.net/browse/DMS-2456)** API Documentation Update - Assigned to: @Alex
   - **Mentioned by:** Colin (2 hours ago)
-  - **Comment:** "@Jay can you review the authentication section? I want to make sure the token refresh flow is accurate."
+  - **Comment:** "@user can you review the authentication section? I want to make sure the token refresh flow is accurate."
   - **Action:** Review and respond to Colin's question
 
 - [ ] **[CS-789](https://dealerpulldms.atlassian.net/browse/CS-789)** Customer billing inquiry - Assigned to: @Sarah
   - **Mentioned by:** Sarah (yesterday)
-  - **Comment:** "@Jay does this look like the bug you fixed last sprint?"
+  - **Comment:** "@user does this look like the bug you fixed last sprint?"
   - **Action:** Confirm if related to previous fix
 
 #### FYI Only
 
 - **[DMS-2401](https://dealerpulldms.atlassian.net/browse/DMS-2401)** Login timeout improvements - Assigned to: @Mike
   - **Mentioned by:** Mike (3 days ago)
-  - **Comment:** "FYI @Jay this is the follow-up to your investigation"
+  - **Comment:** "FYI @user this is the follow-up to your investigation"
   - **No action needed** - Informational only
 
 ---
@@ -272,7 +272,7 @@ Generate markdown report in this format:
 4. Follow up on blockers and escalate if needed
 5. Respond to @mentions requiring action ({{action_count}} items)
 
-**Ready to consolidate?** Type 'yes' to add these to your Obsidian daily note, or 'adjust' to modify prioritization.
+**Ready to consolidate?** Type 'yes' to add these to your daily note, or 'adjust' to modify prioritization.
 ```
 
 ## Error Handling

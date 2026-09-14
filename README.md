@@ -1,6 +1,6 @@
 # claude-plugins
 
-Jay's personal Claude Code plugin marketplace.
+A personal Claude Code plugin marketplace.
 
 ## Install
 
@@ -22,9 +22,9 @@ Then install a plugin from the list below:
 
 ### executive-assistant
 
-Commands: `/ea` (full daily prep), `/inbox-zero`, `/timebox`, `/init` (setup).
+Skills: `/daily-prep` (full prep, aliased as `/ea`), `/inbox-zero`, `/timebox`, `/init` (setup).
 
-Notes providers: Obsidian, Notion, Logseq, Roam, plain Markdown.
+Notes: plain markdown files in a folder you configure.
 
 Requires the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
 server for Gmail and Calendar; Slack, Atlassian, and Linear MCP servers are
