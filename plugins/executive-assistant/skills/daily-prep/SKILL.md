@@ -49,7 +49,21 @@ It returns a single consolidated summary at the end — urgent items first, then
 
 ## Configuration
 
-Personality and feature toggles come from `config/default.json` and your `user-profile.md`. Run `/init` to set those up.
+Personality and feature toggles come from plugin config, set with
+`/plugin configure executive-assistant@personal-plugins` and read from the
+environment:
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| Which sources run | `CLAUDE_PLUGIN_OPTION_ENABLED_INTEGRATIONS` | `gmail, calendar, notes` |
+| Assistant name | `CLAUDE_PLUGIN_OPTION_ASSISTANT_NAME` | `Assistant` |
+| Tone preset | `CLAUDE_PLUGIN_OPTION_PERSONALITY_PRESET` | neutral professional |
+| Working hours | `CLAUDE_PLUGIN_OPTION_WORKING_HOURS_START` / `_END` | `08:00` / `17:00` |
+| Timezone | `CLAUDE_PLUGIN_OPTION_TIMEZONE` | `America/Toronto` |
+
+An unset option is absent from the environment, not empty. `config/default.json`
+supplies defaults for the finer Gmail/Calendar tuning that has no `userConfig`
+key; a configured option always wins. Run `/init` for a guided walkthrough.
 
 ```json
 {

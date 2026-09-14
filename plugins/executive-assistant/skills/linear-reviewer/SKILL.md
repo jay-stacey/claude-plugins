@@ -265,7 +265,13 @@ Generate markdown report in this format:
 
 ## Configuration
 
-Read from `config/default.json`:
+Whether this skill runs at all comes from
+`CLAUDE_PLUGIN_OPTION_ENABLED_INTEGRATIONS` — run only when it contains
+`linear`. If that option is unset, fall back to the `features.linear.enabled`
+flag below.
+
+The remaining tuning has no `userConfig` key, so it is read from
+`config/default.json` as defaults:
 
 ```json
 {

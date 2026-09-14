@@ -107,9 +107,22 @@ updated: "{{date}}"
 {{additional_notes}}
 ```
 
-### 7.2: Update Config
+### 7.2: Apply Config
 
-Update `config/default.json` or create `.config.local.json` with user's choices:
+Anything with a `userConfig` key is applied through plugin config, not by
+editing a file. Present the collected answers and the command that applies them:
+
+```
+/plugin configure executive-assistant@personal-plugins
+```
+
+Map the answers onto these options: `notes_vault_path`, `notes_daily_folder`,
+`notes_date_format`, `timezone`, `working_hours_start`, `working_hours_end`,
+`enabled_integrations`, `assistant_name`, `personality_preset`, and the two
+sensitive Google OAuth credentials.
+
+Only write `.config.local.json` for the finer Gmail/Calendar tuning that has no
+`userConfig` key:
 
 ```json
 {
@@ -162,9 +175,10 @@ Your executive assistant is now personalized. Here's what I've configured:
 
 **Notes Provider:** {{notes_provider}}
 
-**Files Created:**
-- `user-profile.md` - Your personalized profile
-- `.config.local.json` - Your local configuration
+**Where your settings live:**
+- Plugin config (`/plugin configure executive-assistant@personal-plugins`) — notes
+  folder, timezone, working hours, integrations, name, personality, credentials
+- `user-profile.md` - free-text context with no config option
 
 ---
 

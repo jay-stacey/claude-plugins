@@ -53,11 +53,21 @@ if os.path.exists(MARKETPLACE):
     root = catalog.get("metadata", {}).get("pluginRoot")
     for entry in entries:
         src = entry.get("source", "")
-        if root == "./plugins" and isinstance(src, str) and src.startswith("./plugins/"):
-            warnings.append(
-                f"{MARKETPLACE}: '{entry['name']}' source '{src}' repeats pluginRoot; "
-                f"use './{entry['name']}'"
-            )
+        # A "./"-prefixed source always resolves from the marketplace root and
+        # ignores pluginRoot; pluginRoot only applies to bare names. Combining
+        # pluginRoot with "./name" makes the plugin uninstallable even though
+        # `claude plugin validate` passes.
+        if root and isinstance(src, str) and src.startswith("./"):
+            resolved = os.path.normpath(src)
+            if not os.path.isdir(resolved):
+                errors.append(
+                    f"{MARKETPLACE}: '{entry['name']}' sets metadata.pluginRoot "
+                    f"({root}) but uses source '{src}'. A './' source ignores "
+                    f"pluginRoot and resolves to '{resolved}', which does not "
+                    f"exist - the plugin will fail to install. Use the bare name "
+                    f"'{os.path.basename(os.path.normpath(src))}', or drop "
+                    f"pluginRoot and use the full path from the marketplace root."
+                )
         ver = entry.get("version")
         manifest = f"plugins/{entry['name']}/.claude-plugin/plugin.json"
         if ver and os.path.exists(manifest):
@@ -66,6 +76,22 @@ if os.path.exists(MARKETPLACE):
                 errors.append(
                     f"version mismatch for '{entry['name']}': marketplace.json says {ver}, "
                     f"plugin.json says {pv}"
+                )
+    # The README version table is the first thing a visitor reads; let it drift
+    # and the marketplace advertises a version nobody can install.
+    if os.path.exists("README.md"):
+        readme = open("README.md", encoding="utf-8").read()
+        for entry in entries:
+            row = re.search(
+                rf"^\|\s*\[{re.escape(entry['name'])}\][^|]*\|\s*([^|\s]+)\s*\|",
+                readme,
+                re.M,
+            )
+            ver = entry.get("version")
+            if row and ver and row.group(1) != ver:
+                errors.append(
+                    f"README.md lists '{entry['name']}' as {row.group(1)} but "
+                    f"{MARKETPLACE} says {ver}"
                 )
 else:
     errors.append(f"{MARKETPLACE} not found - this is not a valid marketplace root")
@@ -76,6 +102,30 @@ for plugin in sorted(glob.glob("plugins/*/")):
 
     for deep in glob.glob(f"{plugin}skills/*/*/SKILL.md"):
         errors.append(f"{deep}: nested too deep - will not be discovered")
+
+    # `claude plugin validate` never reads .mcp.json, so a missing "mcpServers"
+    # wrapper passes validation while silently registering no servers at all.
+    mcp_path = f"{plugin}.mcp.json"
+    if os.path.exists(mcp_path):
+        try:
+            mcp = json.load(open(mcp_path, encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            errors.append(f"{mcp_path}: invalid JSON ({exc})")
+        else:
+            if not isinstance(mcp, dict) or "mcpServers" not in mcp:
+                errors.append(
+                    f"{mcp_path}: must be wrapped in a top-level 'mcpServers' key. "
+                    f"Without it no MCP server is registered and every skill "
+                    f"depending on those tools silently has none."
+                )
+            else:
+                for srv, cfg in mcp["mcpServers"].items():
+                    if not isinstance(cfg, dict):
+                        errors.append(f"{mcp_path}: server '{srv}' must be an object")
+                    elif not (cfg.get("command") or cfg.get("url")):
+                        errors.append(
+                            f"{mcp_path}: server '{srv}' needs a 'command' or 'url'"
+                        )
 
     skills: set[str] = set()
     skill_agent_refs: list[tuple[str, str | None]] = []

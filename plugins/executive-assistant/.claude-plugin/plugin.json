@@ -1,7 +1,7 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "7.0.0",
+  "version": "7.1.0",
   "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
   "author": {
     "name": "Jay Stacey"
@@ -52,6 +52,46 @@
       "title": "Daily notes subfolder",
       "description": "Subfolder for daily notes, relative to the vault path.",
       "default": "daily"
+    },
+    "notes_date_format": {
+      "type": "string",
+      "title": "Daily note date format",
+      "description": "Filename format for daily notes.",
+      "default": "YYYY-MM-DD"
+    },
+    "working_hours_start": {
+      "type": "string",
+      "title": "Working hours start",
+      "description": "Start of your working day in 24-hour HH:MM, used for timeboxing and free-block detection.",
+      "default": "08:00"
+    },
+    "working_hours_end": {
+      "type": "string",
+      "title": "Working hours end",
+      "description": "End of your working day in 24-hour HH:MM.",
+      "default": "17:00"
+    },
+    "enabled_integrations": {
+      "type": "string",
+      "title": "Enabled integrations",
+      "description": "Which sources daily-prep runs. Choose any of: gmail, calendar, slack, jira, linear, notes.",
+      "multiple": true,
+      "default": [
+        "gmail",
+        "calendar",
+        "notes"
+      ]
+    },
+    "assistant_name": {
+      "type": "string",
+      "title": "Assistant name",
+      "description": "What the assistant calls itself when greeting you.",
+      "default": "Assistant"
+    },
+    "personality_preset": {
+      "type": "string",
+      "title": "Personality preset",
+      "description": "Tone preset from config/presets/, e.g. warm. Leave empty for the neutral professional default."
     }
   }
 }
