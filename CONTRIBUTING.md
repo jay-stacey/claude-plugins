@@ -19,6 +19,21 @@ plugins/<your-plugin>/
 **Do not** put `skills/`, `agents/`, `commands/`, or `hooks/` inside
 `.claude-plugin/`. Only `plugin.json` lives there.
 
+Minimum `plugin.json` that passes `--strict`:
+
+```json
+{
+  "name": "your-plugin",
+  "version": "1.0.0",
+  "description": "What it does.",
+  "author": { "name": "Jay Stacey" },
+  "license": "MIT"
+}
+```
+
+`author` is required for `--strict` to pass. Omitting it is only a warning
+normally, but CI runs `--strict`, so a missing author fails the build.
+
 ## 2. Register it
 
 Add an entry to `.claude-plugin/marketplace.json`. Because `metadata.pluginRoot`

@@ -2,6 +2,9 @@
 """Structural checks the manifest validator does not cover.
 
 Catches the failure modes that silently drop components:
+  - a plugin on disk that is not registered in marketplace.json (invisible
+    to anyone installing from this marketplace), or registered with no
+    matching directory
   - skills nested too deep (skills/<group>/<name>/SKILL.md never loads)
   - SKILL.md `name` not matching its directory
   - missing description
@@ -9,6 +12,7 @@ Catches the failure modes that silently drop components:
   - agent/command references to skills or agents that do not exist
 """
 import glob
+import json
 import os
 import re
 import sys
@@ -29,6 +33,42 @@ def frontmatter(path: str) -> str | None:
 def field(fm: str, key: str) -> str | None:
     m = re.search(rf"^{key}:\s*(.+?)\s*$", fm, re.M)
     return m.group(1) if m else None
+
+
+MARKETPLACE = ".claude-plugin/marketplace.json"
+if os.path.exists(MARKETPLACE):
+    catalog = json.load(open(MARKETPLACE, encoding="utf-8"))
+    entries = catalog.get("plugins", [])
+    registered = {p["name"] for p in entries}
+    on_disk = {os.path.basename(os.path.normpath(d)) for d in glob.glob("plugins/*/")}
+
+    for name in sorted(on_disk - registered):
+        errors.append(
+            f"plugins/{name}/ exists but is not registered in {MARKETPLACE} "
+            "- it will not be installable"
+        )
+    for name in sorted(registered - on_disk):
+        errors.append(f"{MARKETPLACE} registers '{name}' but plugins/{name}/ does not exist")
+
+    root = catalog.get("metadata", {}).get("pluginRoot")
+    for entry in entries:
+        src = entry.get("source", "")
+        if root == "./plugins" and isinstance(src, str) and src.startswith("./plugins/"):
+            warnings.append(
+                f"{MARKETPLACE}: '{entry['name']}' source '{src}' repeats pluginRoot; "
+                f"use './{entry['name']}'"
+            )
+        ver = entry.get("version")
+        manifest = f"plugins/{entry['name']}/.claude-plugin/plugin.json"
+        if ver and os.path.exists(manifest):
+            pv = json.load(open(manifest, encoding="utf-8")).get("version")
+            if pv and pv != ver:
+                errors.append(
+                    f"version mismatch for '{entry['name']}': marketplace.json says {ver}, "
+                    f"plugin.json says {pv}"
+                )
+else:
+    errors.append(f"{MARKETPLACE} not found - this is not a valid marketplace root")
 
 
 for plugin in sorted(glob.glob("plugins/*/")):
