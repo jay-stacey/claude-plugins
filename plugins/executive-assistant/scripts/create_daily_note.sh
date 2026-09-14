@@ -1,7 +1,7 @@
 #!/bin/bash
 # Create today's daily note from template if it doesn't exist
 
-VAULT_PATH="C:/Users/Jay/Documents/Notes/Braindump"
+VAULT_PATH="${CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH:?notes_vault_path not configured}"
 TEMPLATE_PATH="$VAULT_PATH/00-SYSTEM/Templates/Daily Note.md"
 DAILY_PATH="$VAULT_PATH/10-DAILY"
 

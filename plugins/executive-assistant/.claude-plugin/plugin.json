@@ -1,11 +1,13 @@
 {
   "name": "executive-assistant",
-  "version": "5.2.0",
-  "description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools (Obsidian, Notion, Logseq, Roam, Markdown). Co-Work compatible.",
+  "displayName": "Executive Assistant",
+  "version": "6.0.0",
+  "description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools (Obsidian, Notion, Logseq, Roam, Markdown).",
   "author": {
-    "name": "Jay",
-    "email": "jay@example.com"
+    "name": "Jay Stacey"
   },
+  "homepage": "https://github.com/jay-stacey/claude-plugins",
+  "repository": "https://github.com/jay-stacey/claude-plugins",
   "license": "MIT",
   "keywords": [
     "productivity",
@@ -20,8 +22,38 @@
     "slack",
     "jira",
     "linear",
-    "adhd",
     "personal-assistant",
     "time-management"
-  ]
+  ],
+  "userConfig": {
+    "notes_vault_path": {
+      "type": "directory",
+      "title": "Notes vault path",
+      "description": "Root folder of your notes vault (Obsidian, Logseq, or plain markdown). Leave empty if you use Notion or Roam."
+    },
+    "notes_provider": {
+      "type": "string",
+      "title": "Notes provider",
+      "description": "Which notes tool to use: obsidian, notion, logseq, roam, or markdown.",
+      "default": "obsidian"
+    },
+    "timezone": {
+      "type": "string",
+      "title": "Timezone",
+      "description": "IANA timezone used for calendar and daily-note dates, e.g. America/Toronto.",
+      "default": "America/Toronto"
+    },
+    "google_oauth_client_id": {
+      "type": "string",
+      "title": "Google OAuth client ID",
+      "description": "OAuth client ID for the Google Workspace MCP server (Gmail + Calendar).",
+      "sensitive": true
+    },
+    "google_oauth_client_secret": {
+      "type": "string",
+      "title": "Google OAuth client secret",
+      "description": "OAuth client secret for the Google Workspace MCP server.",
+      "sensitive": true
+    }
+  }
 }

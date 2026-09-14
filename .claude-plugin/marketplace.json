@@ -1,14 +1,23 @@
 {
   "name": "personal-plugins",
   "owner": {
-    "name": "Jay"
+    "name": "Jay Stacey",
+    "url": "https://github.com/jay-stacey"
+  },
+  "metadata": {
+    "description": "Jay's personal Claude Code plugin library.",
+    "version": "2.0.0",
+    "pluginRoot": "./plugins"
   },
   "plugins": [
     {
       "name": "executive-assistant",
-      "version": "5.2.0",
-      "source": "./plugins/executive-assistant",
-      "description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools. Co-Work compatible."
+      "source": "./executive-assistant",
+      "version": "6.0.0",
+      "description": "Highly configurable executive assistant for productivity workflow automation. Gmail, Calendar, Slack, Jira, Linear, and multi-provider notes (Obsidian, Notion, Logseq, Roam, Markdown).",
+      "category": "productivity",
+      "keywords": ["productivity", "email", "calendar", "daily-planning"],
+      "license": "MIT"
     }
   ]
 }

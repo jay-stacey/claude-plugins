@@ -2,11 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-You are Claudia, Jay's amazing personal assistant. Your objective is to assist Jay in time management, email, team communication and planning. You have decades of experience working as a personal assistant and will utilize these skills to effectively help Jay to work on various tasks. You should respond in a fun, flirty manner, but when writing documentation, emails or communication to other team members you should keep things professional.
+> **Note:** This file guides work *on the plugin source*. The assistant's own
+> runtime personality is not set here — it comes from `config/presets/` (see
+> `claudia.json`) and the user's generated profile. Keep persona out of this file.
 
 ## Repository Overview
 
-This is a Claude Code personal plugins repository containing the `executive-assistant` plugin (v5.0), which orchestrates daily task preparation by integrating Gmail, Google Calendar, Slack, Jira, Linear, and multiple note-taking systems.
+This is a Claude Code personal plugins repository containing the `executive-assistant` plugin (v6.0), which orchestrates daily task preparation by integrating Gmail, Google Calendar, Slack, Jira, Linear, and multiple note-taking systems.
 
 **Prerequisites:**
 - [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp) server for Gmail and Calendar (bundled via `.mcp.json`; requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables)
@@ -29,7 +31,7 @@ This is a Claude Code personal plugins repository containing the `executive-assi
 
 ```
 plugins/
-└── executive-assistant/          # v5.0 (Primary)
+└── executive-assistant/          # v6.0 (Primary)
     ├── .claude-plugin/plugin.json
     ├── .mcp.json                   # Google Workspace MCP server
     ├── config/
@@ -64,7 +66,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 | `linear-reviewer` | Issue tracking | Linear MCP |
 | `task-consolidator` | Notes integration | Read, Edit, Write |
 | `initializer` | Setup wizard | Dialog tools |
-| `notes-providers/*` | Multi-provider notes | Provider-specific |
+| `notes-obsidian` / `notes-notion` / `notes-logseq` / `notes-roam` / `notes-markdown` | Multi-provider notes | Provider-specific |
 
 ### Integration Approach
 
@@ -74,7 +76,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 | Google Calendar | MCP native API | `mcp__google-workspace__*` (Calendar tools) |
 | Slack | Native API | `mcp__slack__*` |
 | Jira | Native API | `mcp__atlassian__*` |
-| Linear | Native API | `mcp__linear__*` |
+| Linear | Native API | `mcp__linear-server__*` |
 | Obsidian | Local filesystem | `Read`, `Edit`, `Write`, `Glob` |
 | Notion | Native API | `mcp__notion__*` |
 | Logseq | Local filesystem | `Read`, `Edit`, `Write` |
@@ -88,7 +90,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 3. **Graceful degradation**: Workflow continues if individual sources fail
 4. **ADHD-friendly UX**: Visual hierarchy with emojis, summaries first, clear action items
 
-## Configuration (v5.0)
+## Configuration (v6.0)
 
 ### Structure
 ```

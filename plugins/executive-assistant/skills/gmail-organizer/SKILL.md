@@ -2,7 +2,7 @@
 name: gmail-organizer
 description: Apply Gmail labels and archive in batches to reach inbox zero. Receives categorized message IDs from gmail-processor and turns them into label + archive operations. Use when applying labels, organizing inbox, achieving inbox zero, or after gmail-processor produces a categorization.
 allowed-tools: mcp__google-workspace__*, Read, Edit
-model: opus
+model: haiku
 ---
 
 # Gmail Organizer

@@ -3,8 +3,8 @@
     "command": "uvx",
     "args": ["google-workspace-mcp", "--single-user"],
     "env": {
-      "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
-      "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}"
+      "GOOGLE_OAUTH_CLIENT_ID": "${user_config.google_oauth_client_id}",
+      "GOOGLE_OAUTH_CLIENT_SECRET": "${user_config.google_oauth_client_secret}"
     }
   }
 }

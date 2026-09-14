@@ -1,8 +1,8 @@
 ---
-name: markdown-provider
+name: notes-markdown
 description: Plain markdown file integration for simple note management. Uses local filesystem operations.
 allowed-tools: Read, Write, Edit, Glob
-model: opus
+model: haiku
 ---
 
 # Markdown Provider
@@ -288,16 +288,3 @@ Note: Template is optional
 - Custom folder structure supported
 
 ---
-
-## Testing Checklist
-
-- [ ] Locates daily note by date
-- [ ] Creates with date format from config
-- [ ] Reads and parses frontmatter
-- [ ] Identifies sections by headers
-- [ ] Appends content to sections
-- [ ] Uses Edit tool for existing files
-- [ ] Creates directories if needed
-- [ ] Handles missing template gracefully
-- [ ] Supports different date formats
-- [ ] Works with relative paths

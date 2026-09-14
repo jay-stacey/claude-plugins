@@ -2,7 +2,7 @@
 name: task-consolidator
 description: Consolidate tasks from email, Slack, Jira, Linear, and calendar into daily notes. Supports multiple notes providers (Obsidian, Notion, Logseq, Roam, markdown). Includes reading list, schedule, and email summaries. Merge and deduplicate action items.
 allowed-tools: Read, Write, Edit, Glob
-model: opus
+model: sonnet
 ---
 
 # Task Consolidator
@@ -26,11 +26,11 @@ This skill uses the **Notes Provider Interface** to support multiple note-taking
 **Supported Providers:**
 | Provider | Skill Location | Method |
 |----------|----------------|--------|
-| Obsidian | `notes-providers/obsidian/SKILL.md` | Local filesystem |
-| Notion | `notes-providers/notion/SKILL.md` | Notion API via MCP |
-| Logseq | `notes-providers/logseq/SKILL.md` | Local filesystem |
-| Roam Research | `notes-providers/roam/SKILL.md` | Roam API |
-| Plain Markdown | `notes-providers/markdown/SKILL.md` | Local filesystem |
+| Obsidian | `notes-obsidian` skill | Local filesystem |
+| Notion | `notes-notion` skill | Notion API via MCP |
+| Logseq | `notes-logseq` skill | Local filesystem |
+| Roam Research | `notes-roam` skill | Roam API |
+| Plain Markdown | `notes-markdown` skill | Local filesystem |
 
 **Provider Interface Operations:**
 - `findDailyNote(date)` - Locate today's note
@@ -39,7 +39,7 @@ This skill uses the **Notes Provider Interface** to support multiple note-taking
 - `updateNote(path, content)` - Update note content
 - `appendToSection(path, section, content)` - Append to specific section
 
-See `notes-providers/interface.md` for full interface specification.
+See `references/provider-interface.md` for the full interface specification.
 
 ---
 
@@ -354,41 +354,12 @@ After successful update:
 
 ## Error Handling
 
-### Daily Note Doesn't Exist
-1. Check template exists at expected location
-2. If template found, create new daily note
-3. If template not found:
-   - Alert user: "Template not found at expected location"
-   - Offer: Create basic note, specify template, or skip consolidation
-
-### Section Not Found in Daily Note
-For new sections (Schedule, Reading List, Email Summaries):
-- Insert section in proper order relative to existing sections
-- Follow the order defined above
-
-For core sections (URGENT, IMPORTANT, etc.):
-- **Option 1**: Add new section header and insert tasks
-- **Option 2**: Ask user where to place tasks
-- **Option 3**: Add to INBOX section as fallback
-
-### Edit Conflict
-- If daily note was modified during processing:
-  - Re-read daily note
-  - Merge changes carefully
-  - Inform user: "Daily note updated during processing. Merging..."
-
-### File Permission Error
-- Check if Obsidian has file locked
-- Ask user to close daily note in Obsidian if open
-- If still failing, save to Quick Captures as backup
-
----
+See `references/error-handling.md`. Read it only when you hit this situation.
 
 ## Section Order in Daily Note
 
-When inserting new sections, maintain this order:
+See `references/daily-note-format.md`. Read it only when you hit this situation.
 
-```
 ## 🎯 Today's Focus
 ## 📥 INBOX - Capture Throughout Day
 ## 📅 TODAY'S SCHEDULE          ← NEW
@@ -410,81 +381,4 @@ When inserting new sections, maintain this order:
 
 ## Integration Points
 
-### Provider-Specific Features
-
-**Obsidian:**
-- **WikiLinks**: Use `[[YYYY-MM-DD]]` format for daily note references
-- **Tags**: Add tags like #urgent, #waiting-for, #follow-up
-- **Backlinks**: Create links to project notes, people notes
-- **Dataview**: Structure for query compatibility
-
-**Notion:**
-- **Database Properties**: Update Status, Tags, Urgent Count
-- **Links**: Use `[Page Title](notion://...)` format
-- **Mentions**: Link to @people and pages
-
-**Logseq:**
-- **Block References**: Use `((block-uid))` for references
-- **Page Links**: Use `[[page-name]]` format
-- **Properties**: Add block properties for metadata
-
-**Roam Research:**
-- **Page References**: Use `[[page-name]]` format
-- **Block References**: Use `((block-uid))`
-- **Attributes**: Use `attribute:: value` format
-
-**Plain Markdown:**
-- **Links**: Use standard `[text](path)` format
-- **Cross-references**: Use relative paths `./YYYY-MM-DD.md`
-
-### Fallback Behavior
-- If consolidation fails, save to provider's designated inbox/capture location
-- User can manually process later
-- Include full report in fallback location
-
----
-
-## Testing Checklist
-
-### Core Functions
-- [ ] Successfully locates today's daily note via provider
-- [ ] Creates daily note from template if missing
-- [ ] Reads and parses daily note structure
-- [ ] Deduplicates tasks across sources (including Linear)
-- [ ] Places tasks in correct sections
-- [ ] Uses provider interface for all operations
-- [ ] Preserves all existing content
-
-### Notes Provider Integration
-- [ ] Reads provider from configuration
-- [ ] Handles Obsidian provider correctly
-- [ ] Handles Notion provider correctly
-- [ ] Handles Logseq provider correctly
-- [ ] Handles Roam provider correctly
-- [ ] Handles plain markdown provider correctly
-- [ ] Graceful degradation if notes.enabled: false
-
-### New Sections
-- [ ] Creates 📅 TODAY'S SCHEDULE section correctly
-- [ ] Populates meetings table with calendar data
-- [ ] Populates free time blocks table
-- [ ] Creates 📚 READING LIST section correctly
-- [ ] Formats reading list with checkboxes and sources
-- [ ] Creates 📊 EMAIL SUMMARIES section correctly
-- [ ] Includes Azure alert counts by severity
-- [ ] Includes GitHub activity summary
-- [ ] Handles ⏰ Time Blocks from day planning
-
-### Linear Integration
-- [ ] Receives Linear issues from linear-reviewer
-- [ ] Maps Linear priorities to sections correctly
-- [ ] Deduplicates Linear issues mentioned in Slack
-- [ ] Formats Linear issue links correctly
-
-### Safety
-- [ ] Never overwrites user's manual entries
-- [ ] Handles missing template gracefully
-- [ ] Handles file permission errors
-- [ ] Creates backup on major changes
-- [ ] Asks confirmation before writing
-- [ ] Falls back to inbox location on failure
+See `references/integration-points.md`. Read it only when you hit this situation.

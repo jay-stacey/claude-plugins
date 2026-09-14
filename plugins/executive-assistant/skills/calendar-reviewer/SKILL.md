@@ -2,7 +2,7 @@
 name: calendar-reviewer
 description: Access Google Calendar to extract today's meetings, identify free time blocks, and analyze schedule. Uses Google Workspace MCP for Calendar operations.
 allowed-tools: mcp__google-workspace__*, Read, Write, Edit
-model: opus
+model: haiku
 ---
 
 # Calendar Reviewer
@@ -288,32 +288,3 @@ This skill is for **reading** calendar data only. Event creation is handled by c
 - Suggest user resolve conflict
 
 ---
-
-## Testing Checklist
-
-### Calendar MCP Tools
-- [ ] `list_calendars` returns calendars
-- [ ] `get_events` returns today's events with time range
-- [ ] Handles authentication errors gracefully
-- [ ] Handles empty calendar gracefully
-
-### Event Extraction
-- [ ] Extracts start/end times correctly
-- [ ] Calculates duration correctly
-- [ ] Extracts title, location, attendees
-- [ ] Identifies all-day events
-- [ ] Detects back-to-back meetings
-- [ ] Detects overlapping events (conflicts)
-
-### Free Time Calculation
-- [ ] Reads working hours from config
-- [ ] Calculates gaps between meetings
-- [ ] Respects minimum block duration
-- [ ] Applies energy patterns correctly
-- [ ] Calculates totals accurately
-
-### Safety
-- [ ] Never modifies events
-- [ ] Never deletes events
-- [ ] Never accepts/declines invites
-- [ ] Handles errors gracefully

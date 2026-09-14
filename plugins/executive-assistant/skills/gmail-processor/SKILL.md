@@ -2,7 +2,7 @@
 name: gmail-processor
 description: Token-efficient Gmail triage. Sweeps ALL unread mail via paginated metadata-only queries, classifies by sender + subject + snippet before fetching any bodies, then proposes batch cleanup actions. Also archives read inbox mail older than 7 days. Use whenever the user asks to process email, check inbox, triage Gmail, do email cleanup, achieve inbox zero, or run a daily email review.
 allowed-tools: mcp__google-workspace__*, Read, Write, Edit
-model: opus
+model: sonnet
 ---
 
 # Gmail Processor

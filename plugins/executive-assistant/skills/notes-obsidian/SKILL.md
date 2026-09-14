@@ -1,8 +1,8 @@
 ---
-name: obsidian-provider
+name: notes-obsidian
 description: Obsidian vault integration for daily notes, task consolidation, and knowledge management. Uses local filesystem operations.
 allowed-tools: Read, Write, Edit, Glob
-model: opus
+model: haiku
 ---
 
 # Obsidian Provider
@@ -271,16 +271,3 @@ Move to today's daily note when resolved.
 ```
 
 ---
-
-## Testing Checklist
-
-- [ ] Locates daily note correctly
-- [ ] Creates from template with variable substitution
-- [ ] Reads and parses frontmatter
-- [ ] Identifies sections correctly
-- [ ] Appends to sections without overwriting
-- [ ] Uses Edit tool for existing files
-- [ ] Handles missing template gracefully
-- [ ] Saves to Quick Captures on failure
-- [ ] Creates WikiLinks correctly
-- [ ] Supports emoji in section headers

@@ -1,6 +1,7 @@
 ---
 name: ea
 description: Invoke your executive assistant for daily workflow preparation
+context: fork
 agent: assistant
 ---
 

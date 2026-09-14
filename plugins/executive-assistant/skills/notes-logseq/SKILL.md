@@ -1,8 +1,8 @@
 ---
-name: logseq-provider
+name: notes-logseq
 description: Logseq graph integration for journal pages and task management. Uses local filesystem operations.
 allowed-tools: Read, Write, Edit, Glob
-model: opus
+model: haiku
 ---
 
 # Logseq Provider
@@ -254,15 +254,3 @@ Note: Logseq handles concurrent access well
 ```
 
 ---
-
-## Testing Checklist
-
-- [ ] Locates journal page correctly
-- [ ] Creates new journal with proper format
-- [ ] Parses outline structure
-- [ ] Identifies sections by markers
-- [ ] Appends as child blocks with indentation
-- [ ] Maintains Logseq outline format
-- [ ] Creates proper page links [[]]
-- [ ] Handles different date formats
-- [ ] Reads config.edn for settings
