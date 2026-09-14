@@ -1,8 +1,8 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "6.0.0",
-  "description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar. Supports Slack, Jira, Linear, and multiple note-taking tools (Obsidian, Notion, Logseq, Roam, Markdown).",
+  "version": "7.0.0",
+  "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
   "author": {
     "name": "Jay Stacey"
   },
@@ -13,29 +13,21 @@
     "productivity",
     "workflow",
     "executive-assistant",
-    "obsidian",
-    "notion",
-    "logseq",
-    "roam",
     "email",
     "calendar",
     "slack",
     "jira",
     "linear",
     "personal-assistant",
-    "time-management"
+    "time-management",
+    "markdown",
+    "notes"
   ],
   "userConfig": {
     "notes_vault_path": {
       "type": "directory",
       "title": "Notes vault path",
-      "description": "Root folder of your notes vault (Obsidian, Logseq, or plain markdown). Leave empty if you use Notion or Roam."
-    },
-    "notes_provider": {
-      "type": "string",
-      "title": "Notes provider",
-      "description": "Which notes tool to use: obsidian, notion, logseq, roam, or markdown.",
-      "default": "obsidian"
+      "description": "Root folder of your markdown notes. Leave empty to disable notes."
     },
     "timezone": {
       "type": "string",
@@ -54,6 +46,12 @@
       "title": "Google OAuth client secret",
       "description": "OAuth client secret for the Google Workspace MCP server.",
       "sensitive": true
+    },
+    "notes_daily_folder": {
+      "type": "string",
+      "title": "Daily notes subfolder",
+      "description": "Subfolder for daily notes, relative to the vault path.",
+      "default": "daily"
     }
   }
 }

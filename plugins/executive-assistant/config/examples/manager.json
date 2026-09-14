@@ -1,19 +1,26 @@
 {
   "_comment": "Example configuration for managers and team leads",
   "_description": "Optimized for management workflows with emphasis on communication, meetings, and team oversight",
-
   "features": {
-    "gmail": { "enabled": true },
-    "googleCalendar": { "enabled": true },
-    "slack": { "enabled": true },
-    "jira": { "enabled": true },
-    "linear": { "enabled": false },
+    "gmail": {
+      "enabled": true
+    },
+    "googleCalendar": {
+      "enabled": true
+    },
+    "slack": {
+      "enabled": true
+    },
+    "jira": {
+      "enabled": true
+    },
+    "linear": {
+      "enabled": false
+    },
     "notes": {
-      "enabled": true,
-      "provider": "notion"
+      "enabled": true
     }
   },
-
   "personality": {
     "name": "Assistant",
     "style": "professional",
@@ -22,7 +29,6 @@
     "humorLevel": "light",
     "greetingStyle": "time-aware"
   },
-
   "user": {
     "name": "",
     "role": "Engineering Manager",
@@ -33,13 +39,24 @@
     },
     "vipContacts": []
   },
-
   "gmail": {
     "enabled": true,
     "scanMode": "unread",
     "maxEmails": 150,
-    "urgentKeywords": ["urgent", "escalation", "executive", "deadline", "budget"],
-    "importantKeywords": ["review", "approval", "decision", "1:1", "team"],
+    "urgentKeywords": [
+      "urgent",
+      "escalation",
+      "executive",
+      "deadline",
+      "budget"
+    ],
+    "importantKeywords": [
+      "review",
+      "approval",
+      "decision",
+      "1:1",
+      "team"
+    ],
     "cleanup": {
       "enabled": true,
       "categories": {
@@ -51,7 +68,6 @@
       }
     }
   },
-
   "calendar": {
     "enabled": true,
     "workingHours": {
@@ -68,16 +84,30 @@
       "enforceBufferBetweenMeetings": true
     },
     "energyPatterns": {
-      "morning": { "start": "08:00", "end": "10:00", "label": "Strategic Work", "type": "deep_work" },
-      "midday": { "start": "10:00", "end": "16:00", "label": "Meetings", "type": "collaboration" },
-      "afternoon": { "start": "16:00", "end": "18:00", "label": "Admin/Planning", "type": "admin" }
+      "morning": {
+        "start": "08:00",
+        "end": "10:00",
+        "label": "Strategic Work",
+        "type": "deep_work"
+      },
+      "midday": {
+        "start": "10:00",
+        "end": "16:00",
+        "label": "Meetings",
+        "type": "collaboration"
+      },
+      "afternoon": {
+        "start": "16:00",
+        "end": "18:00",
+        "label": "Admin/Planning",
+        "type": "admin"
+      }
     }
   },
-
   "calendarManager": {
     "timeboxing": {
       "enabled": true,
-      "maxUtilization": 0.80,
+      "maxUtilization": 0.8,
       "preferredFocusTime": "morning"
     },
     "recurringBlocks": [
@@ -105,21 +135,26 @@
       }
     ],
     "bottleneckThresholds": {
-      "overcommitment": 0.90,
+      "overcommitment": 0.9,
       "minDeepWorkHours": 1.5,
       "backToBackMeetingHours": 3
     }
   },
-
   "slack": {
     "enabled": true,
     "scanHours": 24,
-    "includeChannels": ["leadership", "engineering", "product", "team"],
-    "excludeChannels": ["random"],
+    "includeChannels": [
+      "leadership",
+      "engineering",
+      "product",
+      "team"
+    ],
+    "excludeChannels": [
+      "random"
+    ],
     "prioritizeDMs": true,
     "prioritizeMentions": true
   },
-
   "jira": {
     "enabled": true,
     "activeSprintOnly": false,
@@ -129,16 +164,13 @@
       "maxAgeDays": 14
     }
   },
-
   "notes": {
     "enabled": true,
-    "provider": "notion",
-    "notion": {
-      "databaseId": "",
-      "dailyNotesDatabase": "Daily Notes"
-    }
+    "vaultPath": "",
+    "dailyFolder": "daily",
+    "dateFormat": "YYYY-MM-DD",
+    "templatePath": "templates/daily.md"
   },
-
   "dayPlanning": {
     "enabled": true,
     "taskDurationEstimates": {

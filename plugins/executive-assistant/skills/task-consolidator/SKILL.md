@@ -1,6 +1,6 @@
 ---
 name: task-consolidator
-description: Consolidate tasks from email, Slack, Jira, Linear, and calendar into daily notes. Supports multiple notes providers (Obsidian, Notion, Logseq, Roam, markdown). Includes reading list, schedule, and email summaries. Merge and deduplicate action items.
+description: Consolidate action items from email, Slack, Jira, Linear, and calendar into the user's daily markdown note. Merges and deduplicates tasks, and writes schedule, reading list, and email summaries into their sections. Use when the user asks to consolidate their day, write findings to notes, or at the end of a daily prep run.
 allowed-tools: Read, Write, Edit, Glob
 model: sonnet
 ---
@@ -9,55 +9,45 @@ model: sonnet
 
 You integrate processed data from Gmail, Slack, Jira, Linear, and Calendar into the user's daily note, creating a unified task list and schedule for the day.
 
-## Notes Provider Integration
+## Notes Integration
 
-This skill uses the **Notes Provider Interface** to support multiple note-taking tools. The provider is configured in `config/default.json` or `.config.local.json`:
+Notes are plain markdown files in a folder the user configures, via `userConfig`
+or `config/default.json`:
 
 ```json
 {
   "notes": {
     "enabled": true,
-    "provider": "obsidian",  // or "notion", "logseq", "roam", "markdown"
-    ...
+    "vaultPath": "/path/to/notes",
+    "dailyFolder": "daily"
   }
 }
 ```
 
-**Supported Providers:**
-| Provider | Skill Location | Method |
-|----------|----------------|--------|
-| Obsidian | `notes-obsidian` skill | Local filesystem |
-| Notion | `notes-notion` skill | Notion API via MCP |
-| Logseq | `notes-logseq` skill | Local filesystem |
-| Roam Research | `notes-roam` skill | Roam API |
-| Plain Markdown | `notes-markdown` skill | Local filesystem |
+All note reading and writing goes through the `notes` skill, which works with
+plain markdown files in the configured folder. Do not reimplement file handling
+here — `notes` owns path building, section-aware appends, and frontmatter
+preservation, so consolidation stays correct if that logic changes.
 
-**Provider Interface Operations:**
-- `findDailyNote(date)` - Locate today's note
-- `createDailyNote(date, template)` - Create from template
-- `readNote(path)` - Read note content
-- `updateNote(path, content)` - Update note content
-- `appendToSection(path, section, content)` - Append to specific section
-
-See `references/provider-interface.md` for the full interface specification.
+**Operations it provides:**
+- Find or create today's daily note
+- Read a note into frontmatter, body, and section ranges
+- Append content to a named `##` section without disturbing the rest
+- Search across the vault
 
 ---
 
 ## Process
 
-### 1. Determine Notes Provider
-- Read configuration to identify active provider
-- If `notes.enabled: false`, skip consolidation and inform user
-- Load provider-specific settings from config
-- Use provider interface operations for all note interactions
+### 1. Check notes configuration
+- If `notes.enabled: false`, skip consolidation and tell the user why
+- If no vault path is configured, stop and say so rather than guessing a location
+- Hand all file work to the `notes` skill
 
 ### 2. Locate Today's Daily Note
 - Call `findDailyNote(today)` via the configured provider
 - Provider handles path construction based on its format:
-  - **Obsidian**: `{vaultPath}/{dailyNotesPath}/YYYY-MM-DD.md`
-  - **Notion**: Query database for page with Date = today
-  - **Logseq**: `{graphPath}/{journalsPath}/YYYY_MM_DD.md`
-  - **Roam**: Search for page titled "January 15th, 2026"
+  - Path is `{vaultPath}/{dailyFolder}/{date}.md` — let the `notes` skill build it
   - **Markdown**: `{basePath}/{dailyNotesFolder}/YYYY-MM-DD.md`
 
 ### 3. Create Daily Note if Doesn't Exist
@@ -260,7 +250,7 @@ Use the notes provider interface to update:
 - Call `appendToSection(path, section, content)` for each section
 - Provider handles format-specific operations internally
 
-**For filesystem providers (Obsidian, Logseq, Markdown):**
+**Writing to the note:**
 - Use `Edit` tool (NOT `Write`) to modify existing note
 
 **For new sections (Schedule, Reading List, Email Summaries):**
@@ -330,7 +320,7 @@ After successful update:
 📂 Daily note: {{daily_note_path}}
 
 **Next steps:**
-1. Open daily note in Obsidian
+1. Open the daily note in your editor
 2. Review URGENT section first ({{urgent_count}} items)
 3. Pick top 3 priorities for "Today's Focus"
 4. Check schedule for meeting prep needs

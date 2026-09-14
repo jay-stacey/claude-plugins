@@ -3,8 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Note:** This file guides work *on the plugin source*. The assistant's own
-> runtime personality is not set here — it comes from `config/presets/` (see
-> `claudia.json`) and the user's generated profile. Keep persona out of this file.
+> runtime personality is not set here — it comes from `config/presets/` and the
+> user's generated profile. Keep persona out of this file.
 
 ## Repository Overview
 
@@ -18,12 +18,11 @@ This is a Claude Code personal plugins repository containing the `executive-assi
 
 | Command | Plugin | Purpose |
 |---------|--------|---------|
-| `/ea` | executive-assistant | Main workflow - full daily preparation |
-| `/init` | executive-assistant | First-time setup wizard |
+| `/daily-prep` | executive-assistant | Main workflow - full daily preparation |
+| `/ea` | executive-assistant | Short alias for /daily-prep |
+| `/init` | executive-assistant | Setup and personalization |
 | `/inbox-zero` | executive-assistant | Email cleanup (2-3 min) |
 | `/timebox` | executive-assistant | Calendar optimization (2-4 min) |
-| `/claudia` | executive-assistant | Alias for /ea (backward compat) |
-| `/daily-prep` | executive-assistant | Alias for /ea (backward compat) |
 
 ## Architecture
 
@@ -43,10 +42,11 @@ plugins/
     │   ├── assistant.md          # Main orchestrator
     │   ├── initializer.md        # Setup wizard
     │   └── [domain]-assistant.md # Specialized agents
-    ├── commands/                 # Slash command definitions
-    ├── skills/                   # Specialized sub-agents
-    │   ├── [service]-*.md
-    │   └── notes-providers/      # Multi-provider abstraction
+    ├── skills/                   # <name>/SKILL.md (+ optional references/)
+    │   ├── daily-prep/           # Entry points: daily-prep, ea, init,
+    │   ├── inbox-zero/           #   inbox-zero, timebox
+    │   ├── notes/                # Markdown notes
+    │   └── [service]-*/          # gmail, calendar, slack, jira, linear
     ├── hooks/hooks.json
     └── scripts/                  # Helper utilities
 ```
@@ -66,7 +66,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 | `linear-reviewer` | Issue tracking | Linear MCP |
 | `task-consolidator` | Notes integration | Read, Edit, Write |
 | `initializer` | Setup wizard | Dialog tools |
-| `notes-obsidian` / `notes-notion` / `notes-logseq` / `notes-roam` / `notes-markdown` | Multi-provider notes | Provider-specific |
+| `notes` | Markdown notes: read, write, search, section-aware append | `Read`, `Write`, `Edit`, `Glob`, `Grep` |
 
 ### Integration Approach
 
@@ -77,10 +77,6 @@ Skills are self-contained markdown files defining specialized sub-agents:
 | Slack | Native API | `mcp__slack__*` |
 | Jira | Native API | `mcp__atlassian__*` |
 | Linear | Native API | `mcp__linear-server__*` |
-| Obsidian | Local filesystem | `Read`, `Edit`, `Write`, `Glob` |
-| Notion | Native API | `mcp__notion__*` |
-| Logseq | Local filesystem | `Read`, `Edit`, `Write` |
-| Roam Research | API | Roam MCP |
 | Markdown | Local filesystem | `Read`, `Edit`, `Write` |
 
 ## Key Design Principles
@@ -102,7 +98,6 @@ config/
 │   ├── manager.json
 │   └── minimal.json
 └── presets/          # Personality presets
-    └── claudia.json  # Claudia personality
 ```
 
 ### Key Configuration Areas
@@ -124,12 +119,14 @@ config/
    - Testing checklist
 3. Skills are auto-discovered - do NOT add to plugin.json
 
-## Creating New Commands
+## Creating New Entry Points
 
-1. Add markdown file to `commands/<command-name>.md`
-2. Include: usage examples, available options, expected output
-3. Reference in agent orchestration if part of a workflow
-4. Commands are auto-discovered - do NOT add to plugin.json
+Commands and skills are the same mechanism: a skill at `skills/<name>/SKILL.md`
+creates `/<name>`. There is no separate `commands/` directory.
+
+1. Add `skills/<name>/SKILL.md` with `name` matching the directory
+2. Route to a sub-agent with `context: fork` + `agent: <agent-name>`
+3. Keep the entry point thin — procedure belongs in the skill it delegates to
 
 ## Safety Protocols
 
@@ -158,13 +155,13 @@ config/
 | `homepage` | No | URL to documentation |
 | `repository` | No | URL to source code |
 
-### NEVER Add These Fields
+### Component Path Fields
 
-These fields are INVALID and will cause installation errors:
-- `commands` - Auto-discovered from `commands/` directory
-- `skills` - Auto-discovered from `skills/` directory
-- `agents` - Auto-discovered from `agents/` directory
-- `hooks` - Auto-discovered from `hooks/hooks.json`
+`skills`, `agents`, `hooks`, and `mcpServers` are valid optional fields in
+`plugin.json`, but this plugin omits them and relies on the default locations
+(`skills/`, `agents/`, `hooks/hooks.json`, `.mcp.json`). Only set them to add a
+non-standard path — note that `skills` *adds to* the default directory while
+`agents` *replaces* it.
 
 ## Version History
 

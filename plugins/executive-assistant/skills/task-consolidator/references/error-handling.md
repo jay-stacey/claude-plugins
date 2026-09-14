@@ -24,8 +24,8 @@ For core sections (URGENT, IMPORTANT, etc.):
   - Inform user: "Daily note updated during processing. Merging..."
 
 ### File Permission Error
-- Check if Obsidian has file locked
-- Ask user to close daily note in Obsidian if open
+- Check whether another app has the file locked
+- Ask the user to close the daily note if it is open in an editor
 - If still failing, save to Quick Captures as backup
 
 ---

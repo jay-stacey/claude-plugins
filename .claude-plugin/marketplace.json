@@ -5,7 +5,7 @@
     "url": "https://github.com/jay-stacey"
   },
   "metadata": {
-    "description": "Jay's personal Claude Code plugin library.",
+    "description": "A personal Claude Code plugin library.",
     "version": "2.0.0",
     "pluginRoot": "./plugins"
   },
@@ -13,10 +13,16 @@
     {
       "name": "executive-assistant",
       "source": "./executive-assistant",
-      "version": "6.0.0",
-      "description": "Highly configurable executive assistant for productivity workflow automation. Gmail, Calendar, Slack, Jira, Linear, and multi-provider notes (Obsidian, Notion, Logseq, Roam, Markdown).",
+      "version": "7.0.0",
+      "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
       "category": "productivity",
-      "keywords": ["productivity", "email", "calendar", "daily-planning"],
+      "keywords": [
+        "productivity",
+        "email",
+        "calendar",
+        "daily-planning",
+        "notes"
+      ],
       "license": "MIT"
     }
   ]

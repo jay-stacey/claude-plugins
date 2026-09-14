@@ -1,19 +1,26 @@
 {
   "_comment": "Minimal configuration with few integrations",
   "_description": "Simple setup for users who only need calendar and notes",
-
   "features": {
-    "gmail": { "enabled": false },
-    "googleCalendar": { "enabled": true },
-    "slack": { "enabled": false },
-    "jira": { "enabled": false },
-    "linear": { "enabled": false },
+    "gmail": {
+      "enabled": false
+    },
+    "googleCalendar": {
+      "enabled": true
+    },
+    "slack": {
+      "enabled": false
+    },
+    "jira": {
+      "enabled": false
+    },
+    "linear": {
+      "enabled": false
+    },
     "notes": {
-      "enabled": true,
-      "provider": "markdown"
+      "enabled": true
     }
   },
-
   "personality": {
     "name": "Assistant",
     "style": "professional",
@@ -22,7 +29,6 @@
     "humorLevel": "none",
     "greetingStyle": "simple"
   },
-
   "user": {
     "name": "",
     "timezone": "UTC",
@@ -31,7 +37,6 @@
       "end": "17:00"
     }
   },
-
   "calendar": {
     "enabled": true,
     "workingHours": {
@@ -42,28 +47,22 @@
       "enabled": false
     }
   },
-
   "calendarManager": {
     "timeboxing": {
       "enabled": false
     },
     "recurringBlocks": []
   },
-
   "notes": {
     "enabled": true,
-    "provider": "markdown",
-    "markdown": {
-      "basePath": "./notes",
-      "dailyNotesFolder": "daily",
-      "dateFormat": "YYYY-MM-DD"
-    }
+    "vaultPath": "./notes",
+    "dailyFolder": "daily",
+    "dateFormat": "YYYY-MM-DD",
+    "templatePath": "templates/daily.md"
   },
-
   "dayPlanning": {
     "enabled": false
   },
-
   "automation": {
     "autoRunOnSessionStart": false,
     "confirmBeforeWrite": true
