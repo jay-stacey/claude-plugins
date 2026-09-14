@@ -32,11 +32,33 @@ carries the question wording and branching — this is the entry point.
 
 ## What it writes
 
-- `user-profile.md` in the plugin root — the user's profile, gitignored
-- `.config.local.json` — local overrides on top of `config/default.json`
+Settings that have a `userConfig` key — notes folder, timezone, working hours,
+enabled integrations, assistant name, personality preset — are **not** written
+to a file. Collect the answers, then tell the user the exact command to apply
+them:
 
-Secrets do not belong in either file. Credentials are handled by the plugin's
-`userConfig`, which stores sensitive values in secure storage.
+```
+/plugin configure executive-assistant@personal-plugins
+```
+
+That is the source of truth, it survives reinstalls, and it is what every skill
+reads at run time. Offer the equivalent one-liner when they would rather not
+click through the dialog:
+
+```
+claude plugin install executive-assistant@personal-plugins --config notes_vault_path=... --config timezone=...
+```
+
+Only two things are still written as files:
+
+- `user-profile.md` in the plugin root — free-text context (role, priorities,
+  VIP contacts) that has no `userConfig` key. Gitignored.
+- `.config.local.json` — legacy overrides. Write it only for the detailed
+  Gmail/Calendar tuning that has no `userConfig` key.
+
+Secrets never go in either file. `google_oauth_client_id` and
+`google_oauth_client_secret` are `sensitive` options kept in secure storage, so
+collect them through `/plugin configure` and never echo them back.
 
 ## Behavior
 

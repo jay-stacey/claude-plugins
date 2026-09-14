@@ -13,16 +13,21 @@ predictably enough that other skills can rely on it.
 
 ## Configuration
 
-Three settings, from plugin config (`userConfig`) or `config/default.json`:
+Three settings, read from the environment. `userConfig` is the source of truth;
+see `references/configuration.md` for the full contract.
 
-| Setting | Meaning | Default |
+| Setting | Environment variable | Default |
 |---|---|---|
-| `notes_vault_path` | Root folder of the notes | required |
-| `notes_daily_folder` | Subfolder for daily notes, relative to root | `daily` |
-| `notes_date_format` | Filename format for daily notes | `YYYY-MM-DD` |
+| Vault root | `CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH` | required |
+| Daily subfolder | `CLAUDE_PLUGIN_OPTION_NOTES_DAILY_FOLDER` | `daily` |
+| Date format | `CLAUDE_PLUGIN_OPTION_NOTES_DATE_FORMAT` | `YYYY-MM-DD` |
 
-A daily note is `{vault}/{daily_folder}/{date}.md`. If `notes_vault_path` is not
-set, say so and stop — guessing a path risks writing into the wrong folder.
+An unset option is absent from the environment, not empty — fall back to the
+default above.
+
+A daily note is `{vault}/{daily_folder}/{date}.md`. If the vault path is not
+set, say so and stop — guessing a path risks writing into the wrong folder. Tell
+the user to run `/plugin configure executive-assistant@personal-plugins`.
 
 ## Operations
 

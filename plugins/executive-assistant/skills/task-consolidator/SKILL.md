@@ -11,18 +11,21 @@ You integrate processed data from Gmail, Slack, Jira, Linear, and Calendar into 
 
 ## Notes Integration
 
-Notes are plain markdown files in a folder the user configures, via `userConfig`
-or `config/default.json`:
+Notes are plain markdown files in a folder the user configures through
+`userConfig`, which arrives in the environment:
 
-```json
-{
-  "notes": {
-    "enabled": true,
-    "vaultPath": "/path/to/notes",
-    "dailyFolder": "daily"
-  }
-}
-```
+| Setting | Environment variable | Default |
+|---|---|---|
+| Vault root | `CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH` | required |
+| Daily subfolder | `CLAUDE_PLUGIN_OPTION_NOTES_DAILY_FOLDER` | `daily` |
+| Date format | `CLAUDE_PLUGIN_OPTION_NOTES_DATE_FORMAT` | `YYYY-MM-DD` |
+
+An unset option is absent from the environment, not empty. If the vault path is
+not set, stop and tell the user to run
+`/plugin configure executive-assistant@personal-plugins` — do not guess a path.
+
+Delegate the actual file work to the `notes` skill rather than re-implementing
+path handling here.
 
 All note reading and writing goes through the `notes` skill, which works with
 plain markdown files in the configured folder. Do not reimplement file handling

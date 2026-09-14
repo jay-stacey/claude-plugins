@@ -14,11 +14,19 @@ Then install a plugin from the list below:
 /plugin install executive-assistant@personal-plugins
 ```
 
+Then set it up. Configuration lives in plugin config, so it survives reinstalls:
+
+```bash
+/plugin configure executive-assistant@personal-plugins
+```
+
+Or run `/init` for a guided walkthrough.
+
 ## Plugins
 
 | Plugin | Version | What it does |
 |---|---|---|
-| [executive-assistant](plugins/executive-assistant) | 6.0.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+| [executive-assistant](plugins/executive-assistant) | 7.1.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
 
 ### executive-assistant
 

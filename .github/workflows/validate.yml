@@ -29,3 +29,25 @@ jobs:
 
       - name: Check skill structure
         run: python3 scripts/check-skills.py
+
+      # `claude plugin validate` only checks manifest shape. It passes on a
+      # marketplace whose plugins cannot actually be resolved and installed,
+      # so the only trustworthy check is performing a real install.
+      - name: Install smoke test
+        run: |
+          set -euo pipefail
+          claude plugin marketplace add "$PWD"
+          status=0
+          for d in plugins/*/; do
+            name=$(basename "$d")
+            echo "::group::install $name"
+            if claude plugin install "$name@personal-plugins"; then
+              claude plugin list | grep -q "$name" \
+                || { echo "::error::$name installed but is not listed"; status=1; }
+            else
+              echo "::error::$name failed to install from the marketplace"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status
