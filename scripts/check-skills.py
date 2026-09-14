@@ -53,21 +53,31 @@ if os.path.exists(MARKETPLACE):
     root = catalog.get("metadata", {}).get("pluginRoot")
     for entry in entries:
         src = entry.get("source", "")
-        # A "./"-prefixed source always resolves from the marketplace root and
-        # ignores pluginRoot; pluginRoot only applies to bare names. Combining
-        # pluginRoot with "./name" makes the plugin uninstallable even though
-        # `claude plugin validate` passes.
-        if root and isinstance(src, str) and src.startswith("./"):
-            resolved = os.path.normpath(src)
-            if not os.path.isdir(resolved):
+        # Cowork's server-side validator does not implement metadata.pluginRoot.
+        # It reads a bare source name as an external source and rejects the sync
+        # with marketplace_sync_external_source_unsupported, even though the CLI
+        # resolves it fine. An explicit "./path" works in both, so require it.
+        if isinstance(src, str):
+            if not src.startswith("./"):
                 errors.append(
-                    f"{MARKETPLACE}: '{entry['name']}' sets metadata.pluginRoot "
-                    f"({root}) but uses source '{src}'. A './' source ignores "
-                    f"pluginRoot and resolves to '{resolved}', which does not "
-                    f"exist - the plugin will fail to install. Use the bare name "
-                    f"'{os.path.basename(os.path.normpath(src))}', or drop "
-                    f"pluginRoot and use the full path from the marketplace root."
+                    f"{MARKETPLACE}: '{entry['name']}' uses bare source '{src}'. "
+                    f"Cowork cannot resolve bare names (it requires an explicit "
+                    f"relative path or an external source object) and the sync "
+                    f"fails with marketplace_sync_external_source_unsupported. "
+                    f"Use './plugins/{src}'."
                 )
+            elif not os.path.isdir(os.path.normpath(src)):
+                errors.append(
+                    f"{MARKETPLACE}: '{entry['name']}' source '{src}' resolves to "
+                    f"'{os.path.normpath(src)}', which does not exist. Relative "
+                    f"sources resolve from the marketplace root."
+                )
+    if root:
+        errors.append(
+            f"{MARKETPLACE}: remove metadata.pluginRoot. Cowork's validator does "
+            f"not support it, and every source here is an explicit relative path."
+        )
+    for entry in entries:
         ver = entry.get("version")
         manifest = f"plugins/{entry['name']}/.claude-plugin/plugin.json"
         if ver and os.path.exists(manifest):
