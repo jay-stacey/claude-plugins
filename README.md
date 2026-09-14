@@ -26,13 +26,14 @@ Or run `/init` for a guided walkthrough.
 
 | Plugin | Version | What it does |
 |---|---|---|
-| [executive-assistant](plugins/executive-assistant) | 7.1.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+| [executive-assistant](plugins/executive-assistant) | 7.2.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
 
 ### executive-assistant
 
-Skills: `/daily-prep` (full prep, aliased as `/ea`), `/inbox-zero`, `/timebox`, `/init` (setup).
+Skills: `/daily-prep` (full prep), `/inbox-zero`, `/timebox`, `/init` (setup).
 
-Notes: plain markdown files in a folder you configure.
+Notes: plain markdown files in a folder you configure, with frontmatter tags
+and a file-based search index (no database) for tag, text, and backlink recall.
 
 Requires the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
 server for Gmail and Calendar; Slack, Atlassian, and Linear MCP servers are

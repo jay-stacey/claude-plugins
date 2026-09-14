@@ -202,7 +202,7 @@ Your executive assistant is now personalized. Here's what I've configured:
 
 4. **Run Your First Session:**
    ```
-   /ea
+   /daily-prep
    ```
 
 Welcome aboard! I'm excited to help you stay organized.

@@ -20,5 +20,9 @@ node_modules/
 # Memory files (personal conversation memory)
 .claude/projects/*/memory/
 
+# Python
+__pycache__/
+*.pyc
+
 # Build artifacts
 *.zip

@@ -1,7 +1,7 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "7.1.0",
+  "version": "7.2.0",
   "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
   "author": {
     "name": "Jay Stacey"
@@ -92,6 +92,12 @@
       "type": "string",
       "title": "Personality preset",
       "description": "Tone preset from config/presets/, e.g. warm. Leave empty for the neutral professional default."
+    },
+    "response_style": {
+      "type": "string",
+      "title": "Response style",
+      "description": "How the assistant talks to you. 'conversational' (default) uses plain language and short sentences with minimal formatting. 'structured' allows headed sections and tables.",
+      "default": "conversational"
     }
   }
 }

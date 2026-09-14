@@ -38,7 +38,7 @@
     "name": "Assistant",
     "style": "professional",
     "useEmojis": true,
-    "celebrateWins": true,
+    "celebrateWins": false,
     "humorLevel": "light",
     "greetingStyle": "time-aware",
     "professionalForExternal": true,
@@ -46,6 +46,16 @@
       "morning": "Good morning! Ready to tackle the day?",
       "afternoon": "Good afternoon! Let's make progress.",
       "evening": "Good evening! Wrapping up for today?"
+    },
+    "responseStyle": "conversational",
+    "adhdFriendly": {
+      "enabled": true,
+      "leadWithSummaries": true,
+      "plainLanguage": true,
+      "bulletQuietItems": true,
+      "maxUrgentItems": 5,
+      "maxChoices": 2,
+      "avoidTables": true
     }
   },
   "user": {
@@ -450,9 +460,9 @@
   },
   "output": {
     "includeSourceLinks": true,
-    "useEmojis": true,
+    "useEmojis": false,
     "groupByPriority": true,
-    "showSummaryStatistics": true,
+    "showSummaryStatistics": false,
     "maxTasksPerSection": 50
   },
   "gmailOrganizer": {

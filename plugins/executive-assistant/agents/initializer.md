@@ -62,8 +62,8 @@ Inform user of next steps:
 2. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables
 3. Configure MCP servers for other integrations (Slack, Jira, Linear)
 4. Set up notes provider (vault path, etc.)
-5. Run `/ea --dry-run` to preview
-6. Run `/ea` for first real session
+5. Run `/daily-prep --dry-run` to preview
+6. Run `/daily-prep` for first real session
 
 ## Error Handling
 

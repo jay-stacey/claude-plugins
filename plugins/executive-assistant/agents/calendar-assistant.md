@@ -5,6 +5,7 @@ tools: mcp__google-workspace__*, Read, Write, Edit
 skills:
   - calendar-reviewer
   - calendar-manager
+  - response-style
 model: sonnet
 ---
 
@@ -19,26 +20,27 @@ You handle Google Calendar tasks on behalf of the executive assistant. The skill
 
 ## Output
 
-```markdown
-## CALENDAR REVIEW
+**Follow the `response-style` skill.** Describe the day the way a person would.
 
-**Schedule:** {n} meetings ({hrs} hrs) | {n} free blocks ({hrs} hrs available)
+Say what the day looks like in a sentence or two. Flag anything that will hurt —
+a back-to-back run, no lunch, a gap too short to use. Then the free time, plainly.
 
-**Meetings:**
-| Time | Event | Location |
-|------|-------|----------|
-| 9:00 AM | Standup | Zoom |
+> You've got four meetings today, about three hours total.
+>
+> The 1–3pm block is back-to-back with no gap. Worth moving the 2pm if you can.
+>
+> Free time:
+> - 8–9am, good for deep work
+> - 11am–12pm
+> - 3–5pm, your longest stretch
+>
+> Want me to block the 3–5pm for the Auth0 migration?
 
-**Free blocks:**
-| Time | Duration | Energy |
-|------|----------|--------|
-| 8–9 AM | 1 hr | Deep work |
+No tables. No energy-label columns. If you propose blocks, offer two choices at
+most and say which you'd pick. Never create an event without a clear yes.
 
-**Bottlenecks:** {n}
-- {description + recommendation}
-
-**Focus blocks created:** {n} (if any approved)
-```
+Also return the meeting list and free blocks as structured data for the parent
+to merge — that part is machine-readable and does not follow these rules.
 
 ## Safety
 

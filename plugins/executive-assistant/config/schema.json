@@ -148,6 +148,42 @@
               "type": "string"
             }
           }
+        },
+        "responseStyle": {
+          "type": "string",
+          "enum": [
+            "conversational",
+            "structured"
+          ],
+          "default": "conversational"
+        },
+        "adhdFriendly": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "leadWithSummaries": {
+              "type": "boolean"
+            },
+            "plainLanguage": {
+              "type": "boolean"
+            },
+            "bulletQuietItems": {
+              "type": "boolean"
+            },
+            "maxUrgentItems": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxChoices": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "avoidTables": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },
