@@ -150,3 +150,6 @@ matches and the files they came from.
 - `references/search.md` — index commands, performance, and Grep fallback
 - `references/daily-template.md` — fallback skeleton for a new daily note
 - `references/frontmatter.md` — parsing and preserving YAML frontmatter
+
+To read or edit notes in a page instead of the terminal, use the `notes-viewer`
+skill. Its sync writes through the same safety rules and updates this index.

@@ -45,6 +45,8 @@ plugins/
     │   ├── daily-prep/           # Entry points: daily-prep, init,
     │   ├── inbox-zero/           #   inbox-zero, timebox
     │   ├── notes/                # Markdown notes
+    │   ├── notes-viewer/         # Notes Desk artifact + edit sync
+    │   │   └── editor/           # Editor source; `npm run build` rewrites assets/editor.bundle.js
     │   └── [service]-*/          # gmail, calendar, slack, jira, linear
     ├── hooks/hooks.json
     └── scripts/                  # Helper utilities
@@ -66,6 +68,7 @@ Skills are self-contained markdown files defining specialized sub-agents:
 | `task-consolidator` | Notes integration | Read, Edit, Write |
 | `initializer` | Setup wizard | Dialog tools |
 | `notes` | Markdown notes: read, write, search, section-aware append | `Read`, `Write`, `Edit`, `Glob`, `Grep` |
+| `notes-viewer` | Notes Desk artifact: read, search, edit notes; sync edits to disk | `Artifact`, `ArtifactData`, `Bash` |
 
 ### Integration Approach
 
