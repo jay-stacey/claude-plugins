@@ -1,0 +1,1040 @@
+<title>Notes Desk</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&display=swap">
+<style>
+/* Layout: a two-pane desk. A collapsible index rail on the left, a writing
+   sheet on the right with a notebook margin rule. Phone width shows one pane. */
+:root {
+  --paper: #eef0ec;
+  --sheet: #fbfbf8;
+  --ink: #1c2330;
+  --ink-2: #566070;
+  --rule: #d8dcd4;
+  --accent: #2d4f8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2e8f3;
+  --sel: #c9d6ee;
+  --margin: #c06b5c;
+  --code-bg: #eceee9;
+  --warn: #7d5a00;  --warn-bg: #f5ead0;
+  --bad: #9c3328;   --bad-bg: #f5dcd7;
+  --ok: #2b6449;    --ok-bg: #d9ede2;
+  /* tag chip hues: background / text */
+  --t0: #e2e8f3; --t0i: #2d4f8a;
+  --t1: #dcefe5; --t1i: #2b6449;
+  --t2: #f5ead0; --t2i: #6f5000;
+  --t3: #f3dfe6; --t3i: #8a2f52;
+  --t4: #e6e1f3; --t4i: #4d3d8a;
+  --t5: #dceef0; --t5i: #1f5e66;
+  --shadow: 0 1px 2px rgb(28 35 48 / .06), 0 8px 24px rgb(28 35 48 / .08);
+  --display: "Literata", "Iowan Old Style", Georgia, serif;
+  --body: "Literata", "Iowan Old Style", Georgia, serif;
+  --ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --rail: clamp(270px, 26vw, 340px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #121519; --sheet: #191d23; --ink: #dde2ea; --ink-2: #98a2b1;
+    --rule: #2b313b; --accent: #91b2ea; --accent-ink: #0f1622; --accent-soft: #22324d; --sel: #2c3f61;
+    --margin: #8c4d43; --code-bg: #20252d;
+    --warn: #e5c47c; --warn-bg: #362d17; --bad: #f0a197; --bad-bg: #3b1f1b;
+    --ok: #8fd0ae; --ok-bg: #173126;
+    --t0: #22324d; --t0i: #a9c3ef; --t1: #173126; --t1i: #9cd8b8; --t2: #362d17; --t2i: #e5c47c;
+    --t3: #3d2230; --t3i: #f0a9c4; --t4: #2c2647; --t4i: #c3b6f0; --t5: #163235; --t5i: #93d3db;
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #121519; --sheet: #191d23; --ink: #dde2ea; --ink-2: #98a2b1;
+  --rule: #2b313b; --accent: #91b2ea; --accent-ink: #0f1622; --accent-soft: #22324d; --sel: #2c3f61;
+  --margin: #8c4d43; --code-bg: #20252d;
+  --warn: #e5c47c; --warn-bg: #362d17; --bad: #f0a197; --bad-bg: #3b1f1b;
+  --ok: #8fd0ae; --ok-bg: #173126;
+  --t0: #22324d; --t0i: #a9c3ef; --t1: #173126; --t1i: #9cd8b8; --t2: #362d17; --t2i: #e5c47c;
+  --t3: #3d2230; --t3i: #f0a9c4; --t4: #2c2647; --t4i: #c3b6f0; --t5: #163235; --t5i: #93d3db;
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 8px 24px rgb(0 0 0 / .35);
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--ui); }
+* { box-sizing: border-box; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.app { display: grid; grid-template-rows: auto auto 1fr; height: 100%; }
+
+/* top bar */
+.bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--rule); background: var(--paper); position: relative; z-index: 3; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-right: auto; }
+.brand b { font: 700 19px/1 var(--display); letter-spacing: -.01em; }
+.brand span { color: var(--ink-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--sheet); cursor: pointer; font-size: 13.5px; font-weight: 500; }
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--bad); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { border-color: var(--rule); }
+.btn.sync { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.icon-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; border-radius: 6px; border: 1px solid transparent;
+  background: transparent; cursor: pointer; color: var(--ink-2); }
+.icon-btn:hover { border-color: var(--rule); color: var(--ink); }
+.icon-btn svg { width: 18px; height: 18px; }
+.count { font-variant-numeric: tabular-nums; }
+.banner { padding: 8px 16px; font-size: 13px; background: var(--accent-soft); color: var(--ink); border-bottom: 1px solid var(--rule); }
+.banner.bad { background: var(--bad-bg); color: var(--bad); }
+
+/* desk */
+.desk { display: grid; grid-template-columns: var(--rail) 1fr; min-height: 0; }
+.desk.rail-hidden { grid-template-columns: 1fr; }
+.desk.rail-hidden .rail { display: none; }
+.rail { border-right: 1px solid var(--rule); display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+.filters { display: grid; gap: 10px; padding: 14px 16px 12px; border-bottom: 1px solid var(--rule); }
+.search { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--rule); background: var(--sheet); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row select { flex: 1 1 120px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--sheet); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font: 500 11.5px/1 var(--mono); padding: 4px 8px; border-radius: 99px; border: 1px solid transparent; cursor: pointer;
+  background: var(--tb, var(--t0)); color: var(--ti, var(--t0i)); white-space: nowrap; }
+.chip:hover { border-color: currentColor; }
+.chip[aria-pressed="true"] { background: var(--ti, var(--accent)); color: var(--sheet); }
+.chip .count { opacity: .7; margin-left: 4px; }
+.chip.h0 { --tb: var(--t0); --ti: var(--t0i); } .chip.h1 { --tb: var(--t1); --ti: var(--t1i); }
+.chip.h2 { --tb: var(--t2); --ti: var(--t2i); } .chip.h3 { --tb: var(--t3); --ti: var(--t3i); }
+.chip.h4 { --tb: var(--t4); --ti: var(--t4i); } .chip.h5 { --tb: var(--t5); --ti: var(--t5i); }
+.linkish.danger { color: var(--bad); }
+.actions { display: inline-flex; gap: 12px; }
+.head-row { display: flex; gap: 8px 16px; align-items: baseline; flex-wrap: wrap; }
+.head-row .crumb { flex: 1 1 200px; min-width: 0; }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.summary { font-size: 12px; color: var(--ink-2); }
+
+.list { overflow-y: auto; min-height: 0; padding: 4px 0 24px; }
+.item { display: grid; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+.item[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.item:hover:not([aria-current="true"]) { background: var(--sheet); }
+.item-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; width: 100%; text-align: left; padding: 0; border: 0; background: none; cursor: pointer; }
+.item .t { font: 600 15px/1.3 var(--display); display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.item .t span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.item .m { font-size: 12px; color: var(--ink-2); display: flex; gap: 8px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.item .s { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item mark { background: var(--warn-bg); color: inherit; border-radius: 2px; }
+.pill { font: 600 10.5px/1 var(--ui); letter-spacing: .06em; text-transform: uppercase; padding: 3px 6px; border-radius: 4px; flex: none; }
+.pill.edited { background: var(--warn-bg); color: var(--warn); }
+.pill.new { background: var(--ok-bg); color: var(--ok); }
+.pill.conflict { background: var(--bad-bg); color: var(--bad); }
+.more { margin: 12px 16px; }
+
+/* sheet */
+.main { overflow-y: auto; min-height: 0; padding: 20px 16px 0; }
+.sheet { max-width: 1160px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 32px; }
+.page { background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; box-shadow: var(--shadow);
+  padding: 22px clamp(18px, 4vw, 44px) 0 clamp(26px, 5vw, 56px); position: relative; min-width: 0; }
+.page::before { content: ""; position: absolute; top: 0; bottom: 0; left: clamp(14px, 2.6vw, 30px); border-left: 1.5px solid var(--margin); opacity: .55; pointer-events: none; }
+.head { display: grid; gap: 6px; }
+.crumb { font: 500 12px/1.4 var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; align-items: center; }
+.status { display: inline-flex; align-items: center; gap: 6px; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--rule); }
+.status.saving::before, .status.dirty::before { background: var(--warn); }
+.status.saved::before { background: var(--ok); }
+.status.error { color: var(--bad); } .status.error::before { background: var(--bad); }
+.notice { padding: 8px 12px; border-radius: 6px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.notice span { flex: 1 1 260px; }
+.notice.edited { background: var(--warn-bg); color: var(--warn); }
+.notice.conflict { background: var(--bad-bg); color: var(--bad); }
+.notice.info { background: var(--accent-soft); color: var(--ink); }
+.notice .btn { padding: 4px 10px; font-size: 12.5px; }
+
+.toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 2px; align-items: center;
+  margin: 14px calc(-1 * clamp(18px, 4vw, 44px)) 0 calc(-1 * clamp(10px, 2.4vw, 26px)); padding: 6px clamp(18px, 4vw, 44px) 6px clamp(10px, 2.4vw, 26px);
+  background: var(--sheet); border-bottom: 1px solid var(--rule); }
+.tb { min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer;
+  color: var(--ink-2); font: 600 13px/1 var(--ui); display: inline-grid; place-items: center; }
+.tb:hover { background: var(--paper); color: var(--ink); border-color: var(--rule); }
+.tb svg { width: 16px; height: 16px; }
+.tb.b { font-weight: 800; } .tb.i { font-style: italic; font-family: var(--display); } .tb.s { text-decoration: line-through; }
+.tb.mono { font-family: var(--mono); font-weight: 500; font-size: 12px; }
+.sep { width: 1px; height: 18px; background: var(--rule); margin: 0 4px; }
+.seg { margin-left: auto; display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--sheet); padding: 5px 10px; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* editor */
+.ed { padding: 18px 0 0; min-height: 50vh; }
+.ed .cm-editor { font: 17px/1.7 var(--body); color: var(--ink); background: transparent; }
+.ed .cm-editor.cm-focused { outline: none; }
+.ed .cm-editor .cm-scroller { font-family: inherit; line-height: inherit; overflow: visible; }
+.ed .cm-editor .cm-content { padding: 0 0 45vh; caret-color: var(--accent); max-width: 72ch; }
+.ed .cm-editor .cm-line { padding: 0; }
+.ed .cm-editor .cm-cursor { border-left: 2px solid var(--accent); }
+.ed .cm-editor .cm-selectionBackground { background: var(--sel) !important; }
+.ed .cm-editor .cm-placeholder { color: var(--ink-2); font-style: italic; }
+.ed .cm-editor .cm-line.cm-h { font-family: var(--display); font-weight: 700; line-height: 1.3; letter-spacing: -.01em; text-wrap: balance; }
+.ed .cm-editor .cm-line.cm-h1 { font-size: 1.8em; padding-top: .5em; padding-bottom: .15em; }
+.ed .cm-editor .cm-line.cm-h2 { font-size: 1.38em; padding-top: .7em; }
+.ed .cm-editor .cm-line.cm-h3 { font-size: 1.15em; padding-top: .6em; }
+.ed .cm-editor .cm-line.cm-h4, .ed .cm-editor .cm-line.cm-h5, .ed .cm-editor .cm-line.cm-h6 { font-size: 1em; padding-top: .5em; }
+.ed .cm-editor .cm-line.cm-setext { color: var(--ink-2); font-size: .8em; line-height: 1; }
+.ed .cm-strong { font-weight: 700; }
+.ed .cm-em { font-style: italic; }
+.ed .cm-strike { text-decoration: line-through; color: var(--ink-2); }
+.ed .cm-icode { font: .84em var(--mono); background: var(--code-bg); border-radius: 3px; padding: .1em .3em; }
+.ed .cm-editor .cm-line.cm-codeblock { font: 14px/1.65 var(--mono); background: var(--code-bg); padding: 0 14px; }
+.ed .cm-editor .cm-line.cm-fence { color: var(--ink-2); font-size: 12.5px; }
+.ed .cm-editor .cm-line.cm-quote { border-left: 3px solid var(--rule); padding-left: 14px; color: var(--ink-2); font-style: italic; }
+.ed .cm-editor .cm-line.cm-hr { background: linear-gradient(var(--rule), var(--rule)) center / 100% 1px no-repeat; }
+.ed .cm-editor .cm-line.cm-table, .ed .cm-editor .cm-line.cm-html { font: 13.5px/1.6 var(--mono); color: var(--ink); }
+.ed .cm-editor .cm-line.cm-html { color: var(--ink-2); }
+.ed .cm-editor .cm-line.cm-fm { font: 13px/1.6 var(--mono); color: var(--ink-2); background: var(--code-bg); padding: 0 12px; }
+.ed .cm-mark, .ed .cm-listmark { color: var(--ink-2); }
+.ed .cm-link, .ed .cm-wikilink { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.ed .cm-wikilink { text-decoration-style: dotted; }
+.ed .cm-wikilink.cm-missing { color: var(--ink-2); font-style: italic; text-decoration-style: dashed; text-decoration-color: var(--rule); cursor: help; }
+.ed .cm-editor.cm-source { font: 14.5px/1.7 var(--mono); }
+.ed .cm-tablew { overflow-x: auto; margin: .3em 0 .6em; cursor: text; }
+.ed .cm-tablew table { border-collapse: collapse; font: 14px/1.45 var(--ui); }
+.ed .cm-tablew th, .ed .cm-tablew td { border: 1px solid var(--rule); padding: 6px 12px; text-align: left; vertical-align: top; }
+.ed .cm-tablew th { background: var(--code-bg); font-weight: 600; }
+.ed .cm-link-raw, .ed .cm-wiki-raw { color: var(--accent); }
+.ed .cm-bullet { color: var(--accent); font-weight: 700; display: inline-block; min-width: .8em; }
+.ed .cm-task { width: 1em; height: 1em; margin: 0 .45em 0 0; vertical-align: -.12em; accent-color: var(--accent); cursor: pointer; }
+.ed .cm-task:disabled { cursor: default; }
+.ed .cm-done { color: var(--ink-2); text-decoration: line-through; }
+.ed .cm-tag { font: 500 .78em var(--mono); background: var(--accent-soft); color: var(--accent); padding: .12em .5em; border-radius: 99px; }
+.ed .cm-image { font: 12px var(--mono); color: var(--ink-2); border: 1px dashed var(--rule); padding: 2px 8px; border-radius: 4px; }
+.ed .cm-props { display: flex; gap: 10px; align-items: baseline; font: 12.5px/1.4 var(--ui); color: var(--ink-2); padding: 6px 10px;
+  border: 1px dashed var(--rule); border-radius: 6px; cursor: pointer; margin-bottom: 10px; }
+.ed .cm-props:hover { border-color: var(--ink-2); }
+.ed .cm-props-label { flex: none; white-space: nowrap; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; }
+.ed .cm-props-keys { min-width: 0; font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loading { color: var(--ink-2); font-size: 14px; padding: 12px 0 40px; }
+
+.side { display: grid; gap: 24px; align-content: start; position: sticky; top: 0; font-size: 13.5px; min-width: 0; padding-bottom: 40px; }
+.side h2 { font: 600 11px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 10px; }
+.side ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.side li button { background: none; border: 0; padding: 0; text-align: left; color: var(--ink); cursor: pointer; font-size: 13.5px; line-height: 1.35; }
+.side li button:hover { color: var(--accent); text-decoration: underline; }
+.side .lvl2 { padding-left: 10px; } .side .lvl3 { padding-left: 20px; } .side .lvl4, .side .lvl5, .side .lvl6 { padding-left: 30px; }
+.side .none { color: var(--ink-2); font-size: 13px; }
+
+/* compose + empty */
+.panel { max-width: 560px; margin: 0 auto; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 24px; display: grid; gap: 14px; box-shadow: var(--shadow); }
+.panel h2 { margin: 0; font: 700 22px/1.2 var(--display); }
+.panel label { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+.panel input, .panel select { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--rule); background: var(--paper); }
+.panel .err { color: var(--bad); font-size: 13px; }
+.hint { font-size: 12.5px; color: var(--ink-2); }
+.empty { max-width: 520px; margin: 10vh auto 0; text-align: center; color: var(--ink-2); display: grid; gap: 8px; }
+.empty b { font: 700 22px/1.2 var(--display); color: var(--ink); }
+
+/* sync tray */
+.tray { position: absolute; right: 16px; top: calc(100% + 6px); width: min(420px, calc(100vw - 32px)); background: var(--sheet);
+  border: 1px solid var(--rule); border-radius: 8px; box-shadow: var(--shadow); padding: 16px; display: grid; gap: 12px; font-size: 13.5px; }
+.tray h2 { margin: 0; font: 700 17px/1.2 var(--display); }
+.tray ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 40vh; overflow-y: auto; }
+.tray li { display: grid; gap: 2px; }
+.tray li span { font: 12px var(--mono); color: var(--ink-2); overflow-wrap: anywhere; }
+.ask { display: flex; gap: 8px; align-items: center; background: var(--paper); border-radius: 6px; padding: 8px 10px; }
+.ask code { font: 13px var(--mono); margin-right: auto; user-select: all; }
+
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: 13.5px; z-index: 9; max-width: calc(100vw - 32px); }
+
+@media (max-width: 1080px) {
+  .sheet { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+}
+@media (max-width: 820px) {
+  .desk, .desk.rail-hidden { grid-template-columns: 1fr; }
+  .desk .main { display: none; }
+  .desk.reading .rail { display: none; }
+  .desk.reading .main { display: block; }
+  .desk:not(.reading) .rail { display: grid; }
+  .main { padding-top: 12px; }
+  .brand span { display: none; }
+  .ed .cm-editor { font-size: 16px; }
+}
+</style>
+
+<!--INLINE-DATA-->
+
+<div class="app">
+  <header class="bar">
+    <button class="icon-btn" id="rail-btn" type="button" aria-controls="rail" aria-expanded="true" title="Hide note list (Ctrl+\)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+    </button>
+    <div class="brand"><b>Notes Desk</b><span id="vault-line">Loading notes</span></div>
+    <button class="btn sync" id="sync-btn" type="button" hidden aria-expanded="false"></button>
+    <button class="btn" id="today-btn" type="button" hidden>Today</button>
+    <button class="btn primary" id="new-btn" type="button" hidden>New note</button>
+    <div class="tray" id="tray" hidden></div>
+  </header>
+  <div id="banner" hidden></div>
+  <div class="desk" id="desk">
+    <aside class="rail" id="rail" aria-label="Notes">
+      <div class="filters">
+        <input class="search" id="q" type="search" placeholder="Search titles, tags and text  ( / )" autocomplete="off" aria-label="Search notes">
+        <div class="row">
+          <select id="folder" aria-label="Folder"><option value="">All folders</option></select>
+          <select id="sort" aria-label="Sort">
+            <option value="m">Recently changed</option>
+            <option value="t">Title A to Z</option>
+            <option value="p">Path</option>
+          </select>
+        </div>
+        <div class="chips" id="tagbar"></div>
+        <div class="summary" id="summary"></div>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<!--EDITOR-BUNDLE-->
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------- helpers
+  const $ = (s, r = document) => r.querySelector(s);
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat()) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
+    return el;
+  }
+  const norm = s => (s || '').replace(/\r\n/g, '\n');
+  const stem = p => p.split('/').pop().replace(/\.md$/i, '');
+  const folderOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+  const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const store = {
+    get(k) { try { return localStorage.getItem('notes-desk:' + k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem('notes-desk:' + k, v); } catch { /* storage blocked */ } },
+  };
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  function ago(sec) {
+    if (!sec) return '';
+    const d = sec - Date.now() / 1000;
+    const units = [['second', 60, 1], ['minute', 3600, 60], ['hour', 86400, 3600], ['day', 604800, 86400], ['week', 2629800, 604800], ['month', 31557600, 2629800], ['year', Infinity, 31557600]];
+    for (const [unit, lim, div] of units) if (Math.abs(d) < lim) return rtf.format(Math.round(d / div), unit);
+    return '';
+  }
+  const secOf = iso => Math.floor((Date.parse(iso) || 0) / 1000);
+  const fmtDate = sec => sec ? new Date(sec * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  }
+  function splitFm(text) {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text || '');
+    return m ? { fm: m[1], body: text.slice(m[0].length) } : { fm: '', body: text || '' };
+  }
+  function tagsOf(text) {
+    const { fm } = splitFm(text);
+    const inline = /^tags:\s*\[([^\]]*)\]/m.exec(fm);
+    let tags = [];
+    if (inline) tags = inline[1].split(',');
+    else {
+      const block = /^tags:\s*\n((?:\s*-\s+.*\n?)+)/m.exec(fm);
+      if (block) tags = block[1].split('\n').map(l => l.replace(/^\s*-\s+/, ''));
+      else { const line = /^tags:\s*(.+)$/m.exec(fm); if (line) tags = line[1].split(/[,\s]+/); }
+    }
+    return [...new Set(tags.map(t => t.trim().replace(/^["'#]+|["']+$/g, '').toLowerCase().replace(/\s+/g, '-')).filter(Boolean))];
+  }
+  function titleOf(text, path) {
+    const { fm, body } = splitFm(text);
+    const t = /^title:\s*["']?(.+?)["']?\s*$/m.exec(fm);
+    if (t) return t[1];
+    const h1 = /^#\s+(.+)$/m.exec(body);
+    return h1 ? h1[1].trim() : stem(path);
+  }
+  function words(text) { const m = splitFm(text).body.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu); return m ? m.length : 0; }
+  function headingsOf(text) {
+    const out = [];
+    const lines = norm(text).split('\n');
+    const fmLines = splitFm(norm(text)).fm ? norm(text).slice(0, norm(text).length - splitFm(norm(text)).body.length).split('\n').length - 1 : 0;
+    let fence = false;
+    lines.forEach((line, i) => {
+      if (i < fmLines) return;
+      if (/^\s*(```|~~~)/.test(line)) { fence = !fence; return; }
+      const m = !fence && /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+      if (m) out.push({ level: m[1].length, text: m[2].replace(/[*_`~]|\[\[|\]\]/g, ''), line: i + 1 });
+    });
+    return out;
+  }
+  function hue(tag) { let x = 0; for (const c of tag) x = (x * 31 + c.codePointAt(0)) >>> 0; return 'h' + (x % 6); }
+  const utf8Bytes = s => new Blob([s]).size;
+  function openUrl(url) {
+    if (!/^https?:\/\//i.test(url)) { toast('Only web links open from here.'); return; }
+    const a = h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' });
+    document.body.append(a); a.click(); a.remove();
+  }
+
+  // ---------------------------------------------------------------- state
+  const S = {
+    manifest: null, notes: [], byPath: new Map(), byStem: new Map(),
+    bodies: new Map(), loaded: false, loadFailed: 0,
+    edits: new Map(), db: null, dbState: 'connecting',
+    sel: null, q: '', tags: new Set(), folder: store.get('folder') || '', sort: store.get('sort') || 'm',
+    cap: 200, allTags: false, railHidden: store.get('rail') === 'hidden',
+    live: store.get('mode') !== 'source', showOriginal: false,
+    composing: false, trayOpen: false, discardArm: false,
+  };
+  // Autosave: one write at a time, the latest text always wins.
+  const AS = { path: null, timer: null, saving: null, queued: false, state: 'clean', error: '' };
+  let ED = null;
+
+  function setManifest(m) {
+    S.manifest = m;
+    S.notes = (m.notes || []).map(n => ({ ...n, g: n.g || [], l: n.l || [] }));
+    S.byPath = new Map(S.notes.map(n => [n.p, n]));
+    S.byStem = new Map();
+    for (const n of S.notes)
+      for (const key of [stem(n.p).toLowerCase(), n.p.toLowerCase().replace(/\.md$/, ''), String(n.t).toLowerCase()])
+        if (!S.byStem.has(key)) S.byStem.set(key, n);
+  }
+  const resolve = t => S.byStem.get(String(t).toLowerCase().replace(/\.md$/, '')) || [...S.edits.values()].find(e => stem(e.path).toLowerCase() === String(t).toLowerCase()) || null;
+
+  const editedText = p => { const e = S.edits.get(p); return e ? e.content : S.bodies.get(p); };
+  const bodyOf = p => S.showOriginal && p === S.sel ? S.bodies.get(p) : editedText(p);
+
+  function allNotes() {
+    const list = S.notes.map(n => {
+      const e = S.edits.get(n.p);
+      return e ? { ...n, t: titleOf(e.content, n.p), g: tagsOf(e.content), m: Math.max(n.m, secOf(e.saved_at)) } : n;
+    });
+    for (const e of S.edits.values()) {
+      if (S.byPath.has(e.path)) continue;
+      list.push({ id: e.id, p: e.path, t: titleOf(e.content, e.path), g: tagsOf(e.content), c: '', u: '', m: secOf(e.saved_at), l: [], isNew: true });
+    }
+    return list;
+  }
+  function stateOf(n) {
+    const e = S.edits.get(n.p);
+    if (!e) return null;
+    if (e.status === 'conflict' || (e.base_sha && n.sha && e.base_sha !== n.sha)) return 'conflict';
+    return e.base_sha ? 'edited' : 'new';
+  }
+  const current = () => S.sel && (allNotes().find(n => n.p === S.sel) || null);
+  const canEdit = () => S.dbState === 'on';
+
+  // ---------------------------------------------------------------- db
+  async function connectDb() {
+    let db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch { db = null; }
+    if (!db) { S.dbState = 'off'; renderAll(); return; }
+    S.db = db; S.dbState = 'on';
+    db.collection('edits').limit(1000).onSnapshot(snap => {
+      const before = S.sel && S.edits.get(S.sel);
+      S.edits.clear();
+      for (const d of snap.docs) {
+        const v = d.data();
+        if (v && typeof v.path === 'string' && typeof v.content === 'string') S.edits.set(v.path, { id: d.id, ...v });
+      }
+      // Another tab changed the open note: take its text unless this tab has unsaved typing.
+      const after = S.sel && S.edits.get(S.sel);
+      if (ED && S.sel && AS.state !== 'dirty' && !AS.saving && !S.showOriginal) {
+        const want = norm(after ? after.content : S.bodies.get(S.sel) || '');
+        if ((before && before.content) !== (after && after.content) && want !== ED.getDoc()) ED.setDoc(want);
+      }
+      renderRail(); renderBar(); renderChrome();
+    }, err => { S.dbState = 'off'; S.dbError = err && err.code; renderAll(); });
+    renderAll();
+  }
+
+  async function withRetry(fn) {
+    try { return await fn(); }
+    catch (e) {
+      if (e && e.code === 'unavailable') { await new Promise(r => setTimeout(r, 600 + Math.random() * 900)); return fn(); }
+      throw e;
+    }
+  }
+  function dbMessage(e) {
+    switch (e && e.code) {
+      case 'invalid_argument': return 'This view cannot save edits. Only the page owner can edit notes here.';
+      case 'quota_exceeded': return 'The edit store is full. Ask Claude to sync your edits, which clears them.';
+      case 'resource_exhausted': return 'Too many saves at once. Your text is kept; it saves again in a moment.';
+      case 'too_large': return 'This note is too large to save here (over 250 KB). Edit it on your computer.';
+      case 'revoked': case 'not_granted': case 'capability_disabled': return 'Editing is no longer available in this view.';
+      default: return 'The edit did not save. Check your connection.';
+    }
+  }
+
+  async function saveEdit(path, content) {
+    const note = S.byPath.get(path);
+    const prior = S.edits.get(path);
+    const col = S.db.collection('edits');
+    if (note && S.bodies.has(path) && norm(content) === norm(S.bodies.get(path))) {
+      if (prior) { await withRetry(() => col.doc(prior.id).delete()); S.edits.delete(path); }
+      return 'reverted';
+    }
+    const doc = {
+      path, content: norm(content), title: titleOf(content, path),
+      base_sha: note ? note.sha : null, kind: note ? 'edit' : 'new',
+      saved_at: new Date().toISOString(), status: 'pending',
+    };
+    if (utf8Bytes(JSON.stringify(doc)) > 250 * 1024) throw { code: 'too_large' };
+    const id = note ? note.id : (prior ? prior.id : 'new-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
+    await withRetry(() => col.doc(id).set(doc));
+    S.edits.set(path, { id, ...doc });
+    return 'saved';
+  }
+
+  // ---------------------------------------------------------------- autosave
+  function onEditorChange() {
+    if (!canEdit() || S.showOriginal) return;
+    AS.state = 'dirty'; renderStatus();
+    clearTimeout(AS.timer);
+    AS.timer = setTimeout(flush, 700);
+    clearTimeout(AS.sideTimer);
+    AS.sideTimer = setTimeout(renderSide, 500);
+  }
+
+  async function flush() {
+    clearTimeout(AS.timer); AS.timer = null;
+    if (!ED || !AS.path || AS.state !== 'dirty') return AS.saving;
+    if (AS.saving) { AS.queued = true; return AS.saving; }
+    const path = AS.path, text = ED.getDoc();
+    AS.state = 'saving'; renderStatus();
+    AS.saving = (async () => {
+      try {
+        const r = await saveEdit(path, text);
+        if (AS.path === path && AS.state === 'saving') AS.state = r === 'reverted' ? 'clean' : 'saved';
+        AS.error = '';
+      } catch (err) {
+        AS.error = dbMessage(err);
+        if (AS.path === path) AS.state = 'error';
+        if (err && err.code === 'resource_exhausted') { AS.queued = true; await new Promise(r => setTimeout(r, 2500)); }
+      } finally {
+        AS.saving = null;
+        if (AS.queued) { AS.queued = false; if (AS.path === path && AS.state !== 'clean') { AS.state = 'dirty'; flush(); } }
+      }
+      renderStatus(); renderRail(); renderBar(); renderChrome();
+    })();
+    return AS.saving;
+  }
+  async function flushNow() { if (AS.timer) await flush(); else if (AS.saving) await AS.saving; }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', () => { flush(); });
+
+  async function discardEdit(path) {
+    const e = S.edits.get(path);
+    if (!e) return;
+    try {
+      clearTimeout(AS.timer); AS.timer = null; if (AS.saving) await AS.saving;
+      await withRetry(() => S.db.collection('edits').doc(e.id).delete());
+      S.edits.delete(path);
+      AS.state = 'clean';
+      toast(S.byPath.has(path) ? 'Edit discarded. The note matches your notes folder again.' : 'New note discarded.');
+      if (!S.byPath.has(path)) { S.sel = null; AS.path = null; }
+      S.showOriginal = false;
+      renderAll();
+    } catch (err) { toast(dbMessage(err)); }
+  }
+
+  // ---------------------------------------------------------------- load
+  async function load() {
+    const inline = document.getElementById('inline-data');
+    if (inline) {
+      const data = JSON.parse(inline.textContent);
+      setManifest(data);
+      for (const [p, b] of Object.entries(data.bodies || {})) S.bodies.set(p, b);
+      S.loaded = true; boot(); return;
+    }
+    try {
+      const r = await fetch('data/manifest.json');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setManifest(await r.json());
+    } catch {
+      $('#vault-line').textContent = 'No notes found';
+      $('#main').replaceChildren(h('div', { class: 'empty' }, h('b', { text: 'The notes snapshot did not load' }),
+        h('span', { text: 'This page has no notes data yet. Ask Claude to open your notes in Notes Desk to publish a fresh snapshot.' })));
+      return;
+    }
+    boot();
+    const results = await Promise.allSettled((S.manifest.chunks || []).map(async c => {
+      const r = await fetch(c);
+      if (!r.ok) throw new Error(c);
+      for (const it of await r.json()) S.bodies.set(it.p, it.body);
+    }));
+    S.loadFailed = results.filter(r => r.status === 'rejected').length;
+    S.loaded = true;
+    renderAll();
+  }
+
+  function boot() {
+    const hash = (location.hash || '').slice(1);
+    const fromHash = hash && S.notes.find(n => n.id === hash);
+    // Pick a note even on a phone: the list shows first there, and the
+    // note is ready when the user opens it.
+    if (fromHash) S.sel = fromHash.p;
+    else {
+      const today = todayPath();
+      S.sel = (today && S.byPath.has(today)) ? today : (S.notes.slice().sort((a, b) => b.m - a.m)[0] || {}).p || null;
+    }
+    $('#desk').classList.toggle('reading', !!fromHash);
+    applyRail();
+    renderAll();
+  }
+
+  function todayPath() {
+    const m = S.manifest; if (!m) return null;
+    return `${(m.daily_folder || 'daily').replace(/\/+$/, '')}/${isoToday()}.md`;
+  }
+
+  // ---------------------------------------------------------------- render: bar
+  function renderAll() { renderBar(); renderRail(); renderMain(); renderBanner(); }
+
+  function renderBanner() {
+    const b = $('#banner');
+    let msg = null, bad = false;
+    if (S.loadFailed) { msg = `${S.loadFailed} part${S.loadFailed > 1 ? 's' : ''} of the snapshot did not load, so some notes show no text. Reload the page to try again.`; bad = true; }
+    else if (S.dbState === 'off' && S.manifest) {
+      msg = document.getElementById('inline-data')
+        ? 'Read-only copy. Edit your notes in the published Notes Desk.'
+        : 'Read-only here. Open this page in Claude, signed in as its owner, to edit notes.';
+    }
+    b.hidden = !msg;
+    if (msg) { b.className = 'banner' + (bad ? ' bad' : ''); b.textContent = msg; }
+  }
+
+  function renderBar() {
+    const m = S.manifest;
+    if (m) {
+      const when = m.generated ? new Date(m.generated) : null;
+      $('#vault-line').textContent = `${m.vault} · ${m.count} notes · snapshot ${when ? when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}`;
+    }
+    const n = S.edits.size;
+    const sync = $('#sync-btn');
+    sync.hidden = n === 0;
+    sync.replaceChildren(h('span', { class: 'count', text: String(n) }), n === 1 ? ' edit to sync' : ' edits to sync');
+    sync.setAttribute('aria-expanded', String(S.trayOpen && n > 0));
+    $('#new-btn').hidden = !canEdit();
+    const tp = todayPath();
+    $('#today-btn').hidden = !(tp && (S.byPath.has(tp) || S.edits.has(tp) || canEdit()));
+    renderTray();
+  }
+
+  function renderTray() {
+    const tray = $('#tray');
+    tray.hidden = !(S.trayOpen && S.edits.size);
+    if (tray.hidden) return;
+    const ask = 'Sync my Notes Desk edits';
+    const list = [...S.edits.values()].sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
+    tray.replaceChildren(
+      h('h2', { text: 'Waiting to sync' }),
+      h('div', { text: 'Your changes save here as you type. They reach your notes folder when you ask Claude to sync them. Claude checks each one against the copy on disk first.' }),
+      h('ul', {}, list.map(e => {
+        const n = S.byPath.get(e.path) || { p: e.path, sha: null };
+        const st = stateOf(n);
+        return h('li', {},
+          h('button', { class: 'linkish', type: 'button', text: e.title || stem(e.path), onclick: () => { S.trayOpen = false; select(e.path); } }),
+          h('span', {}, `${e.path} · ${st === 'new' ? 'new note' : st === 'conflict' ? 'conflict' : 'edited'} · ${ago(secOf(e.saved_at))}`));
+      })),
+      h('div', { class: 'ask' }, h('code', { text: ask }),
+        h('button', { class: 'btn', type: 'button', text: 'Copy', onclick: async ev => {
+          try { await navigator.clipboard.writeText(ask); toast('Copied. Paste it to Claude.'); }
+          catch { const c = ev.target.previousSibling; const r = document.createRange(); r.selectNodeContents(c); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Press Ctrl+C to copy.'); }
+        } })));
+  }
+
+  // ---------------------------------------------------------------- render: rail
+  function applyRail() {
+    const narrow = !window.matchMedia('(min-width: 821px)').matches;
+    $('#desk').classList.toggle('rail-hidden', S.railHidden && !narrow);
+    const open = narrow ? !$('#desk').classList.contains('reading') : !S.railHidden;
+    const btn = $('#rail-btn');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.title = open ? 'Hide note list (Ctrl+\\)' : 'Show note list (Ctrl+\\)';
+    btn.setAttribute('aria-label', btn.title);
+  }
+  function toggleRail() {
+    if (!window.matchMedia('(min-width: 821px)').matches) {
+      const desk = $('#desk');
+      if (desk.classList.contains('reading')) desk.classList.remove('reading');
+      else if (S.sel) desk.classList.add('reading');
+    } else {
+      S.railHidden = !S.railHidden;
+      store.set('rail', S.railHidden ? 'hidden' : 'shown');
+    }
+    applyRail();
+  }
+
+  function filtered() {
+    const q = S.q.trim().toLowerCase();
+    const list = allNotes().filter(n => {
+      if (S.folder) { const f = folderOf(n.p); if (!(f === S.folder || f.startsWith(S.folder + '/'))) return false; }
+      for (const t of S.tags) if (!n.g.includes(t)) return false;
+      n._hit = null;
+      if (!q) return true;
+      if (String(n.t).toLowerCase().includes(q) || n.p.toLowerCase().includes(q) || n.g.some(t => t.includes(q))) return true;
+      const b = editedText(n.p);
+      const at = b ? b.toLowerCase().indexOf(q) : -1;
+      if (at < 0) return false;
+      n._hit = at; return true;
+    });
+    const by = { m: (a, b) => b.m - a.m, t: (a, b) => String(a.t).localeCompare(String(b.t)), p: (a, b) => a.p.localeCompare(b.p) }[S.sort] || ((a, b) => b.m - a.m);
+    return list.sort(by);
+  }
+
+  function snippet(n, q) {
+    const b = editedText(n.p) || '';
+    const start = Math.max(0, n._hit - 40);
+    const raw = b.slice(start, n._hit + q.length + 80).replace(/\s+/g, ' ');
+    const i = raw.toLowerCase().indexOf(q.toLowerCase());
+    const el = h('div', { class: 's' }, start ? '…' : '');
+    if (i < 0) { el.append(raw); return el; }
+    el.append(raw.slice(0, i), h('mark', { text: raw.slice(i, i + q.length) }), raw.slice(i + q.length));
+    return el;
+  }
+
+  function toggleTag(t, only) {
+    if (only) S.tags = new Set([t]);
+    else S.tags.has(t) ? S.tags.delete(t) : S.tags.add(t);
+    S.cap = 200;
+    if (S.railHidden && window.matchMedia('(min-width: 821px)').matches) { S.railHidden = false; store.set('rail', 'shown'); applyRail(); }
+    renderRail();
+  }
+  const tagChip = (t, extra) => h('button', { class: 'chip ' + hue(t), type: 'button', 'aria-pressed': String(S.tags.has(t)),
+    title: S.tags.has(t) ? `Stop filtering by #${t}` : `Show notes tagged #${t}`, onclick: ev => { ev.stopPropagation(); toggleTag(t); } }, '#' + t, extra || null);
+
+  function renderRail() {
+    if (!S.manifest) return;
+    const notes = allNotes();
+    const sel = $('#folder');
+    const folders = [...new Set(notes.flatMap(n => { const parts = folderOf(n.p).split('/').filter(Boolean); return parts.map((_, i) => parts.slice(0, i + 1).join('/')); }))].sort();
+    if (sel.options.length !== folders.length + 1 || [...sel.options].slice(1).some((o, i) => o.value !== folders[i])) {
+      sel.replaceChildren(h('option', { value: '', text: 'All folders' }), ...folders.map(f => h('option', { value: f, text: f })));
+    }
+    if (S.folder && !folders.includes(S.folder)) S.folder = '';
+    sel.value = S.folder;
+    $('#sort').value = S.sort;
+
+    const counts = new Map();
+    for (const n of notes) for (const t of n.g) counts.set(t, (counts.get(t) || 0) + 1);
+    const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const shown = S.allTags ? ranked : ranked.slice(0, 12);
+    for (const t of S.tags) if (!shown.some(([x]) => x === t)) shown.push([t, counts.get(t) || 0]);
+    const bar = $('#tagbar');
+    bar.replaceChildren(...shown.map(([t, c]) => tagChip(t, h('span', { class: 'count', text: String(c) }))));
+    if (ranked.length > 12) bar.append(h('button', { class: 'linkish', type: 'button', text: S.allTags ? 'Fewer tags' : `All ${ranked.length} tags`, onclick: () => { S.allTags = !S.allTags; renderRail(); } }));
+
+    const list = filtered();
+    const q = S.q.trim();
+    const filtering = q || S.tags.size || S.folder;
+    $('#summary').replaceChildren(
+      `${list.length} of ${notes.length} notes`,
+      !S.loaded && q ? ' · searching titles until note text loads' : '',
+      filtering ? ' · ' : '',
+      filtering ? h('button', { class: 'linkish', type: 'button', text: 'Clear filters', onclick: () => { S.q = ''; $('#q').value = ''; S.tags.clear(); S.folder = ''; store.set('folder', ''); renderRail(); } }) : '');
+
+    const box = $('#list');
+    const items = list.slice(0, S.cap).map(n => {
+      const st = stateOf(n);
+      return h('div', { class: 'item', 'aria-current': String(n.p === S.sel) },
+        h('button', { class: 'item-open', type: 'button', onclick: () => select(n.p) },
+          h('div', { class: 't' }, h('span', { text: n.t }), st ? h('em', { class: 'pill ' + st, text: st }) : null),
+          h('div', { class: 'm' }, h('span', { text: folderOf(n.p) || 'top level' }), h('span', { text: ago(n.m) })),
+          q && n._hit != null ? snippet(n, q) : null),
+        n.g.length ? h('div', { class: 'chips' }, n.g.map(t => tagChip(t))) : null);
+    });
+    box.replaceChildren(...items);
+    if (!list.length) box.append(h('div', { class: 'empty', style: 'margin-top:32px;padding:0 16px' }, h('b', { text: 'No notes match' }), h('span', { text: 'Try fewer tags, another folder, or a shorter search.' })));
+    if (list.length > S.cap) box.append(h('button', { class: 'btn more', type: 'button', text: `Show ${Math.min(200, list.length - S.cap)} more`, onclick: () => { S.cap += 200; renderRail(); } }));
+  }
+
+  // ---------------------------------------------------------------- render: main
+  const TOOLS = [
+    ['h1', 'H1', 'Heading 1', 'mono'], ['h2', 'H2', 'Heading 2', 'mono'], ['h3', 'H3', 'Heading 3', 'mono'], null,
+    ['bold', 'B', 'Bold (Ctrl+B)', 'b'], ['italic', 'I', 'Italic (Ctrl+I)', 'i'], ['strike', 'S', 'Strikethrough (Ctrl+Shift+X)', 's'], ['code', '<>', 'Inline code', 'mono'], null,
+    ['bullet', 'list', 'Bulleted list'], ['number', 'olist', 'Numbered list'], ['task', 'task', 'Task (Ctrl+Enter)'], ['quote', 'quote', 'Quote'], null,
+    ['link', 'link', 'Link (Ctrl+K)'], ['wikilink', '[[ ]]', 'Link to a note', 'mono'], ['rule', 'rule', 'Divider'],
+  ];
+  const ICONS = {
+    list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+    olist: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 4.5h1.5V9M4 9h3M4 14.5c.4-.6 2.6-.8 2.6.6 0 1-2.6 2-2.6 3.4h2.8"/>',
+    task: '<rect x="3.5" y="4.5" width="15" height="15" rx="3"/><path d="m7.5 12 3 3 5.5-6"/>',
+    quote: '<path d="M5 7h5v5c0 3-2 5-4 5M14 7h5v5c0 3-2 5-4 5"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    rule: '<path d="M3 12h18"/>',
+  };
+  function toolbar() {
+    const bar = h('div', { class: 'toolbar', role: 'toolbar', 'aria-label': 'Formatting' });
+    for (const t of TOOLS) {
+      if (!t) { bar.append(h('span', { class: 'sep', 'aria-hidden': 'true' })); continue; }
+      const [cmd, label, title, cls] = t;
+      const b = h('button', { class: 'tb ' + (cls || ''), type: 'button', title, 'aria-label': title,
+        onmousedown: ev => ev.preventDefault(), onclick: () => ED && ED.run(cmd) });
+      if (ICONS[label]) b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[label]}</svg>`;
+      else b.textContent = label;
+      bar.append(b);
+    }
+    bar.append(h('div', { class: 'seg', role: 'group', 'aria-label': 'Editor view' },
+      ['live', 'source'].map(k => h('button', { type: 'button', 'aria-pressed': String((k === 'live') === S.live),
+        title: k === 'live' ? 'Hide markdown marks while you write' : 'Show every markdown mark',
+        text: k === 'live' ? 'Live' : 'Source',
+        onclick: () => { S.live = k === 'live'; store.set('mode', S.live ? 'live' : 'source'); ED && ED.setLive(S.live);
+          bar.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String((b.textContent === 'Live') === S.live))); } }))));
+    return bar;
+  }
+
+  function ensureEditor() {
+    if (ED) return ED;
+    if (!window.NotesEditor) return null;
+    ED = window.NotesEditor.createEditor({
+      parent: document.createElement('div'),
+      doc: '', readOnly: true, live: S.live,
+      onChange: onEditorChange,
+      onOpenLink: openUrl,
+      onOpenWiki: target => { const n = resolve(target); if (n) select(n.p || n.path); else toast(`"${target}" is not in this snapshot`); },
+      onTag: t => toggleTag(t, true),
+      resolveWiki: target => resolve(target),
+    });
+    return ED;
+  }
+
+  function renderMain() {
+    const main = $('#main');
+    if (S.composing) { main.replaceChildren(composeView()); return; }
+    const n = current();
+    if (!n) {
+      AS.path = null;
+      main.replaceChildren(h('div', { class: 'empty' }, h('b', { text: S.manifest ? 'Pick a note' : 'Loading notes' }),
+        h('span', { text: S.manifest ? `${S.manifest.count} notes from ${S.manifest.vault}. Search or filter by tag on the left.` : '' })));
+      return;
+    }
+    const text = bodyOf(n.p);
+    const page = h('article', { class: 'page' },
+      h('div', { class: 'head' },
+        h('div', { class: 'head-row' }, h('div', { class: 'crumb', id: 'crumb' }), h('span', { id: 'actions' })),
+        h('div', { class: 'meta', id: 'meta' }),
+        h('div', { class: 'chips', id: 'note-tags' }),
+        h('div', { id: 'notice' })));
+    const editable = canEdit() && !S.showOriginal && text != null;
+    if (editable) page.append(toolbar());
+    const host = h('div', { class: 'ed' });
+    page.append(host);
+    const side = h('aside', { class: 'side', id: 'side', 'aria-label': 'About this note' });
+    main.replaceChildren(h('div', { class: 'sheet' }, page, side));
+
+    const ed = ensureEditor();
+    if (text == null) host.append(h('div', { class: 'loading', text: S.loaded ? 'This note\'s text did not load.' : 'Loading note text…' }));
+    else if (!ed) host.append(h('pre', { class: 'loading', style: 'white-space:pre-wrap', text }));
+    else {
+      host.append(ed.view.dom);
+      const want = norm(text);
+      if (AS.path !== n.p || ed.getDoc() !== want || S._lastRO !== !editable) {
+        ed.setDoc(want, { readOnly: !editable });
+        S._lastRO = !editable;
+      }
+      AS.path = n.p;
+      if (AS.state !== 'error') AS.state = S.edits.has(n.p) ? 'saved' : 'clean';
+    }
+    renderChrome();
+  }
+
+  function renderStatus() {
+    const el = $('#status');
+    if (!el) return;
+    const e = S.sel && S.edits.get(S.sel);
+    const labels = {
+      clean: 'Matches your notes folder',
+      dirty: 'Typing…',
+      saving: 'Saving…',
+      saved: e && !e.base_sha ? 'New note · saved, waiting to sync' : e ? `Saved ${ago(secOf(e.saved_at))} · waiting to sync` : 'Saved · waiting to sync',
+      error: 'Not saved. ' + AS.error,
+    };
+    const ro = !canEdit();
+    el.className = 'status ' + (ro ? '' : AS.state);
+    el.textContent = ro ? 'Read-only' : S.showOriginal ? 'Showing the folder copy' : labels[AS.state];
+  }
+
+  // Header, notice and side panel. Never touches the editor, so it is safe
+  // to call on every store update while the user is typing.
+  function renderChrome() {
+    const n = current();
+    if (!n || !$('#crumb')) return;
+    const text = bodyOf(n.p);
+    const st = stateOf(n);
+    const e = S.edits.get(n.p);
+    $('#crumb').textContent = n.p;
+    const wc = text != null ? words(text) : 0;
+    // Edit actions sit in the meta line, not a banner, so the text never
+    // jumps down when the first keystroke saves.
+    // They are always laid out and only shown once there is an edit.
+    const actions = [];
+    if (canEdit() && !S.showOriginal && st !== 'conflict') {
+      const on = st === 'edited' || st === 'new';
+      const wrap = h('span', { class: 'actions', style: on ? null : 'visibility:hidden', 'aria-hidden': on ? null : 'true' },
+        st === 'new' ? null : h('button', { class: 'linkish', type: 'button', text: 'Compare with folder copy', tabindex: on ? null : '-1', onclick: () => toggleOriginal() }),
+        discardButton(n.p, st === 'new' ? 'Discard new note' : 'Discard edit', true));
+      if (!on) wrap.lastChild.tabIndex = -1;
+      actions.push(wrap);
+    }
+    $('#meta').replaceChildren(
+      h('span', { id: 'status', class: 'status' }),
+      n.m ? h('span', { title: fmtDate(n.m), text: (n.isNew ? 'Created ' : 'Changed ') + ago(n.m) }) : '',
+      text != null ? h('span', { text: `${wc.toLocaleString()} words · ${Math.max(1, Math.round(wc / 230))} min read` }) : '');
+    $('#actions').replaceChildren(...actions);
+    renderStatus();
+    const tags = text != null ? tagsOf(text) : n.g;
+    $('#note-tags').replaceChildren(...tags.map(t => tagChip(t)));
+    $('#note-tags').hidden = !tags.length;
+
+    const notice = $('#notice');
+    notice.replaceChildren();
+    if (st === 'conflict') {
+      notice.append(h('div', { class: 'notice conflict' },
+        h('span', { text: e.reason ? `Sync held this edit back: ${e.reason}.` : 'This note changed in your notes folder after the snapshot. Keep writing; when you sync, Claude shows both copies and asks which to keep.' }),
+        h('button', { class: 'btn', type: 'button', text: S.showOriginal ? 'Back to my edit' : 'Show folder copy', onclick: () => toggleOriginal() }),
+        canEdit() ? discardButton(n.p, 'Discard my edit') : null));
+    } else if (S.showOriginal) {
+      notice.append(h('div', { class: 'notice info' }, h('span', { text: 'This is the copy from your notes folder. It is read-only.' }),
+        h('button', { class: 'btn', type: 'button', text: 'Back to my edit', onclick: () => toggleOriginal() })));
+    }
+    renderSide();
+  }
+
+  function renderSide() {
+    const side = $('#side');
+    const n = current();
+    if (!side || !n) return;
+    const text = ED && AS.path === n.p ? ED.getDoc() : bodyOf(n.p) || '';
+    const heads = headingsOf(text);
+    const keys = new Set([stem(n.p).toLowerCase(), n.p.toLowerCase().replace(/\.md$/, ''), String(n.t).toLowerCase()]);
+    const back = S.notes.filter(o => o.p !== n.p && o.l.some(l => keys.has(l.toLowerCase()) || keys.has(stem(l).toLowerCase())));
+    const outs = [...new Set([...text.matchAll(/\[\[([^\]|#\n]+)/g)].map(m => m[1].trim()))].map(l => ({ l, note: resolve(l) }));
+    const nav = (label, fn) => h('button', { type: 'button', text: label, onclick: fn });
+    side.replaceChildren(
+      h('section', {}, h('h2', { text: 'Outline' }), heads.length
+        ? h('ul', {}, heads.map(hd => h('li', { class: 'lvl' + hd.level }, nav(hd.text, () => ED && ED.scrollToLine(hd.line)))))
+        : h('div', { class: 'none', text: 'No headings' })),
+      h('section', {}, h('h2', { text: `Linked from · ${back.length}` }), back.length
+        ? h('ul', {}, back.map(o => h('li', {}, nav(o.t, () => select(o.p)))))
+        : h('div', { class: 'none', text: 'No notes link here' })),
+      h('section', {}, h('h2', { text: `Links to · ${outs.length}` }), outs.length
+        ? h('ul', {}, outs.map(o => h('li', {}, o.note ? nav(o.note.t || stem(o.note.path), () => select(o.note.p || o.note.path)) : h('span', { class: 'none', text: o.l + ' (not in snapshot)' }))))
+        : h('div', { class: 'none', text: 'Type [[ to link a note' })));
+  }
+
+  async function toggleOriginal() {
+    await flushNow();
+    S.showOriginal = !S.showOriginal;
+    renderMain();
+  }
+
+  function discardButton(path, label, inline) {
+    return h('button', { class: inline ? 'linkish danger' : 'btn danger', type: 'button', text: S.discardArm === path ? 'Click again to discard' : label,
+      onclick: () => {
+        if (S.discardArm === path) { S.discardArm = false; discardEdit(path); return; }
+        S.discardArm = path; renderChrome();
+        setTimeout(() => { if (S.discardArm === path) { S.discardArm = false; renderChrome(); } }, 4000);
+      } });
+  }
+
+  // ---------------------------------------------------------------- new note
+  async function createNote(path, content) {
+    try {
+      await saveEdit(path, content);
+      S.composing = false;
+      await select(path);
+      if (ED) { const end = ED.getDoc().length; ED.view.dispatch({ selection: { anchor: end } }); ED.focus(); }
+    } catch (err) { toast(dbMessage(err)); }
+  }
+
+  function composeView() {
+    const daily = (S.manifest && S.manifest.daily_folder) || 'daily';
+    const folders = [...new Set(['', daily, ...S.notes.map(n => folderOf(n.p))])].sort();
+    const err = h('div', { class: 'err', role: 'alert' });
+    const folder = h('select', { id: 'new-folder' }, folders.map(f => h('option', { value: f, text: f || 'Top level' })));
+    folder.value = S.folder && folders.includes(S.folder) ? S.folder : '';
+    const name = h('input', { id: 'new-name', type: 'text', placeholder: 'Meeting notes with the finance team', autocomplete: 'off' });
+    const form = h('form', { class: 'panel', onsubmit: ev => {
+      ev.preventDefault();
+      const title = name.value.trim();
+      if (!title) { err.textContent = 'Give the note a name.'; name.focus(); return; }
+      const file = title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
+      if (!file) { err.textContent = 'Use letters or numbers in the name.'; return; }
+      const path = (folder.value ? folder.value + '/' : '') + file + '.md';
+      if (S.byPath.has(path) || S.edits.has(path)) { err.textContent = 'A note with this name already exists in that folder.'; return; }
+      const iso = isoToday();
+      createNote(path, `---\ntitle: ${title}\ntags: []\ncreated: ${iso}\nupdated: ${iso}\n---\n\n# ${title}\n\n`);
+    } },
+      h('h2', { text: 'New note' }),
+      h('label', { for: 'new-folder' }, 'Folder', folder),
+      h('label', { for: 'new-name' }, 'Name', name),
+      err,
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'submit', text: 'Create note' }),
+        h('button', { class: 'btn ghost', type: 'button', text: 'Cancel', onclick: () => { S.composing = false; renderMain(); } })),
+      h('div', { class: 'hint', text: 'The note saves here as you type, and is created in your notes folder the next time you ask Claude to sync.' }));
+    setTimeout(() => name.focus(), 0);
+    return form;
+  }
+
+  // ---------------------------------------------------------------- navigation
+  async function select(path) {
+    if (path === S.sel && !S.composing) { $('#desk').classList.add('reading'); applyRail(); return; }
+    await flushNow();
+    S.composing = false; S.showOriginal = false; S.discardArm = false;
+    S.sel = path; AS.state = 'clean'; AS.error = '';
+    $('#desk').classList.add('reading');
+    applyRail();
+    const n = allNotes().find(x => x.p === path);
+    try { if (n && n.id) history.replaceState(null, '', '#' + n.id); } catch { /* history blocked in some frames */ }
+    renderAll();
+    $('#main').scrollTop = 0;
+  }
+
+  $('#q').addEventListener('input', ev => { S.q = ev.target.value; S.cap = 200; renderRail(); });
+  $('#folder').addEventListener('change', ev => { S.folder = ev.target.value; store.set('folder', S.folder); S.cap = 200; renderRail(); });
+  $('#sort').addEventListener('change', ev => { S.sort = ev.target.value; store.set('sort', S.sort); renderRail(); });
+  $('#rail-btn').addEventListener('click', toggleRail);
+  $('#sync-btn').addEventListener('click', async () => { await flushNow(); S.trayOpen = !S.trayOpen; renderBar(); });
+  $('#new-btn').addEventListener('click', async () => {
+    await flushNow();
+    S.composing = true; $('#desk').classList.add('reading'); applyRail(); renderMain();
+  });
+  $('#today-btn').addEventListener('click', () => {
+    const p = todayPath();
+    if (S.byPath.has(p) || S.edits.has(p)) { select(p); return; }
+    if (!canEdit()) return;
+    const d = isoToday();
+    createNote(p, `---\ndate: ${d}\ntags: [daily]\n---\n\n# ${d}\n\n## Tasks\n\n- [ ] \n\n## Notes\n\n`);
+  });
+  window.matchMedia('(min-width: 821px)').addEventListener('change', applyRail);
+  document.addEventListener('keydown', ev => {
+    const ae = document.activeElement;
+    const typing = ae && (/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) || ae.isContentEditable);
+    if (ev.key === '/' && !typing) { ev.preventDefault(); if (S.railHidden) toggleRail(); $('#q').focus(); }
+    if (ev.key === '\\' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); toggleRail(); }
+    if (ev.key === 'Escape' && S.trayOpen) { S.trayOpen = false; renderBar(); }
+  });
+  document.addEventListener('click', ev => {
+    if (S.trayOpen && !ev.target.closest('#tray') && !ev.target.closest('#sync-btn')) { S.trayOpen = false; renderBar(); }
+  });
+  setInterval(() => { if (AS.state === 'saved') renderStatus(); }, 30000);
+
+  load();
+  connectDb();
+})();
+</script>

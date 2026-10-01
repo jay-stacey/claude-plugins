@@ -17,6 +17,7 @@ This plugin helps you start each day with a clear picture of what needs your att
 - **💬 Messaging Review**: Slack integration (Teams coming soon) with mention prioritization
 - **🎯 Project Management**: Jira and Linear integration for ticket analysis
 - **📝 Markdown Notes**: read, write, search, and section-aware append in a folder you configure
+- **📖 Notes Desk**: read, search, and edit your notes in a private claude.ai artifact, then sync the edits back to disk
 - **⏰ Smart Timeboxing**: Match todos to optimal time slots using energy patterns
 - **🎭 Configurable Personality**: Professional, friendly, casual, or custom presets
 - **🔒 Safety First**: Read-only operations, explicit confirmation before writes
@@ -131,6 +132,29 @@ Intelligent schedule analysis and timeboxing:
 /timebox --strategic-only
 /timebox --analyze-only
 ```
+
+### `/notes-viewer` - Notes Desk
+
+Publishes your notes folder as Notes Desk, a private claude.ai artifact. It has
+a collapsible note list with search, folder filters and tag chips, and a
+live-preview editor: notes read like rich text, markdown marks show only on the
+line you are editing, and changes save as you type. Wikilinks, backlinks, an
+outline, tables and task boxes work in place.
+
+Edits wait in the artifact until you ask Claude to sync them. Claude then checks
+each one against the file on disk, shows you the changes, and writes only what
+you approve. The editor changes only the characters you type, so diffs stay
+clean.
+
+```bash
+/notes-viewer                         # 200 most recent notes
+/notes-viewer my project notes        # scope it in plain words
+```
+
+Then, after editing in the page: "sync my Notes Desk edits".
+
+Notes that look like they hold a secret (keys, tokens, passwords, card numbers)
+are held back from the snapshot. Needs Claude Code signed in to claude.ai.
 
 ## Configuration
 
@@ -282,7 +306,8 @@ executive-assistant/
 │   ├── linear-reviewer/         # Linear issues
 │   ├── task-consolidator/       # Notes integration
 │   ├── initializer/             # Setup wizard
-│   └── notes/                  # Markdown notes
+│   ├── notes/                  # Markdown notes
+│   └── notes-viewer/           # Notes Desk artifact and edit sync
 │       ├── interface.md
 │       └── markdown/
 ├── commands/
@@ -399,6 +424,12 @@ If you were using the previous `daily-workflow` plugin:
 3. Your previous `.config.json` settings should be migrated to `.config.local.json`
 
 ## Version History
+
+**v7.3.0** - October 2026
+- Notes Desk has an always-on live-preview editor with autosave, a collapsible
+  note list, and tag chips
+- New `notes-viewer` skill: Notes Desk, a private claude.ai artifact to read,
+  search, and edit notes, with a conflict-checked sync of edits back to disk
 
 **v7.2.0** - September 2026
 - Notes: frontmatter tagging plus a file-based search index (no database) for

@@ -1,0 +1,16 @@
+{
+  "name": "notes-desk-editor",
+  "private": true,
+  "description": "Live-preview markdown editor bundled into the Notes Desk page. Run `npm run build` after changing src/.",
+  "scripts": {
+    "build": "esbuild src/editor.js --bundle --minify --format=iife --global-name=NotesEditor --target=es2020 --legal-comments=eof --outfile=../assets/editor.bundle.js \"--banner:js=/* Notes Desk editor. Bundles CodeMirror 6 and Lezer, MIT License, Copyright (C) 2018-2021 by Marijn Haverbeke and others. */\""
+  },
+  "devDependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.4",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.1",
+    "esbuild": "0.25.9"
+  }
+}

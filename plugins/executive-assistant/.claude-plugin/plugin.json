@@ -1,7 +1,7 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "7.2.0",
+  "version": "7.3.0",
   "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
   "author": {
     "name": "Jay Stacey"

@@ -26,7 +26,7 @@ Or run `/init` for a guided walkthrough.
 
 | Plugin | Version | What it does |
 |---|---|---|
-| [executive-assistant](plugins/executive-assistant) | 7.2.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+| [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
 
 ### executive-assistant
 
