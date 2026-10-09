@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.4.0"
+    "version": "2.6.0"
   },
   "plugins": [
     {
@@ -35,6 +35,21 @@
         "tts",
         "kokoro",
         "accessibility"
+      ],
+      "license": "MIT"
+    },
+    {
+      "name": "session-manager",
+      "source": "./plugins/session-manager",
+      "version": "1.1.0",
+      "description": "Reviews your open Claude sessions and tells you which are stale, which wait on you, and which are done but not archived. Type /manager for a to-do list with one next step per session, then bulk archive stale ones with their worktrees.",
+      "category": "productivity",
+      "keywords": [
+        "sessions",
+        "productivity",
+        "triage",
+        "advisor",
+        "archive"
       ],
       "license": "MIT"
     }
