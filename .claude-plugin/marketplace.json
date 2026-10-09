@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.3.0"
+    "version": "2.4.0"
   },
   "plugins": [
     {
@@ -21,6 +21,20 @@
         "calendar",
         "daily-planning",
         "notes"
+      ],
+      "license": "MIT"
+    },
+    {
+      "name": "voice-replies",
+      "source": "./plugins/voice-replies",
+      "version": "1.0.0",
+      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU and a voice picker above the prompt.",
+      "category": "productivity",
+      "keywords": [
+        "voice",
+        "tts",
+        "kokoro",
+        "accessibility"
       ],
       "license": "MIT"
     }

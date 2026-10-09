@@ -27,6 +27,7 @@ Or run `/init` for a guided walkthrough.
 | Plugin | Version | What it does |
 |---|---|---|
 | [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+| [voice-replies](plugins/voice-replies) | 1.0.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU, with a voice and speed picker above the prompt. |
 
 ### executive-assistant
 
@@ -38,6 +39,15 @@ and a file-based search index (no database) for tag, text, and backlink recall.
 Requires the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
 server for Gmail and Calendar; Slack, Atlassian, and Linear MCP servers are
 optional and enabled per feature in config.
+
+### voice-replies
+
+Command: `/voice` (on, off, stop, voice, speed, voices, test).
+
+Needs a one-time Kokoro setup on Windows before install (about 3 GB):
+`powershell -ExecutionPolicy Bypass -File pluginsoice-replies\server\setup.ps1`.
+Without it, replies use the built-in Windows voice. See the
+[plugin README](plugins/voice-replies/README.md).
 
 ## Repository layout
 
@@ -56,6 +66,8 @@ silently break components, and how to add a second plugin.
 ```bash
 claude plugin validate .
 claude plugin validate ./plugins/executive-assistant
+claude plugin validate ./plugins/voice-replies
+claude plugin test ./plugins/voice-replies
 python scripts/check-skills.py
 ```
 
