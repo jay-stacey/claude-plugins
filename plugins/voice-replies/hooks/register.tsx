@@ -128,50 +128,53 @@ export const register: Register = on => {
     return result
   })
 
+  // The voice controls are a small panel of their own at the foot of the band above the
+  // prompt, under anything other mods draw there (session-brief). The desktop app does not
+  // draw a mod's tree in the prompt footer, so the band is the one place that works on both.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
-
+    const above = await next(e)
+    if (e.props.hasSurvey) return above
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
     const Select = 'Select' in ui ? ui.Select : undefined
+    if (Select === undefined) return above
+
     const enabled = await read($, isOn)
     const now = await read($, status)
     const chosen = await read($, voice)
     const pace = await read($, speed)
     const via = await read($, engine)
-    const state = !enabled ? 'off' : now === 'writing' ? 'preparing' : now === 'speaking' ? 'speaking' : 'on'
-    const viaText = via === 'kokoro' ? 'Kokoro GPU' : via === 'windows' ? 'Windows voice' : 'starting Kokoro'
+    // Say the engine only when it is not the normal one (Kokoro on the GPU).
+    const note =
+      now === 'writing' ? 'preparing' : now === 'speaking' ? 'speaking' : via === 'windows' ? 'Windows voice' : via === 'starting' ? 'starting' : ''
 
     return (
-      <Box flexDirection="row" gap={1} alignItems="center">
-        <Text dimColor>
-          Voice replies: {state} ({viaText})
-        </Text>
-        <Button
-          key="toggle"
-          label={enabled ? 'Turn off' : 'Turn on'}
-          dimColor
-          onPress={() => setOn($, !enabled)}
-        />
-        {now !== 'idle' && <Button key="stop" label="Stop" onPress={() => stopSpeaking($)} />}
-        {enabled && Select !== undefined && (
+      <Box flexDirection="column" rowGap={1}>
+        {above}
+        <Box flexDirection="row" gap={1} alignItems="center" borderStyle="round" borderDimColor paddingX={1}>
+          <Text dimColor>Voice replies</Text>
+          <Box flexGrow={1} />
           <Select
             key="voice"
-            label="Voice"
-            value={chosen}
-            options={VOICES.map(v => ({ value: v, label: voiceLabel(v) }))}
-            onSelect={(value: string) => void setVoice($, value)}
+            label={note === '' ? 'Voice' : `Voice (${note})`}
+            value={enabled ? chosen : OFF}
+            options={[
+              { value: OFF, label: 'Off' },
+              ...VOICES.map(v => ({ value: v, label: voiceLabel(v) })),
+            ]}
+            onSelect={(value: string) => void pickVoice($, value)}
           />
-        )}
-        {enabled && Select !== undefined && (
-          <Select
-            key="speed"
-            label="Speed"
-            value={pace}
-            options={SPEEDS.map(s => ({ value: s, label: `${s}x` }))}
-            onSelect={(value: string) => void setSpeed($, value)}
-          />
-        )}
+          {enabled && (
+            <Select
+              key="speed"
+              label="Speed"
+              value={pace}
+              options={SPEEDS.map(s => ({ value: s, label: `${s}x` }))}
+              onSelect={(value: string) => void setSpeed($, value)}
+            />
+          )}
+          {now !== 'idle' && <Button key="stop" label="Stop" dimColor onPress={() => stopSpeaking($)} />}
+        </Box>
       </Box>
     )
   })
@@ -181,6 +184,18 @@ async function setOn($: EngineInterface, value: boolean): Promise<void> {
   await update($, isOn, () => value)
   await $.store.set('isOn', value)
   if (!value) await stopSpeaking($)
+}
+
+// The voice dropdown's first option turns voice replies off; any voice turns them on.
+const OFF = 'off'
+
+async function pickVoice($: EngineInterface, value: string): Promise<void> {
+  if (value === OFF) {
+    await setOn($, false)
+    return
+  }
+  await setVoice($, value)
+  if (!(await read($, isOn))) await setOn($, true)
 }
 
 async function setVoice($: EngineInterface, value: string): Promise<void> {

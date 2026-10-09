@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.6.0"
+    "version": "2.7.0"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
     {
       "name": "voice-replies",
       "source": "./plugins/voice-replies",
-      "version": "1.0.0",
-      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU and a voice picker above the prompt.",
+      "version": "1.1.0",
+      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU and a compact voice panel above the prompt.",
       "category": "productivity",
       "keywords": [
         "voice",
@@ -50,6 +50,20 @@
         "triage",
         "advisor",
         "archive"
+      ],
+      "license": "MIT"
+    },
+    {
+      "name": "session-brief",
+      "source": "./plugins/session-brief",
+      "version": "1.0.0",
+      "description": "Shows a brief above the prompt: how the session started, where it left off, next steps and what you should know. Renames the session to say what the work is.",
+      "category": "productivity",
+      "keywords": [
+        "sessions",
+        "summary",
+        "title",
+        "productivity"
       ],
       "license": "MIT"
     }

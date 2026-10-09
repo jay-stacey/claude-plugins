@@ -24,7 +24,7 @@ The plugin starts the server hidden in the background when it first needs it. On
 
 ## Use
 
-A row above the prompt shows whether voice replies are on and which engine speaks, with a **Turn off** / **Turn on** button, a **Stop** button while speaking, and **Voice** and **Speed** pickers.
+A small **Voice replies** panel sits just above the prompt, under any other mod's panel (such as session-brief). It has a **Voice** dropdown and a **Speed** dropdown. Pick **Off** in the Voice dropdown to turn voice replies off; pick any voice to turn them back on. The dropdown's label says when it is preparing or speaking, or when the Windows voice stands in for Kokoro. A **Stop** button shows while it speaks.
 
 | Command | Does |
 | --- | --- |
@@ -46,7 +46,7 @@ Each spoken reply makes one Haiku call: about 200 tokens of rules plus the reply
 
 | Piece | Job |
 | --- | --- |
-| `hooks/register.tsx` | The hooks module: listens for the end of each turn, writes the speech script, draws the row above the prompt, and handles `/voice` |
+| `hooks/register.tsx` | The hooks module: listens for the end of each turn, writes the speech script, draws the voice panel above the prompt, and handles `/voice` |
 | `server/server.py` | A local HTTP server on `127.0.0.1:47861` that keeps Kokoro loaded on the GPU. `POST /speak` returns at once with a job id, `GET /status?id=N` reports progress, `POST /stop` stops playback |
 | `server/setup.ps1` | Creates the Python environment, installs PyTorch and Kokoro, and copies `server.py` into place. Run it again after updating the plugin |
 
