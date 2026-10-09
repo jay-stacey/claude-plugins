@@ -1,0 +1,11 @@
+{
+  "name": "session-manager",
+  "displayName": "Session Manager",
+  "version": "1.0.0",
+  "description": "Reviews your open Claude sessions and tells you which are stale, which wait on you, and which are done but not archived. Type /manager for a to-do list with one next step per session.",
+  "author": { "name": "Jay Stacey", "url": "https://github.com/jay-stacey" },
+  "homepage": "https://github.com/jay-stacey/claude-plugins",
+  "repository": "https://github.com/jay-stacey/claude-plugins",
+  "license": "MIT",
+  "keywords": ["sessions", "productivity", "triage", "advisor", "archive"]
+}
