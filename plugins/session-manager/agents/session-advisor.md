@@ -56,7 +56,15 @@ Format each session like this. The link target is the `sessionId`, so the caller
   Do: <one action> (~N min)
 ```
 
-Use the exact `sessionId` from the list. Never write a line that starts with `Next:`. The caller writes the only `Next:` line. End with a one-line count: "N sessions read, N sorted by title only."
+Use the exact `sessionId` from the list. Never write a line that starts with `Next:`. The caller writes the only `Next:` line.
+
+After the sections, add a **Bulk archive list**. The caller may give `bulk-days: N` (default 14). List every session that is in Stale, idle for N days or more, has no open PR (`prState` is not `OPEN`), and is not running. Do not cap this list at 5. Sort by `lastActivityAt`, oldest first. Idle days are whole days rounded down. Test "N days or more" with the exact timestamp. A MERGED or CLOSED session is Done, so it never goes on this list. Write one line each, with no other text:
+
+```
+sessionId | title | idle days
+```
+
+If no session qualifies, write "Bulk archive list: none". End with a one-line count: "N sessions listed, N with messages read, N sorted by metadata only."
 
 ## Safety rules
 

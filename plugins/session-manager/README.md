@@ -16,14 +16,25 @@ Type `/manager` in a new session. It reviews your open Claude sessions and gives
 
 | Part | File | Job |
 |---|---|---|
-| Skill | `skills/manager/SKILL.md` | The `/manager` command. Runs the agent, then offers to archive done sessions. |
+| Skill | `skills/manager/SKILL.md` | The `/manager` command. Runs the agent, then offers to archive done and long-idle sessions and checks worktrees. |
 | Agent | `agents/session-advisor.md` | Reads sessions and writes the report. Read only. |
+
+## Bulk archive and worktrees
+
+After the report, `/manager` can archive many sessions at once.
+
+- **Done sessions:** archived on your yes.
+- **Stale sessions:** idle for 14 days or more (change with `--bulk-days N`), no open PR, not running, and not waiting on you. Up to 20 per run, oldest first.
+- **Worktrees:** archiving a session also removes its worktree (the app's own copy of the repo). A worktree with uncommitted changes is kept. `/manager` lists those sessions. It discards one only when you name that session, because the changes cannot be recovered.
+- **Leftover worktrees:** for sessions that are not archived, `/manager` can offer the app's "clean up inactive sessions" step (30 days). Sessions and branches stay.
+- The app may ask you to approve each archive. A different permission mode lowers the number of prompts.
 
 ## Rules
 
 - The agent only reads. It never changes a session.
 - The skill archives a session only after you say yes in chat. The app also asks you to approve each archive.
 - It never deletes a session and never messages another session on its own.
+- It never archives a session with an open PR, a running session, or one that waits on you, unless you name it.
 - It does not put customer details in the report.
 
 ## Requirements
@@ -48,6 +59,7 @@ claude --plugin-dir ./plugins/session-manager
 ```
 /manager
 /manager --stale-days 7
+/manager --bulk-days 30
 ```
 
 If another plugin also has a `/manager` command, type `/session-manager:manager` instead.

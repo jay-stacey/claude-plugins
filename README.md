@@ -28,7 +28,7 @@ Or run `/init` for a guided walkthrough.
 |---|---|---|
 | [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
 | [voice-replies](plugins/voice-replies) | 1.0.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU, with a voice and speed picker above the prompt. |
-| [session-manager](plugins/session-manager) | 1.0.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. |
+| [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
 
 ### executive-assistant
 
