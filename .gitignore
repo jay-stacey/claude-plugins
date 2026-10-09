@@ -26,3 +26,6 @@ __pycache__/
 
 # Build artifacts
 *.zip
+
+# Types the Claude Code engine writes beside a hooks plugin at load
+plugins/*/.claude-plugin/types/

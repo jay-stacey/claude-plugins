@@ -1,0 +1,9 @@
+{
+  "name": "voice-replies",
+  "version": "1.0.0",
+  "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU and a voice picker above the prompt.",
+  "author": { "name": "Jay Stacey", "url": "https://github.com/jay-stacey" },
+  "license": "MIT",
+  "keywords": ["voice", "tts", "kokoro", "accessibility"],
+  "types": "./types/index.d.ts"
+}
