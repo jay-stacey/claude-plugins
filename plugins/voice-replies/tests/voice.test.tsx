@@ -10,7 +10,7 @@ const USAGE = {
 
 const BAND = {
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80 } as never,
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } as never,
 } as const
 
 const TURN = { durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' } as const
@@ -43,6 +43,15 @@ function fakeEngine(
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('ui.log', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
+  // What another mod (session-brief) draws in the same band.
+  on('ui.render', ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box>
+        <Text>Brief panel</Text>
+      </Box>
+    )
+  })
   on('session.surfaces', () => ({ value: surfaces }) as never)
   on('fs.stat', () => ({ value: { isFile: true } }) as never)
   on('http.fetch', ($, e) => {
@@ -76,17 +85,28 @@ async function settle(clock: { advance: (ms: number) => Promise<void> }) {
   for (let i = 0; i < 8; i += 1) await clock.advance(1000)
 }
 
-test('the band toggles voice replies and remembers the choice', async ($, on) => {
+test('the voice dropdown turns voice replies off and on, and remembers it', async ($, on) => {
   const fake = fakeEngine(on)
   await $.session.start(START)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'voice-replies', surface, ...BAND })
-    expect((await ui.find({ type: 'Text', text: /Voice replies/ }))?.text).toContain('on')
-    await ui.press({ key: 'toggle' })
-    expect((await ui.find({ type: 'Text', text: /Voice replies/ }))?.text).toContain('off')
+    await ui.select({ key: 'voice', value: 'off' })
     expect(fake.store.get('isOn')).toBe(false)
-    await ui.press({ key: 'toggle' })
+    expect((await ui.find({ key: 'speed' })) === undefined).toBe(true)
+    await ui.select({ key: 'voice', value: 'af_heart' })
     expect(fake.store.get('isOn')).toBe(true)
+    expect((await ui.find({ key: 'speed' })) !== undefined).toBe(true)
+    await ui.unmount()
+  }
+})
+
+test('the voice panel keeps what other mods draw in the band, above it', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'voice-replies', surface, ...BAND })
+    expect((await ui.find({ type: 'Text', text: /Brief panel/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /Voice replies/ })) !== undefined).toBe(true)
     await ui.unmount()
   }
 })
