@@ -1,0 +1,9 @@
+{
+  "name": "session-brief",
+  "version": "1.0.0",
+  "description": "Shows a short brief above the prompt (how the session started, where it left off, next steps, things to know) and renames the session to say what the work is.",
+  "author": { "name": "Jay Stacey", "url": "https://github.com/jay-stacey" },
+  "license": "MIT",
+  "keywords": ["sessions", "summary", "productivity", "title"],
+  "types": "./types/index.d.ts"
+}
