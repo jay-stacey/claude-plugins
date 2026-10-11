@@ -2,178 +2,129 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Note:** This file guides work *on the plugin source*. The assistant's own
-> runtime personality is not set here — it comes from `config/presets/` and the
-> user's generated profile. Keep persona out of this file.
+> **Note:** This file guides work *on the plugin source*. A plugin's own runtime
+> voice is not set here. For executive-assistant it comes from
+> `config/presets/`, the user's generated profile, and the `response-style`
+> skill. Keep persona out of this file.
 
-## Repository Overview
+## What this repo is
 
-This is a Claude Code personal plugins repository containing the `executive-assistant` plugin (v6.0), which orchestrates daily task preparation by integrating Gmail, Google Calendar, Slack, Jira, Linear, and multiple note-taking systems.
+A Claude Code plugin marketplace named `personal-plugins`. The catalog is
+`.claude-plugin/marketplace.json`. Each plugin lives in `plugins/<name>/`.
 
-**Prerequisites:**
-- [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp) server for Gmail and Calendar (bundled via `.mcp.json`; requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables)
-- MCP servers for Slack, Atlassian, and Linear (as needed)
+| Plugin | Kind | Main entry |
+|---|---|---|
+| `executive-assistant` | Markdown skills + agents + MCP | `/daily-prep`, `/inbox-zero`, `/timebox`, `/init` |
+| `session-manager` | Markdown skill + agent | `/manager` |
+| `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice` |
+| `session-brief` | TypeScript hooks mod | `/brief` |
 
-## Available Commands
+Two plugin kinds exist, and they are built differently:
 
-| Command | Plugin | Purpose |
-|---------|--------|---------|
-| `/daily-prep` | executive-assistant | Main workflow - full daily preparation |
-| `/init` | executive-assistant | Setup and personalization |
-| `/inbox-zero` | executive-assistant | Email cleanup (2-3 min) |
-| `/timebox` | executive-assistant | Calendar optimization (2-4 min) |
+- **Markdown plugins** (executive-assistant, session-manager) are only
+  `SKILL.md` and agent `.md` files. No build step.
+- **Hooks mods** (voice-replies, session-brief) use `hooks/hooks.json` with
+  `{ "modules": ["./register.tsx"] }`. The `.tsx` imports from `claude-code`
+  (atoms, `EngineInterface`, `Register`). `plugin.json` sets `"types"`. The
+  engine writes `.claude-plugin/types/` at load time. That folder is
+  gitignored, and `tsconfig.json` extends it. Load the `plugin-authoring`
+  skill before you change a mod.
 
-## Architecture
+## Commands
 
-### Plugin Structure
+CI (`.github/workflows/validate.yml`) runs all of these on every push and PR:
 
-```
-plugins/
-└── executive-assistant/          # v6.0 (Primary)
-    ├── .claude-plugin/plugin.json
-    ├── .mcp.json                   # Google Workspace MCP server
-    ├── config/
-    │   ├── default.json          # Default configuration
-    │   ├── schema.json           # JSON Schema validation
-    │   ├── examples/             # Role-based configs
-    │   └── presets/              # Personality presets
-    ├── agents/
-    │   ├── assistant.md          # Main orchestrator
-    │   ├── initializer.md        # Setup wizard
-    │   └── [domain]-assistant.md # Specialized agents
-    ├── skills/                   # <name>/SKILL.md (+ optional references/)
-    │   ├── daily-prep/           # Entry points: daily-prep, init,
-    │   ├── inbox-zero/           #   inbox-zero, timebox
-    │   ├── notes/                # Markdown notes
-    │   ├── notes-viewer/         # Notes Desk artifact + edit sync
-    │   │   └── editor/           # Editor source; `npm run build` rewrites assets/editor.bundle.js
-    │   └── [service]-*/          # gmail, calendar, slack, jira, linear
-    ├── hooks/hooks.json
-    └── scripts/                  # Helper utilities
+```bash
+claude plugin validate . --strict
+claude plugin validate ./plugins/<name> --strict
+python scripts/check-skills.py
 ```
 
-### Skills Framework
+CI also does a real install smoke test (`claude plugin marketplace add`, then
+`claude plugin install <name>@personal-plugins`), because `validate` only
+checks manifest shape.
 
-Skills are self-contained markdown files defining specialized sub-agents:
+Tests exist only for the hooks mods. Run one plugin's tests:
 
-| Skill | Purpose | Tools |
-|-------|---------|-------|
-| `gmail-processor` | Email scanning, categorization | Google Workspace MCP |
-| `gmail-organizer` | Label automation, inbox zero | Google Workspace MCP |
-| `calendar-reviewer` | Schedule analysis | Google Workspace MCP |
-| `calendar-manager` | Timeboxing, bottleneck detection | Google Workspace MCP |
-| `slack-reviewer` | Message prioritization | Slack MCP |
-| `jira-reviewer` | Ticket analysis | Atlassian MCP |
-| `linear-reviewer` | Issue tracking | Linear MCP |
-| `task-consolidator` | Notes integration | Read, Edit, Write |
-| `initializer` | Setup wizard | Dialog tools |
-| `notes` | Markdown notes: read, write, search, section-aware append | `Read`, `Write`, `Edit`, `Glob`, `Grep` |
-| `notes-viewer` | Notes Desk artifact: read, search, edit notes; sync edits to disk | `Artifact`, `ArtifactData`, `Bash` |
-
-### Integration Approach
-
-| Service | Method | Tools Used |
-|---------|--------|------------|
-| Gmail | MCP native API | `mcp__google-workspace__*` (Gmail tools) |
-| Google Calendar | MCP native API | `mcp__google-workspace__*` (Calendar tools) |
-| Slack | Native API | `mcp__slack__*` |
-| Jira | Native API | `mcp__atlassian__*` |
-| Linear | Native API | `mcp__linear-server__*` |
-| Markdown | Local filesystem | `Read`, `Edit`, `Write` |
-
-## Key Design Principles
-
-1. **Read-only by default**: All external service operations are read-only
-2. **User confirmation required**: Note writes require explicit approval
-3. **Graceful degradation**: Workflow continues if individual sources fail
-4. **ADHD-friendly UX**: Visual hierarchy with emojis, summaries first, clear action items
-
-## Configuration (v6.0)
-
-### Structure
-```
-config/
-├── default.json      # All configuration options with defaults
-├── schema.json       # JSON Schema for validation
-├── examples/         # Role-based configurations
-│   ├── developer.json
-│   ├── manager.json
-│   └── minimal.json
-└── presets/          # Personality presets
+```bash
+claude plugin test ./plugins/voice-replies
+claude plugin test ./plugins/session-brief
 ```
 
-### Key Configuration Areas
-- **MCP Server**: Google Workspace MCP config, timezone, Gmail/Calendar settings
-- **Personality**: Name, greeting style, humor level, emoji usage
-- **User Profile**: Name, role, timezone, VIP contacts
-- **Features**: Toggle integrations (gmail, calendar, slack, jira, linear, notes)
-- **Safety**: 10+ safety protocols for write operations
-- **Providers**: Multi-provider notes configuration
+Tests import `expect`, `mock`, `test` from `claude-code/testing` and drive the
+mod through a fake engine.
 
-## Creating New Skills
+Notes Desk editor (`plugins/executive-assistant/skills/notes-viewer/editor/`):
+after you change `src/`, rebuild. The build overwrites the committed
+`assets/editor.bundle.js`.
 
-1. Create folder under `skills/<skill-name>/`
-2. Add `SKILL.md` with:
-   - Clear process steps
-   - Safety protocols section
-   - Output format specification
-   - Error handling strategy
-   - Testing checklist
-3. Skills are auto-discovered - do NOT add to plugin.json
+```bash
+npm --prefix plugins/executive-assistant/skills/notes-viewer/editor run build
+```
 
-## Creating New Entry Points
+## Rules that silently break components
 
-Commands and skills are the same mechanism: a skill at `skills/<name>/SKILL.md`
-creates `/<name>`. There is no separate `commands/` directory.
+`scripts/check-skills.py` and `CONTRIBUTING.md` enforce these:
 
-1. Add `skills/<name>/SKILL.md` with `name` matching the directory
-2. Route to a sub-agent with `context: fork` + `agent: <agent-name>`
-3. Keep the entry point thin — procedure belongs in the skill it delegates to
+- Skills are at `skills/<name>/SKILL.md`, exactly one level deep. Deeper
+  nesting is never discovered.
+- A skill's `name:` must equal its directory name. Frontmatter starts on line 1.
+- Keep `SKILL.md` under 500 lines. Move detail to `references/`.
+- Only `plugin.json` goes in `.claude-plugin/`. Components stay at the plugin root.
+- `author` is required, because CI runs `--strict`.
+- `context: fork` is a skill field. Agents ignore it.
+- Secrets go in `plugin.json` `userConfig` with `"sensitive": true`. Reference
+  them as `${user_config.<key>}` (see executive-assistant `.mcp.json`).
+- Commands and skills are the same mechanism. A skill at
+  `skills/<name>/SKILL.md` creates `/<name>`. Keep entry-point skills thin and
+  route with `context: fork` + `agent: <agent-name>`.
 
-## Safety Protocols
+Before you edit any `plugin.json`, check the official docs:
+https://code.claude.com/docs/en/plugins-reference. This repo uses `name`,
+`version`, `description`, `author`, `license`, `keywords`, `homepage`,
+`repository`, `displayName`, `userConfig`, and `types`. Component path fields
+(`skills`, `agents`, `hooks`, `mcpServers`) are omitted on purpose. Default
+locations are used.
 
-- Never auto-delete emails, messages, or tickets
-- Never send automated responses
-- Never update Jira/Linear status without explicit user action
-- Always preview changes before writing to notes
-- Use `Edit` tool instead of `Write` for existing files
+## Versioning and release
 
-## Plugin Manifest Rules (CRITICAL)
+After you implement a change, bump the plugin version before you commit.
+The version lives in three places, and they must match:
 
-**BEFORE modifying any plugin.json file, review the official documentation:**
-- Plugin structure: https://code.claude.com/docs/en/plugins
-- Full reference: https://code.claude.com/docs/en/plugins-reference
+1. `plugins/<name>/.claude-plugin/plugin.json`
+2. The plugin's entry in `.claude-plugin/marketplace.json` (also bump
+   `metadata.version` there)
+3. The plugins table in `README.md`
 
-### Valid plugin.json Fields ONLY
+To add a new plugin, follow `CONTRIBUTING.md`. Register it in
+`marketplace.json`, or `check-skills.py` fails.
 
-| Field | Required | Purpose |
-|-------|----------|---------|
-| `name` | Yes | Unique identifier and skill namespace |
-| `description` | Yes | Shown in plugin manager |
-| `version` | Yes | Semantic versioning (e.g., "1.0.0") |
-| `author` | No | Object with `name` and optional `email` |
-| `license` | No | License identifier (e.g., "MIT") |
-| `keywords` | No | Array of tags for discoverability |
-| `homepage` | No | URL to documentation |
-| `repository` | No | URL to source code |
+Commit titles follow `<plugin> <version>: <what changed>` or
+`Add <plugin>: <what it does>`.
 
-### Component Path Fields
+## executive-assistant architecture
 
-`skills`, `agents`, `hooks`, and `mcpServers` are valid optional fields in
-`plugin.json`, but this plugin omits them and relies on the default locations
-(`skills/`, `agents/`, `hooks/hooks.json`, `.mcp.json`). Only set them to add a
-non-standard path — note that `skills` *adds to* the default directory while
-`agents` *replaces* it.
+- `agents/assistant.md` orchestrates. It delegates to `email-assistant`,
+  `calendar-assistant`, and `task-assistant` (Slack, Jira, Linear).
+  `initializer.md` runs setup.
+- Skills split into entry points (`daily-prep`, `inbox-zero`, `timebox`,
+  `init`) and workers (`gmail-*`, `calendar-*`, `slack-reviewer`,
+  `jira-reviewer`, `linear-reviewer`, `task-consolidator`, `notes`,
+  `notes-viewer`).
+- All user-facing output goes through the `response-style` skill. That skill
+  says output may be read aloud, so no tables or emoji headers.
+- Settings come from `plugin.json` `userConfig` (`/plugin configure`).
+  `config/default.json` + `config/schema.json` hold the full option set.
+  `config/examples/` holds role configs. `config/presets/` holds personalities.
+- Gmail and Calendar use the bundled Google Workspace MCP server (`.mcp.json`,
+  run with `uvx`). Slack, Atlassian, and Linear MCP servers are optional.
+- `hooks/hooks.json` runs `scripts/tts-speak.py` when an assistant sub-agent stops.
 
-## Version History
+Safety rules for this plugin:
 
-| Version | Plugin | Status |
-|---------|--------|--------|
-| v5.0.0 | executive-assistant | Current - Google Workspace MCP for Gmail/Calendar, Co-Work compatible |
-| v4.0.0 | executive-assistant | Previous - GWS CLI for Gmail/Calendar, consolidated from daily-workflow |
-| v3.0.0 | executive-assistant | Previous - Linear, multi-provider notes, personality system |
-| v2.0.0 | daily-workflow | Removed - Was deprecated, now consolidated into executive-assistant |
-
-## Release/Commit Conventions
-
-After implementing a plan, always bump the version number in plugin.json (or equivalent manifest) before committing.
+- External services are read-only by default.
+- Never auto-delete or send email, messages, or tickets.
+- Never change Jira or Linear status without explicit user action.
+- Preview note changes and get approval before writing. Use `Edit`, not
+  `Write`, on existing note files.
+- Continue the workflow when one source fails.
