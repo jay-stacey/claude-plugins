@@ -8,6 +8,8 @@ const status = atom({ plugin: 'voice-replies', key: 'status' } as const, 'idle' 
 const voice = atom({ plugin: 'voice-replies', key: 'voice' } as const, 'af_heart')
 const speed = atom({ plugin: 'voice-replies', key: 'speed' } as const, '1.0')
 const engine = atom({ plugin: 'voice-replies', key: 'engine' } as const, 'starting' as VoiceEngine)
+// The step `/voice install` is on, or '' when no install runs.
+const installing = atom({ plugin: 'voice-replies', key: 'install' } as const, '')
 
 const MAX_SPOKEN_CHARS = 1500
 const SERVER = 'http://127.0.0.1:47861'
@@ -64,8 +66,8 @@ export const register: Register = on => {
     await update($, status, () => 'idle')
     await $.command.register({
       name: 'voice',
-      description: 'Voice replies: on, off, stop, voice <name>, speed <0.8-1.5>, voices, test',
-      argumentHint: '[on|off|stop|voice <name>|speed <n>|voices|test]',
+      description: 'Voice replies: on, off, stop, voice <name>, speed <0.8-1.5>, voices, test, install [gpu|cpu]',
+      argumentHint: '[on|off|stop|voice <name>|speed <n>|voices|test|install [gpu|cpu]]',
     })
     // Warm the server up only where someone is watching; elsewhere it starts on first use.
     if ((await $.session.surfaces()).length > 0) $.clock.after(0, () => void ensureServer($))
@@ -95,6 +97,24 @@ export const register: Register = on => {
       }
       await setSpeed($, value)
       return { text: `Speed set to ${value}.` }
+    }
+    if (word === 'install') {
+      const mode = value === '' ? 'auto' : value
+      if (mode !== 'auto' && mode !== 'gpu' && mode !== 'cpu') {
+        return { text: 'Use /voice install, /voice install gpu or /voice install cpu.' }
+      }
+      if ((await read($, installing)) !== '') return { text: 'Kokoro is already installing.' }
+      if ((await $.env.get('OS')) !== 'Windows_NT') {
+        return { text: 'The Kokoro installer runs on Windows only. Replies use the system voice here.' }
+      }
+      await update($, installing, () => 'starting')
+      // The install takes minutes, far past a hook's budget, so it runs on a timer of its own.
+      $.clock.after(0, () => void installKokoro($, mode))
+      return {
+        text:
+          'Installing Kokoro. It checks your GPU first and uses the CPU if the GPU cannot run it. ' +
+          'This takes 5 to 15 minutes; the Windows voice speaks until it is done.',
+      }
     }
     if (word === 'test') {
       $.clock.after(0, () => void speakScript($, 'This is how voice replies will sound.'))
@@ -144,9 +164,15 @@ export const register: Register = on => {
     const chosen = await read($, voice)
     const pace = await read($, speed)
     const via = await read($, engine)
-    // Say the engine only when it is not the normal one (Kokoro on the GPU).
+    const step = await read($, installing)
+    // Say the engine only when it is not the normal one (Kokoro).
     const note =
-      now === 'writing' ? 'preparing' : now === 'speaking' ? 'speaking' : via === 'windows' ? 'Windows voice' : via === 'starting' ? 'starting' : ''
+      now === 'writing' ? 'preparing'
+      : now === 'speaking' ? 'speaking'
+      : step !== '' ? `installing Kokoro: ${step}`
+      : via === 'windows' ? 'Windows voice'
+      : via === 'starting' ? 'starting'
+      : ''
 
     return (
       <Box flexDirection="column" rowGap={1}>
@@ -224,6 +250,11 @@ async function ensureServer($: EngineInterface): Promise<boolean> {
     await update($, engine, () => 'kokoro')
     return true
   }
+  // The installer stops the server and rewrites its files: do not start it under it.
+  if ((await read($, installing)) !== '') {
+    await update($, engine, () => 'windows')
+    return false
+  }
   const home = await $.env.get('USERPROFILE')
   if (home === undefined) {
     await update($, engine, () => 'windows')
@@ -238,7 +269,7 @@ async function ensureServer($: EngineInterface): Promise<boolean> {
     await update($, engine, () => 'windows')
     if (!hasWarnedSetup) {
       hasWarnedSetup = true
-      $.ui.toast('Kokoro is not set up, so replies use the Windows voice. Run server\\setup.ps1 from the voice-replies plugin.')
+      $.ui.toast('Kokoro is not set up, so replies use the Windows voice. Type /voice install to set it up.')
     }
     return false
   }
@@ -265,6 +296,62 @@ async function ensureServer($: EngineInterface): Promise<boolean> {
   }
   await update($, engine, () => 'windows')
   return false
+}
+
+// Runs server\setup.ps1, which checks the GPU, picks GPU or CPU, installs Kokoro and tests it.
+// Each "==> step" line shows in the panel and the status line; the last lines explain a failure.
+async function installKokoro($: EngineInterface, mode: 'auto' | 'gpu' | 'cpu'): Promise<void> {
+  const tail: string[] = []
+  let partial = ''
+  let done = ''
+  let choice = ''
+  const onLine = async (raw: string) => {
+    const line = raw.trim()
+    if (line === '') return
+    tail.push(line)
+    if (tail.length > 8) tail.shift()
+    if (line.startsWith('==> ')) {
+      const step = line.slice(4)
+      await update($, installing, () => step)
+      $.ui.status(`Kokoro install: ${step}`)
+    } else if (line.startsWith('Kokoro will run on the ')) {
+      choice = line
+    } else if (line.startsWith('DONE: ')) {
+      done = line.slice(6)
+    }
+  }
+
+  let code: number | null = null
+  try {
+    const child = $.process.spawn({
+      argv: [
+        'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', `${$.plugin.root}\\server\\setup.ps1`, '-Device', mode,
+      ],
+    })
+    for await (const { text } of child) {
+      const lines = (partial + text).split(/\r?\n/)
+      partial = lines.pop() ?? ''
+      for (const line of lines) await onLine(line)
+    }
+    await onLine(partial)
+    code = (await child.result).code
+  } catch (err) {
+    tail.push(String(err))
+  }
+
+  await update($, installing, () => '')
+  $.ui.status(undefined)
+  if (code === 0 && done !== '') {
+    hasWarnedSetup = false
+    $.ui.toast(done)
+    $.ui.log(`voice-replies: ${choice} ${done}`, { to: 'debug' })
+    await ensureServer($)
+    return
+  }
+  const why = tail.filter(l => !l.startsWith('At ') && !l.startsWith('+ ')).slice(-2).join(' ')
+  $.ui.toast(`Kokoro install failed: ${why} Full log: %USERPROFILE%\\.claude\\voice-replies\\logs\\install.log`)
+  await update($, engine, () => 'windows')
 }
 
 // A pause built on $.clock.after, which runs outside any hook's time budget.

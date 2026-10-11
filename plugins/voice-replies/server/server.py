@@ -1,6 +1,6 @@
 """Local Kokoro TTS server for the voice-replies mod.
 
-Loads Kokoro-82M on the GPU once and speaks text sent to it, so replies start fast.
+Loads Kokoro-82M once (on the GPU or CPU that setup.ps1 chose) and speaks text sent to it, so replies start fast.
 Listens on 127.0.0.1 only. Exits by itself after IDLE_EXIT_SECONDS with no requests.
 
 Endpoints:
@@ -48,7 +48,37 @@ VOICES = [
     "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
 ]
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def pick_device() -> str:
+    """The device setup.ps1 chose and tested (config.json), unless `--check <device>` names one.
+
+    Falls back to the CPU when CUDA was chosen but is not there now, for example after a
+    driver change.
+    """
+    wanted = None
+    if len(sys.argv) >= 3 and sys.argv[1] == "--check":
+        wanted = sys.argv[2]
+    else:
+        try:
+            with open(os.path.join(HERE, "config.json"), encoding="utf-8") as f:
+                wanted = json.load(f).get("device")
+        except (OSError, ValueError):
+            pass
+    if wanted == "cuda" and torch.cuda.is_available():
+        return "cuda"
+    if wanted == "cuda":
+        print("CUDA was chosen but is not available; using the CPU", file=sys.stderr)
+    if wanted is None and torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
+device = pick_device()
+if device == "cpu":
+    # Leave a few cores for the rest of the machine while a reply is generated.
+    torch.set_num_threads(max(1, min(8, (os.cpu_count() or 2) - 2)))
 model = KModel(repo_id=REPO).to(device).eval()
 # "a" = American English, "b" = British English. Both share the one model.
 pipelines = {code: KPipeline(lang_code=code, repo_id=REPO, model=model) for code in ("a", "b")}
@@ -192,7 +222,30 @@ def exit_when_idle(server: ThreadingHTTPServer) -> None:
             return
 
 
-if __name__ == "__main__":
+def check() -> None:
+    """`server.py --check <cuda|cpu>`: setup.ps1's test. Speaks into memory, plays nothing."""
+    if sys.argv[2] == "cuda" and device != "cuda":
+        sys.exit(1)
+    for code, voice in (("a", "af_heart"), ("b", "bf_emma")):
+        for _ in pipelines[code]("Ready.", voice=voice):
+            pass
+    started = time.perf_counter()
+    samples = 0
+    for result in pipelines["a"]("Voice replies are ready. This sentence checks how fast it speaks.", voice="af_heart"):
+        if result.audio is not None:
+            samples += len(result.audio)
+    took = time.perf_counter() - started
+    seconds = samples / SAMPLE_RATE
+    if seconds == 0:
+        print("Kokoro made no audio", file=sys.stderr)
+        sys.exit(1)
+    name = torch.cuda.get_device_name(0) if device == "cuda" else "CPU"
+    print(f"Kokoro on {name}: {seconds:.1f} s of speech in {took:.2f} s ({seconds / took:.0f}x real time)")
+
+
+if __name__ == "__main__" and len(sys.argv) >= 3 and sys.argv[1] == "--check":
+    check()
+elif __name__ == "__main__":
     # Warm up so the first real reply does not pay for loading voices and kernels.
     for code, voice in (("a", "af_heart"), ("b", "bf_emma")):
         for _ in pipelines[code]("Ready.", voice=voice):

@@ -22,27 +22,31 @@ type Options = {
   isKokoroUp?: boolean
   isStatusBroken?: boolean
   surfaces?: string[]
+  installResult?: 'ok' | 'fails'
 }
 
 // The engine beneath the mod: a store we can read back, the session, the turn, the model
 // (returns a fixed speech script), the Kokoro server and the Windows voice (both record what they were told).
 function fakeEngine(
   on: On,
-  { saved = {}, isKokoroUp = true, isStatusBroken = false, surfaces = ['desktop'] }: Options = {},
+  { saved = {}, isKokoroUp = true, isStatusBroken = false, surfaces = ['desktop'], installResult = 'ok' }: Options = {},
 ) {
   const store = new Map<string, unknown>(Object.entries(saved))
   const kokoro: { text: string; voice: string; speed: number }[] = []
   const windows: string[] = []
   const prompts: string[] = []
+  const installs: (readonly string[])[] = []
+  const toasts: string[] = []
   const ok = (text: string) => ({ value: { status: 200, ok: true, headers: {}, text } })
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
   on('store.set', ($, e) => (store.set(e.key, e.value), { value: undefined }))
-  on('env.get', () => ({ value: 'C:\\Users\\test' }))
+  on('env.get', ($, e) => ({ value: e.name === 'OS' ? 'Windows_NT' : 'C:\\Users\\test' }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('ui.log', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', ($, e) => (toasts.push(e.text), { value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
   // What another mod (session-brief) draws in the same band.
   on('ui.render', ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
@@ -71,6 +75,18 @@ function fakeEngine(
     return { value: { isAnswered: true, text: SCRIPT, usage: USAGE } }
   })
   on('process.spawn', async function* ($, e) {
+    // The installer, server\setup.ps1. Its output arrives in pieces that split mid-line.
+    if (e.argv.some(a => a.endsWith('setup.ps1'))) {
+      installs.push(e.argv)
+      yield { stream: 'stdout', text: '==> Checking this machine\r\n    Kokoro will run on the CPU (no NVIDIA GPU found)\r\n==> Install' }
+      yield { stream: 'stdout', text: 'ing Kokoro\r\n' }
+      if (installResult === 'fails') {
+        yield { stream: 'stderr', text: 'Kokoro did not run on the CPU. The output above says why.\r\n' }
+        return { value: { code: 1, signal: null } }
+      }
+      yield { stream: 'stdout', text: 'DONE: Kokoro runs on the CPU.\r\n' }
+      return { value: { code: 0, signal: null } }
+    }
     windows.push(e.input ?? '')
     yield { stream: 'stdout', text: '4242\n' }
     return { value: { code: 0, signal: null } }
@@ -78,7 +94,7 @@ function fakeEngine(
   on('process.run', () => ({
     value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   }))
-  return { store, kokoro, windows, prompts }
+  return { store, kokoro, windows, prompts, installs, toasts }
 }
 
 async function settle(clock: { advance: (ms: number) => Promise<void> }) {
@@ -181,4 +197,50 @@ test('sessions nobody is watching (claude -p, scheduled tasks) stay silent', asy
   expect(fake.prompts).toEqual([])
   expect(fake.kokoro).toEqual([])
   expect(fake.windows).toEqual([])
+})
+
+test('/voice install runs the installer, which picks GPU or CPU, then starts Kokoro', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+
+  const reply = await $.command.run({ command: 'voice', args: 'install' } as never)
+  expect(JSON.stringify(reply)).toContain('Installing Kokoro')
+  await settle(clock)
+
+  expect(fake.installs.length).toBe(1)
+  const argv = fake.installs[0].join(' ')
+  expect(argv).toContain('\\server\\setup.ps1')
+  expect(argv).toContain('-Device auto')
+  expect(fake.toasts).toContain('Kokoro runs on the CPU.')
+})
+
+test('/voice install cpu and gpu force the device; anything else is refused', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+
+  await $.command.run({ command: 'voice', args: 'install cpu' } as never)
+  await settle(clock)
+  await $.command.run({ command: 'voice', args: 'install gpu' } as never)
+  await settle(clock)
+  const bad = await $.command.run({ command: 'voice', args: 'install amd' } as never)
+
+  expect(fake.installs.length).toBe(2)
+  expect(fake.installs[0].join(' ')).toContain('-Device cpu')
+  expect(fake.installs[1].join(' ')).toContain('-Device gpu')
+  expect(JSON.stringify(bad)).toContain('/voice install cpu')
+})
+
+test('a failed install says why and keeps the Windows voice', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { installResult: 'fails' })
+  await $.session.start(START)
+
+  await $.command.run({ command: 'voice', args: 'install' } as never)
+  await settle(clock)
+
+  const failed = fake.toasts.find(t => t.startsWith('Kokoro install failed')) ?? ''
+  expect(failed).toContain('did not run on the CPU')
+  expect(failed).toContain('install.log')
 })

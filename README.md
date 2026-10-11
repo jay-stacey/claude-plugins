@@ -27,7 +27,7 @@ Or run `/init` for a guided walkthrough.
 | Plugin | Version | What it does |
 |---|---|---|
 | [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
-| [voice-replies](plugins/voice-replies) | 1.1.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU, with a compact voice and speed panel above the prompt. |
+| [voice-replies](plugins/voice-replies) | 1.2.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU), with a compact voice and speed panel above the prompt. |
 | [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
 | [session-brief](plugins/session-brief) | 1.0.0 | Shows a brief above the prompt: how the session started, where it left off, next steps, and what you should know. Renames the session to say what the work is. |
 
@@ -44,11 +44,11 @@ optional and enabled per feature in config.
 
 ### voice-replies
 
-Command: `/voice` (on, off, stop, voice, speed, voices, test).
+Command: `/voice` (on, off, stop, voice, speed, voices, test, install).
 
-Needs a one-time Kokoro setup on Windows before install (about 3 GB):
-`powershell -ExecutionPolicy Bypass -File plugins\voice-replies\server\setup.ps1`.
-Without it, replies use the built-in Windows voice. See the
+After installing the plugin, type `/voice install` once (Windows). It checks
+your GPU, installs Kokoro on the GPU or on the CPU, and tests it.
+Until then, replies use the built-in Windows voice. See the
 [plugin README](plugins/voice-replies/README.md).
 
 ### session-brief
