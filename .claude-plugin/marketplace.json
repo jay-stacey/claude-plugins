@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.7.0"
+    "version": "2.8.0"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
     {
       "name": "voice-replies",
       "source": "./plugins/voice-replies",
-      "version": "1.1.0",
-      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU and a compact voice panel above the prompt.",
+      "version": "1.2.0",
+      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU (or CPU), a one-command installer and a compact voice panel above the prompt.",
       "category": "productivity",
       "keywords": [
         "voice",

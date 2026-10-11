@@ -9,6 +9,7 @@ declare module 'claude-code' {
       voice: string
       speed: string
       engine: VoiceEngine
+      install: string
     }
   }
 }
