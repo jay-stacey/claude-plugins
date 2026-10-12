@@ -1,0 +1,2 @@
+{"id":"EV-1","label":"build","command":"npm run build","cwd":"C:/repo/.factory/worktrees/checks-R-000019","exit_code":0,"log_path":"runs/R-000019/evidence/build-1.log","head_sha":"abc1234","source":"cli","started_at":"2026-10-12T13:30:00.000Z","ended_at":"2026-10-12T13:31:40.000Z"}
+{"id":"EV-2","label":"test","command":"npm test","cwd":"C:/repo/.factory/worktrees/checks-R-000019","exit_code":1,"log_path":"runs/R-000019/evidence/test-1.log","head_sha":"abc1234","source":"cli","started_at":"2026-10-12T13:30:00.000Z","ended_at":"2026-10-12T13:31:40.000Z"}

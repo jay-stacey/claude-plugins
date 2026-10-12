@@ -1,0 +1,68 @@
+{
+  "schema": "factory/task@1",
+  "id": "T-0017",
+  "rev": 10,
+  "created_at": "2026-10-12T05:00:00.000Z",
+  "updated_at": "2026-10-12T11:00:00.000Z",
+  "goal_id": "G-001",
+  "epic_id": "E-0002",
+  "kind": "code",
+  "title": "CI job for decoder tests",
+  "description": "CI job for decoder tests. Follow the spec section for this work and keep the change small.",
+  "role": "devops-release",
+  "size": "S",
+  "priority": "P1",
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "CI job for decoder tests works as described in the spec"
+    },
+    {
+      "id": "AC-2",
+      "text": "Tests cover the happy path and one failure path"
+    }
+  ],
+  "ac_version": 1,
+  "files_owned": [
+    ".github/workflows/decoder.yml"
+  ],
+  "files_shared": [],
+  "files_read": [],
+  "depends_on": [],
+  "gate_deps": [],
+  "gate": null,
+  "risk_flags": [],
+  "reviews_required": [
+    [
+      "code-reviewer"
+    ]
+  ],
+  "reviews": {
+    "code-reviewer": {
+      "verdict": "pass",
+      "run_id": "R-000000",
+      "round": 1,
+      "at": "2026-10-12T10:00:00.000Z"
+    }
+  },
+  "status": "verified",
+  "status_reason": null,
+  "attempts": 1,
+  "max_attempts": 3,
+  "rework_count": 0,
+  "max_rework": 3,
+  "fixups": 0,
+  "estimate_tokens": 250000,
+  "model_override": null,
+  "branch": "factory/T-0017-ci-job-for-decoder-tests",
+  "base_ref": "factory/E-0002",
+  "current_run_id": null,
+  "runs": [
+    "R-000020",
+    "R-000021"
+  ],
+  "blocked": null,
+  "resume_from": null,
+  "feedback": [],
+  "answers": []
+}

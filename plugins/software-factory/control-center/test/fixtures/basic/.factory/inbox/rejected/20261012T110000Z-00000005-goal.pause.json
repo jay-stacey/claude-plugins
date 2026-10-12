@@ -1,0 +1,22 @@
+{
+  "schema": "factory/inbox@1",
+  "id": "ib-00000005",
+  "created_at": "2026-10-12T11:00:00.000Z",
+  "source": "dashboard",
+  "actor": {
+    "kind": "human",
+    "name": "dashboard"
+  },
+  "type": "goal.pause",
+  "payload": {
+    "goal_id": "G-009"
+  },
+  "needs_confirmation": false,
+  "auto_apply": false,
+  "sig": "0000000000000000000000000000000000000000000000000000000000000000",
+  "result": {
+    "status": "rejected",
+    "reason": "unknown goal G-009",
+    "tick": 39
+  }
+}

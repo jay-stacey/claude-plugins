@@ -1,0 +1,33 @@
+{
+  "schema": "factory/gate@1",
+  "id": "GATE-0002",
+  "rev": 2,
+  "created_at": "2026-10-11T12:00:00.000Z",
+  "updated_at": "2026-10-11T12:30:00.000Z",
+  "type": "G2",
+  "subject": {
+    "kind": "goal",
+    "id": "G-001"
+  },
+  "goal_id": "G-001",
+  "status": "approved",
+  "opened_at": "2026-10-11T12:00:00.000Z",
+  "opened_by": {
+    "run_id": null,
+    "actor": "staff-engineer"
+  },
+  "artifact": {
+    "paths": [
+      "docs/G-001-vin-decoder/spec.md"
+    ],
+    "summary": "Spec with API and cache table."
+  },
+  "request": {},
+  "decision": {
+    "by": "owner",
+    "via": "cli",
+    "at": "2026-10-11T12:30:00.000Z",
+    "notes": ""
+  },
+  "auto": false
+}

@@ -67,7 +67,7 @@ const config = {
 };
 write('config.json', config);
 write('constitution.md', '# Constitution\n\nShip small, tested changes. Never push. Ask in open_questions when unsure.\n');
-write('.gitignore', '*\n!.gitignore\n!config.json\n');
+// No .factory/.gitignore here: a real one ignores almost everything, so git would drop this fixture.
 
 const common = (schema, id, created, updated, rev = 3) => ({ schema: `factory/${schema}@1`, id, rev, created_at: iso(created), updated_at: iso(updated) });
 

@@ -1,0 +1,77 @@
+{
+  "schema": "factory/task@1",
+  "id": "T-0015",
+  "rev": 9,
+  "created_at": "2026-10-12T05:00:00.000Z",
+  "updated_at": "2026-10-12T13:20:00.000Z",
+  "goal_id": "G-001",
+  "epic_id": "E-0002",
+  "kind": "code",
+  "title": "Rate limit the decode API",
+  "description": "Rate limit the decode API. Follow the spec section for this work and keep the change small.",
+  "role": "backend-engineer",
+  "size": "M",
+  "priority": "P1",
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Rate limit the decode API works as described in the spec"
+    },
+    {
+      "id": "AC-2",
+      "text": "Tests cover the happy path and one failure path"
+    }
+  ],
+  "ac_version": 1,
+  "files_owned": [
+    "src/api/vin/rate-limit/**"
+  ],
+  "files_shared": [],
+  "files_read": [],
+  "depends_on": [],
+  "gate_deps": [],
+  "gate": null,
+  "risk_flags": [
+    "auth"
+  ],
+  "reviews_required": [
+    [
+      "code-reviewer"
+    ]
+  ],
+  "reviews": {
+    "code-reviewer": {
+      "verdict": "fail",
+      "run_id": "R-000000",
+      "round": 1,
+      "at": "2026-10-12T13:20:00.000Z"
+    }
+  },
+  "status": "changes_requested",
+  "status_reason": "code-reviewer: limiter key ignores the dealer id",
+  "attempts": 1,
+  "max_attempts": 3,
+  "rework_count": 1,
+  "max_rework": 3,
+  "fixups": 0,
+  "estimate_tokens": 600000,
+  "model_override": null,
+  "branch": "factory/T-0015-rate-limit-the-decode-api",
+  "base_ref": "factory/E-0002",
+  "current_run_id": null,
+  "runs": [
+    "R-000018",
+    "R-000019"
+  ],
+  "blocked": null,
+  "resume_from": null,
+  "feedback": [
+    {
+      "source": "code-reviewer",
+      "ref": "F-1",
+      "path": "docs/G-001-vin-decoder/reviews/T-0015-code-reviewer-r1.md",
+      "at": "2026-10-12T13:20:00.000Z"
+    }
+  ],
+  "answers": []
+}

@@ -1,0 +1,51 @@
+{
+  "schema": "factory/goal@1",
+  "id": "G-002",
+  "rev": 9,
+  "created_at": "2026-10-11T10:00:00.000Z",
+  "updated_at": "2026-10-12T12:10:00.000Z",
+  "title": "CSV export for deals",
+  "slug": "csv-export",
+  "outcome": "Managers can export the filtered deals list to CSV with the same columns as the screen.",
+  "success_criteria": [
+    "Export respects current filters",
+    "Columns match the grid",
+    "Files over 10k rows stream"
+  ],
+  "constraints": [],
+  "priority": "P2",
+  "tier": "S",
+  "needs_ui": false,
+  "status": "budget_blocked",
+  "status_reason": "Spent 104% of the 5M budget",
+  "pod": {
+    "product": "product-manager",
+    "tech_lead": "staff-engineer",
+    "members": [
+      "backend-engineer",
+      "code-reviewer"
+    ]
+  },
+  "docs": {
+    "prd": "docs/G-002-csv-export/prd.md",
+    "spec": null,
+    "plan": null,
+    "design": null
+  },
+  "gates": {
+    "G1": "GATE-0004",
+    "G2": null,
+    "G3": null
+  },
+  "gate_policy": {},
+  "budget": {
+    "limit_tokens": 5000000,
+    "warn_pct": 80,
+    "stop_pct": 100
+  },
+  "created_by": {
+    "kind": "human",
+    "via": "cli"
+  },
+  "epics": []
+}

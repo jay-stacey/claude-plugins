@@ -1,0 +1,446 @@
+{
+  "rev": 57,
+  "goals": {
+    "G-001": {
+      "status": "active",
+      "title": "VIN decoder for inventory intake",
+      "priority": "P1"
+    },
+    "G-002": {
+      "status": "budget_blocked",
+      "title": "CSV export for deals",
+      "priority": "P2"
+    },
+    "G-003": {
+      "status": "awaiting_g1",
+      "title": "Audit log for deal changes",
+      "priority": "P3"
+    }
+  },
+  "epics": {
+    "E-0001": {
+      "goal_id": "G-001",
+      "status": "pr_open"
+    },
+    "E-0002": {
+      "goal_id": "G-001",
+      "status": "building"
+    }
+  },
+  "tasks": {
+    "T-0001": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "cto",
+      "kind": "intake",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T08:40:00.000Z"
+    },
+    "T-0002": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "product-manager",
+      "kind": "prd",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T10:00:00.000Z"
+    },
+    "T-0003": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "staff-engineer",
+      "kind": "spec",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T12:00:00.000Z"
+    },
+    "T-0004": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "ui-ux-designer",
+      "kind": "mockup",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T13:30:00.000Z"
+    },
+    "T-0005": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "staff-engineer",
+      "kind": "breakdown",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T13:50:00.000Z"
+    },
+    "T-0006": {
+      "goal_id": "G-001",
+      "epic_id": null,
+      "status": "done",
+      "role": "project-manager",
+      "kind": "sequence",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T14:30:00.000Z"
+    },
+    "T-0007": {
+      "goal_id": "G-001",
+      "epic_id": "E-0001",
+      "status": "integrated",
+      "role": "backend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        "src/api/vin/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T20:00:00.000Z"
+    },
+    "T-0008": {
+      "goal_id": "G-001",
+      "epic_id": "E-0001",
+      "status": "integrated",
+      "role": "data-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        "db/migrations/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T19:00:00.000Z"
+    },
+    "T-0009": {
+      "goal_id": "G-001",
+      "epic_id": "E-0001",
+      "status": "done",
+      "role": "qa-engineer",
+      "kind": "qa_epic",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T23:00:00.000Z"
+    },
+    "T-0010": {
+      "goal_id": "G-001",
+      "epic_id": "E-0001",
+      "status": "done",
+      "role": "code-reviewer",
+      "kind": "review_epic",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T02:00:00.000Z"
+    },
+    "T-0011": {
+      "goal_id": "G-001",
+      "epic_id": "E-0001",
+      "status": "integrated",
+      "role": "tech-writer",
+      "kind": "docs",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T05:00:00.000Z"
+    },
+    "T-0012": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "in_progress",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [
+        "G3"
+      ],
+      "files_owned": [
+        "web/src/app/intake/vin-field/**"
+      ],
+      "current_run_id": "R-000014",
+      "updated_at": "2026-10-12T14:10:00.000Z"
+    },
+    "T-0013": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "in_review",
+      "role": "backend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        "src/api/vin/cache/**"
+      ],
+      "current_run_id": "R-000016",
+      "updated_at": "2026-10-12T13:50:00.000Z"
+    },
+    "T-0014": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "checking",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [
+        "G3"
+      ],
+      "files_owned": [
+        "web/src/app/intake/decode-panel/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T14:00:00.000Z"
+    },
+    "T-0015": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "changes_requested",
+      "role": "backend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        "src/api/vin/rate-limit/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T13:20:00.000Z"
+    },
+    "T-0016": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "ready",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [
+        "T-0012"
+      ],
+      "gate_deps": [
+        "G3"
+      ],
+      "files_owned": [
+        "web/src/app/intake/vin-errors/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T12:00:00.000Z"
+    },
+    "T-0017": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "verified",
+      "role": "devops-release",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        ".github/workflows/decoder.yml"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T11:00:00.000Z"
+    },
+    "T-0018": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "blocked",
+      "role": "data-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [
+        "db/scripts/backfill-vin/**"
+      ],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T10:00:00.000Z"
+    },
+    "T-0019": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "backlog",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [
+        "G3"
+      ],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T05:05:00.000Z"
+    },
+    "T-0020": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "draft",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T13:00:00.000Z"
+    },
+    "T-0021": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "failed",
+      "role": "backend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T09:00:00.000Z"
+    },
+    "T-0022": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "paused",
+      "role": "devops-release",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T08:00:00.000Z"
+    },
+    "T-0026": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "deferred",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T13:45:00.000Z"
+    },
+    "T-0027": {
+      "goal_id": "G-001",
+      "epic_id": "E-0002",
+      "status": "cancelled",
+      "role": "frontend-engineer",
+      "kind": "code",
+      "priority": "P1",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T06:00:00.000Z"
+    },
+    "T-0023": {
+      "goal_id": "G-002",
+      "epic_id": null,
+      "status": "done",
+      "role": "cto",
+      "kind": "intake",
+      "priority": "P2",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T10:30:00.000Z"
+    },
+    "T-0024": {
+      "goal_id": "G-002",
+      "epic_id": null,
+      "status": "done",
+      "role": "product-manager",
+      "kind": "prd",
+      "priority": "P2",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-11T16:00:00.000Z"
+    },
+    "T-0025": {
+      "goal_id": "G-002",
+      "epic_id": null,
+      "status": "ready",
+      "role": "staff-engineer",
+      "kind": "spec",
+      "priority": "P2",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T12:10:00.000Z"
+    },
+    "T-0028": {
+      "goal_id": "G-003",
+      "epic_id": null,
+      "status": "done",
+      "role": "cto",
+      "kind": "intake",
+      "priority": "P3",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T10:30:00.000Z"
+    },
+    "T-0029": {
+      "goal_id": "G-003",
+      "epic_id": null,
+      "status": "awaiting_approval",
+      "role": "product-manager",
+      "kind": "prd",
+      "priority": "P3",
+      "depends_on": [],
+      "gate_deps": [],
+      "files_owned": [],
+      "current_run_id": null,
+      "updated_at": "2026-10-12T13:05:00.000Z"
+    }
+  },
+  "runs_active": [
+    "R-000014",
+    "R-000016"
+  ],
+  "gates_pending": [
+    "GATE-0005",
+    "GATE-0006",
+    "GATE-0007"
+  ]
+}

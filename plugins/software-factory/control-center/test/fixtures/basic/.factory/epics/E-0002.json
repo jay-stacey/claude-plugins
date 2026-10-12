@@ -1,0 +1,36 @@
+{
+  "schema": "factory/epic@1",
+  "id": "E-0002",
+  "rev": 6,
+  "created_at": "2026-10-11T14:00:00.000Z",
+  "updated_at": "2026-10-12T14:00:00.000Z",
+  "goal_id": "G-001",
+  "title": "Intake form VIN experience",
+  "slug": "intake-ui",
+  "summary": "VIN field, decode panel, error states and keyboard support on the intake form.",
+  "depends_on": [
+    "E-0001"
+  ],
+  "status": "building",
+  "branch": "factory/E-0002-intake-ui",
+  "base_branch": "main",
+  "pr": null,
+  "gates": {
+    "G4": null
+  },
+  "tasks": [
+    "T-0012",
+    "T-0013",
+    "T-0014",
+    "T-0015",
+    "T-0016",
+    "T-0017",
+    "T-0018",
+    "T-0019",
+    "T-0020",
+    "T-0021",
+    "T-0022",
+    "T-0026",
+    "T-0027"
+  ]
+}

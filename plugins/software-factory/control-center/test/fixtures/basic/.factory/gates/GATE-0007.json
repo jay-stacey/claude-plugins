@@ -1,0 +1,28 @@
+{
+  "schema": "factory/gate@1",
+  "id": "GATE-0007",
+  "rev": 1,
+  "created_at": "2026-10-12T13:05:00.000Z",
+  "updated_at": "2026-10-12T13:05:00.000Z",
+  "type": "G1",
+  "subject": {
+    "kind": "goal",
+    "id": "G-003"
+  },
+  "goal_id": "G-003",
+  "status": "pending",
+  "opened_at": "2026-10-12T13:05:00.000Z",
+  "opened_by": {
+    "run_id": "R-000035",
+    "actor": "product-manager"
+  },
+  "artifact": {
+    "paths": [
+      "docs/G-003-audit-log/prd.md"
+    ],
+    "summary": "PRD for the audit log: field-level history, read-only entries, CSV export. Tier M, needs UI."
+  },
+  "request": {},
+  "decision": null,
+  "auto": false
+}

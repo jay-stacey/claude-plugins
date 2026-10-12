@@ -1,0 +1,33 @@
+{
+  "schema": "factory/gate@1",
+  "id": "GATE-0004",
+  "rev": 2,
+  "created_at": "2026-10-11T16:00:00.000Z",
+  "updated_at": "2026-10-11T16:15:00.000Z",
+  "type": "G1",
+  "subject": {
+    "kind": "goal",
+    "id": "G-002"
+  },
+  "goal_id": "G-002",
+  "status": "approved",
+  "opened_at": "2026-10-11T16:00:00.000Z",
+  "opened_by": {
+    "run_id": null,
+    "actor": "product-manager"
+  },
+  "artifact": {
+    "paths": [
+      "docs/G-002-csv-export/prd.md"
+    ],
+    "summary": "PRD for CSV export."
+  },
+  "request": {},
+  "decision": {
+    "by": "owner",
+    "via": "dashboard",
+    "at": "2026-10-11T16:15:00.000Z",
+    "notes": ""
+  },
+  "auto": false
+}

@@ -1,0 +1,24 @@
+{
+  "status": "running",
+  "status_changed_at": "2026-10-11T07:50:00.000Z",
+  "status_reason": "started by user",
+  "pause_mode": null,
+  "tick": {
+    "count": 62,
+    "last_begin_at": "2026-10-12T14:28:00.000Z",
+    "last_end_at": "2026-10-12T14:28:45.000Z",
+    "last_error": null,
+    "consecutive_errors": 0,
+    "cadence_s": 270,
+    "next_wakeup_at": "2026-10-12T14:33:15.000Z"
+  },
+  "dispatcher": {
+    "session_id": "sess-cto-1",
+    "since": "2026-10-11T07:50:00.000Z"
+  },
+  "backoff_until": null,
+  "versions": {
+    "plugin": "0.1.0",
+    "schema": 1
+  }
+}
