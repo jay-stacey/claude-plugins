@@ -1,0 +1,27 @@
+{
+  "schema": "factory/inbox@1",
+  "id": "ib-00000003",
+  "created_at": "2026-10-12T09:59:00.000Z",
+  "source": "dashboard",
+  "actor": {
+    "kind": "human",
+    "name": "dashboard"
+  },
+  "type": "goal.add",
+  "payload": {
+    "title": "Audit log for deal changes",
+    "outcome": "Every change is recorded.",
+    "success_criteria": [
+      "History on deal page"
+    ],
+    "priority": "P3"
+  },
+  "needs_confirmation": false,
+  "auto_apply": false,
+  "sig": "0000000000000000000000000000000000000000000000000000000000000000",
+  "result": {
+    "status": "applied",
+    "reason": "created G-003",
+    "tick": 37
+  }
+}

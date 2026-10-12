@@ -1,0 +1,25 @@
+{
+  "schema": "factory/inbox@1",
+  "id": "ib-00070000",
+  "created_at": "2026-10-11T13:59:00.000Z",
+  "source": "dashboard",
+  "actor": {
+    "kind": "human",
+    "name": "dashboard"
+  },
+  "type": "gate.decide",
+  "payload": {
+    "gate_id": "GATE-0003",
+    "decision": "approve",
+    "notes": "Use the existing panel component."
+  },
+  "needs_confirmation": false,
+  "auto_apply": false,
+  "sig": "0000000000000000000000000000000000000000000000000000000000000000",
+  "result": {
+    "status": "applied",
+    "reason": "gate approved",
+    "tick": 13,
+    "gate_id": "GATE-0003"
+  }
+}

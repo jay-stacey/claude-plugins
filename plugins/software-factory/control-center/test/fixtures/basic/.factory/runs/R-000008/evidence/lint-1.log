@@ -1,0 +1,4 @@
+$ npm run lint
+> dealer-app@1.0.0 lint
+All checks passed.
+exit 0

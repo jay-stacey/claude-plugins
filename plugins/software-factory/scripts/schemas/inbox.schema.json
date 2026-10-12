@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/inbox.schema.json",
+  "title": "Inbox request",
+  "description": "inbox/<yyyymmddThhmmssZ>-<id8>-<type>.json (contracts 3). sig = hex HMAC-SHA256 over type + LF + canonical JSON(payload) + LF + id.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/inbox@1"
+    },
+    "id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "enum": [
+        "dashboard",
+        "cli",
+        "tracker",
+        "setup"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "human",
+            "tracker",
+            "system"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "description": "gate.decide, goal.add, goal.activate, goal.pause, goal.resume, goal.remove, factory.pause, factory.resume, factory.stop, budget.override, task.note, task.answer, task.retry, task.cancel, task.pause, sync.now, tracker.*, sync.*"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "dedupe_key": {
+      "type": "string"
+    },
+    "needs_confirmation": {
+      "type": "boolean"
+    },
+    "auto_apply": {
+      "type": "boolean"
+    },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "required for gate.decide, goal.remove, factory.stop, budget.override"
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "applied",
+            "rejected",
+            "superseded",
+            "gated"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tick": {},
+        "gate_id": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "created_at",
+    "source",
+    "actor",
+    "type",
+    "payload"
+  ],
+  "additionalProperties": true
+}

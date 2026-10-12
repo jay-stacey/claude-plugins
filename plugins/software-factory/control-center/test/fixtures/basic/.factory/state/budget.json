@@ -1,0 +1,30 @@
+{
+  "goals": {
+    "G-001": {
+      "limit": 15000000,
+      "spent": 6931990,
+      "reserved": 1200000,
+      "pct": 54.2,
+      "warned_at": null,
+      "blocked_at": null
+    },
+    "G-002": {
+      "limit": 5000000,
+      "spent": 5176542,
+      "reserved": 0,
+      "pct": 103.5,
+      "warned_at": "2026-10-12T11:00:00.000Z",
+      "blocked_at": "2026-10-12T12:10:00.000Z"
+    },
+    "G-003": {
+      "limit": 15000000,
+      "spent": 452521,
+      "reserved": 0,
+      "pct": 3,
+      "warned_at": null,
+      "blocked_at": null
+    }
+  },
+  "overhead": 620000,
+  "unattributed": 0
+}

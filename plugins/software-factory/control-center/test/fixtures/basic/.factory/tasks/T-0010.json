@@ -1,0 +1,54 @@
+{
+  "schema": "factory/task@1",
+  "id": "T-0010",
+  "rev": 7,
+  "created_at": "2026-10-11T23:00:00.000Z",
+  "updated_at": "2026-10-12T02:00:00.000Z",
+  "goal_id": "G-001",
+  "epic_id": "E-0001",
+  "kind": "review_epic",
+  "title": "Epic review: decoder service",
+  "description": "Epic review: decoder service. Follow the spec section for this work and keep the change small.",
+  "role": "code-reviewer",
+  "size": "M",
+  "priority": "P1",
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Epic review: decoder service works as described in the spec"
+    },
+    {
+      "id": "AC-2",
+      "text": "Tests cover the happy path and one failure path"
+    }
+  ],
+  "ac_version": 1,
+  "files_owned": [],
+  "files_shared": [],
+  "files_read": [],
+  "depends_on": [],
+  "gate_deps": [],
+  "gate": null,
+  "risk_flags": [],
+  "reviews_required": [],
+  "reviews": {},
+  "status": "done",
+  "status_reason": null,
+  "attempts": 1,
+  "max_attempts": 3,
+  "rework_count": 0,
+  "max_rework": 3,
+  "fixups": 0,
+  "estimate_tokens": 300000,
+  "model_override": null,
+  "branch": null,
+  "base_ref": "factory/E-0001",
+  "current_run_id": null,
+  "runs": [
+    "R-000012"
+  ],
+  "blocked": null,
+  "resume_from": null,
+  "feedback": [],
+  "answers": []
+}

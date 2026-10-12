@@ -1,0 +1,373 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/config.schema.json",
+  "title": "Factory config",
+  "description": ".factory/config.json (contracts 3, 12.3, 14.5). Unknown keys are kept.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "existing",
+            "new"
+          ]
+        },
+        "default_branch": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "repo": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "stack": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "install": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "test": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "typecheck": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "e2e": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "migrate_up": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "migrate_down": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "screenshot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extra": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "cto",
+              "product-manager",
+              "project-manager",
+              "staff-engineer",
+              "ui-ux-designer",
+              "data-engineer",
+              "backend-engineer",
+              "frontend-engineer",
+              "devops-release",
+              "qa-engineer",
+              "code-reviewer",
+              "security-reviewer",
+              "critic",
+              "tech-writer"
+            ]
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "patternProperties": {
+        "^G[1-4]$": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "approvers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "tier_defaults": {
+          "type": "object",
+          "properties": {
+            "S": {
+              "type": "number"
+            },
+            "M": {
+              "type": "number"
+            },
+            "L": {
+              "type": "number"
+            }
+          }
+        },
+        "warn_pct": {
+          "type": "number"
+        },
+        "stop_pct": {
+          "type": "number"
+        },
+        "weights": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "number"
+            },
+            "output": {
+              "type": "number"
+            },
+            "cache_creation": {
+              "type": "number"
+            },
+            "cache_read": {
+              "type": "number"
+            }
+          }
+        },
+        "estimates": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "hard_kill": {
+          "type": "boolean"
+        }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "builders": {
+          "type": "integer"
+        },
+        "reviewers": {
+          "type": "integer"
+        },
+        "planners": {
+          "type": "integer"
+        },
+        "per_role": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "max_goals_building": {
+          "type": "integer"
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "properties": {
+        "pre_review": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "post_merge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "github",
+            "local"
+          ]
+        },
+        "base_branch": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        }
+      }
+    },
+    "reviews": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "enum": [
+            "lean",
+            "thorough"
+          ]
+        }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "properties": {
+        "orphan_after_s": {
+          "type": "integer"
+        }
+      }
+    },
+    "cadence": {
+      "type": "object",
+      "properties": {
+        "active_s": {
+          "type": "integer"
+        },
+        "waiting_s": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "paused_s": {
+          "type": "integer"
+        },
+        "inbox_s": {
+          "type": "integer"
+        }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "min_interval_s": {
+          "type": "integer"
+        },
+        "full_every_ticks": {
+          "type": "integer"
+        }
+      }
+    },
+    "tracker": {
+      "type": "object",
+      "description": "Open object until M5: provider, mode, scope, goal_mapping, labels, status (awaiting_sync_release | pending_credentials | ready).",
+      "properties": {
+        "provider": {
+          "type": "string"
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "desktop": {
+          "type": "boolean"
+        }
+      }
+    },
+    "control_center": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "integer"
+        },
+        "open_browser": {
+          "type": "boolean"
+        },
+        "show_cost": {
+          "type": "boolean"
+        }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "properties": {
+        "include_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "additionalProperties": true
+}

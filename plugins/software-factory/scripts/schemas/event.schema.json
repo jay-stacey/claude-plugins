@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/event.schema.json",
+  "title": "Event line",
+  "description": "events/events.jsonl, one line <= 4 KB (contracts 3).",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "cli",
+        "hook",
+        "server",
+        "sync",
+        "reconcile"
+      ]
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "agent_id": {
+          "type": "string"
+        }
+      }
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "epic_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "msg": {
+      "type": "string",
+      "maxLength": 140
+    },
+    "data": {
+      "type": "object",
+      "description": "msg.* events: {from: {role, run_id?}, to: {role, run_id?}, ref_path?}; inbox.processed: {request_id, type, outcome, reason, gate_id?}"
+    }
+  },
+  "required": [
+    "v",
+    "id",
+    "ts",
+    "type",
+    "source",
+    "actor",
+    "msg"
+  ],
+  "additionalProperties": true
+}

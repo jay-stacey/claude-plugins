@@ -1,0 +1,31 @@
+{
+  "schema": "factory/gate@1",
+  "id": "GATE-0005",
+  "rev": 1,
+  "created_at": "2026-10-12T12:10:00.000Z",
+  "updated_at": "2026-10-12T12:10:00.000Z",
+  "type": "budget",
+  "subject": {
+    "kind": "goal",
+    "id": "G-002"
+  },
+  "goal_id": "G-002",
+  "status": "pending",
+  "opened_at": "2026-10-12T12:10:00.000Z",
+  "opened_by": {
+    "run_id": null,
+    "actor": "cto"
+  },
+  "artifact": {
+    "paths": [],
+    "summary": "G-002 spent 5.2M of its 5M budget. The spec task needs about 500k more."
+  },
+  "request": {
+    "add_tokens_suggested": 2000000,
+    "impact": [
+      "Spec for CSV export stays paused until you decide"
+    ]
+  },
+  "decision": null,
+  "auto": false
+}

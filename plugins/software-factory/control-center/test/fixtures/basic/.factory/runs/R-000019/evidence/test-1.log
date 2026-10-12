@@ -1,0 +1,5 @@
+$ npm test
+> dealer-app@1.0.0 test
+Error: 2 tests failed
+  vin.spec.ts: expected 200, got 429
+exit 1

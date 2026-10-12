@@ -1,0 +1,33 @@
+{
+  "schema": "factory/gate@1",
+  "id": "GATE-0001",
+  "rev": 2,
+  "created_at": "2026-10-11T10:00:00.000Z",
+  "updated_at": "2026-10-11T10:20:00.000Z",
+  "type": "G1",
+  "subject": {
+    "kind": "goal",
+    "id": "G-001"
+  },
+  "goal_id": "G-001",
+  "status": "approved",
+  "opened_at": "2026-10-11T10:00:00.000Z",
+  "opened_by": {
+    "run_id": null,
+    "actor": "product-manager"
+  },
+  "artifact": {
+    "paths": [
+      "docs/G-001-vin-decoder/prd.md"
+    ],
+    "summary": "PRD for the VIN decoder: 3 success criteria, tier M."
+  },
+  "request": {},
+  "decision": {
+    "by": "owner",
+    "via": "dashboard",
+    "at": "2026-10-11T10:20:00.000Z",
+    "notes": ""
+  },
+  "auto": false
+}

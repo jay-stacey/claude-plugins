@@ -1,0 +1,68 @@
+{
+  "schema": "factory/task@1",
+  "id": "T-0008",
+  "rev": 5,
+  "created_at": "2026-10-11T14:30:00.000Z",
+  "updated_at": "2026-10-11T19:00:00.000Z",
+  "goal_id": "G-001",
+  "epic_id": "E-0001",
+  "kind": "code",
+  "title": "Add vin_decodes cache table migration",
+  "description": "Add vin_decodes cache table migration. Follow the spec section for this work and keep the change small.",
+  "role": "data-engineer",
+  "size": "S",
+  "priority": "P1",
+  "acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Add vin_decodes cache table migration works as described in the spec"
+    },
+    {
+      "id": "AC-2",
+      "text": "Tests cover the happy path and one failure path"
+    }
+  ],
+  "ac_version": 1,
+  "files_owned": [
+    "db/migrations/**"
+  ],
+  "files_shared": [],
+  "files_read": [],
+  "depends_on": [],
+  "gate_deps": [],
+  "gate": null,
+  "risk_flags": [],
+  "reviews_required": [
+    [
+      "code-reviewer"
+    ]
+  ],
+  "reviews": {
+    "code-reviewer": {
+      "verdict": "pass",
+      "run_id": "R-000011",
+      "round": 1,
+      "at": "2026-10-11T18:30:00.000Z"
+    }
+  },
+  "status": "integrated",
+  "status_reason": null,
+  "attempts": 1,
+  "max_attempts": 3,
+  "rework_count": 0,
+  "max_rework": 3,
+  "fixups": 0,
+  "estimate_tokens": 250000,
+  "model_override": null,
+  "branch": "factory/T-0008-add-vin-decodes-cache-table-mi",
+  "base_ref": "factory/E-0001",
+  "current_run_id": null,
+  "runs": [
+    "R-000009",
+    "R-000010"
+  ],
+  "blocked": null,
+  "resume_from": null,
+  "feedback": [],
+  "answers": []
+}

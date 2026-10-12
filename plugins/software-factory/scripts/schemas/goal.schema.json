@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/goal.schema.json",
+  "title": "Goal",
+  "description": "goals/G-001.json (contracts 3).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/goal@1"
+    },
+    "id": {
+      "type": "string"
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "slug": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "maxLength": 600
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 7
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "S",
+        "M",
+        "L",
+        null
+      ]
+    },
+    "needs_ui": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "planning",
+        "awaiting_g1",
+        "active",
+        "paused",
+        "budget_blocked",
+        "done",
+        "cancelled"
+      ]
+    },
+    "status_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pod": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "product": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tech_lead": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "docs": {
+      "type": "object",
+      "properties": {
+        "prd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "design": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "description": "gate ids by type (G1, G2, G3, budget)"
+    },
+    "gate_policy": {
+      "type": "object",
+      "description": "{G1?: \"auto\"|\"human\", ...}"
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "limit_tokens": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warn_pct": {
+          "type": "number"
+        },
+        "stop_pct": {
+          "type": "number"
+        },
+        "user_set": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "limit_tokens"
+      ]
+    },
+    "created_by": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "human",
+            "tracker"
+          ]
+        },
+        "via": {
+          "enum": [
+            "cli",
+            "dashboard",
+            "tracker",
+            "setup"
+          ]
+        }
+      }
+    },
+    "epics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "rev",
+    "title",
+    "slug",
+    "outcome",
+    "success_criteria",
+    "priority",
+    "status",
+    "budget"
+  ],
+  "additionalProperties": true
+}

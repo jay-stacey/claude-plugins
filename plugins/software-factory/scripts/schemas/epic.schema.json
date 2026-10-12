@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/epic.schema.json",
+  "title": "Epic",
+  "description": "epics/E-0001.json (contracts 3).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/epic@1"
+    },
+    "id": {
+      "type": "string"
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "slug": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "building",
+        "integrating",
+        "qa",
+        "review",
+        "docs",
+        "pr_open",
+        "changes_requested",
+        "done",
+        "cancelled"
+      ]
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^factory/E-\\d{4}-"
+    },
+    "base_branch": {
+      "type": "string"
+    },
+    "pr": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "head_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "review_decision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mergeable": {},
+        "merged_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "properties": {
+        "G4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "rev",
+    "goal_id",
+    "title",
+    "status",
+    "branch"
+  ],
+  "additionalProperties": true
+}

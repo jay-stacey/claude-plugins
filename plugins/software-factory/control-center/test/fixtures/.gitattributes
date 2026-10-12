@@ -1,0 +1,2 @@
+# Keep fixture bytes exact on every OS (tests read byte offsets).
+basic/** -text

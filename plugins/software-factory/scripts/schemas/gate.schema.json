@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/gate.schema.json",
+  "title": "Gate",
+  "description": "gates/GATE-0001.json (contracts 3). artifact.paths are relative to the factory home; repo files use repo:<path>.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/gate@1"
+    },
+    "id": {
+      "type": "string"
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "enum": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "budget",
+        "destructive",
+        "tracker"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "goal",
+            "epic",
+            "task"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "goal_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "changes_requested",
+        "superseded"
+      ]
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "opened_by": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pr_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "diffstat": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "add_tokens_suggested": {
+          "type": "number"
+        },
+        "action": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inbox_id": {
+          "type": "string"
+        }
+      }
+    },
+    "decision": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "via": {
+          "enum": [
+            "cli",
+            "dashboard",
+            "tracker",
+            "github"
+          ]
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "add_tokens": {
+          "type": "number"
+        }
+      }
+    },
+    "auto": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "rev",
+    "type",
+    "subject",
+    "status",
+    "opened_at",
+    "artifact"
+  ],
+  "additionalProperties": true
+}
