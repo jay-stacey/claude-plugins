@@ -9,7 +9,7 @@ import { ROLES, ENUMS } from './schema.mjs';
 import { KIND_ROLE, estimateFor, CODE_ROLES } from './roles.mjs';
 import { move, setGoalStatus } from './lifecycle.mjs';
 import { overlap, lsFiles } from './glob.mjs';
-import { repoRoot } from './paths.mjs';
+import * as repos from './repos.mjs';
 
 export function fail(msg, exitCode = 1) { const e = new Error(msg); e.exitCode = exitCode; return e; }
 
@@ -119,17 +119,21 @@ export function removeGoal(home, goalId, { discard = false, by = 'human', via = 
 }
 
 // ---------------- epics ----------------
-export function newEpic(home, { goal_id, title, summary = '', depends_on = [] }) {
+export function newEpic(home, { goal_id, title, summary = '', depends_on = [], repo = null }) {
   const cfg = loadConfig(home);
   const goal = store.mustGet(home, 'goal', goal_id);
   if (!title) throw fail('epic needs --title', 2);
   for (const d of depends_on) if (!store.get(home, 'epic', d)) throw fail(`depends_on ${d} not found`);
+  // Workspace mode: an epic lives in exactly one repo (contracts §20.3). Classic mode ignores --repo.
+  const ws = repos.isWorkspace(cfg);
+  if (ws && !repo) throw fail(`epic needs --repo (one of: ${repos.names(home, cfg).join(', ')})`, 2);
+  const r = repos.get(home, cfg, ws ? repo : null);
   return withMutex(home, () => {
     const id = store.nextId(home, 'epic');
     const slug = slugify(title);
     const epic = store.create(home, 'epic', {
       id, goal_id, title: title.slice(0, 80), slug, summary, depends_on, status: 'draft',
-      branch: `factory/${id}-${slug}`, base_branch: cfg.delivery.base_branch,
+      branch: `factory/${id}-${slug}`, base_branch: r.delivery.base_branch, repo: ws ? r.name : null,
     });
     store.update(home, 'goal', goal.id, (g) => { if (!g.epics.includes(id)) g.epics.push(id); });
     return epic;
@@ -165,6 +169,7 @@ export function createTask(home, fields) {
   const role = fields.role || KIND_ROLE[fields.kind] || 'cto';
   const goal = fields.goal_id ? store.get(home, 'goal', fields.goal_id) : null;
   const t = { ...fields, role, acceptance_criteria: normAcs(fields.acceptance_criteria) };
+  if (t.repo === undefined && t.epic_id) { const ep = store.get(home, 'epic', t.epic_id); t.repo = (ep && ep.repo) || null; }
   if (t.priority === undefined && goal) t.priority = goal.priority;
   if (t.reviews_required === undefined) t.reviews_required = reviewsFor(cfg, t, goal);
   if (!t.estimate_tokens) t.estimate_tokens = estimateFor(cfg, { ...t, estimate_tokens: 0 }, 'author');
@@ -195,6 +200,8 @@ function cycleCheck(all) {
  */
 export function newTasks(home, input, { actor = 'cli' } = {}) {
   const cfg = loadConfig(home);
+  const ws = repos.isWorkspace(cfg);
+  const repoNames = repos.names(home, cfg);
   const items = Array.isArray(input) ? input : [input];
   if (!items.length) throw fail('no tasks in file');
   return withMutex(home, () => {
@@ -205,10 +212,19 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
       const where = `task[${i}]`;
       const kind = raw.kind || 'code';
       let goalId = raw.goal_id;
+      let ep = null;
       if (raw.epic_id) {
-        const ep = store.get(home, 'epic', raw.epic_id);
+        ep = store.get(home, 'epic', raw.epic_id);
         if (!ep) { errors.push(`${where}: epic ${raw.epic_id} not found`); continue; }
         goalId = goalId || ep.goal_id;
+      }
+      // Repo (contracts §20.3): task file, else the epic; must match the epic. Classic mode stores null.
+      let repo = null;
+      if (ws) {
+        repo = raw.repo || (ep && ep.repo) || null;
+        if (raw.repo && ep && ep.repo && raw.repo !== ep.repo) errors.push(`${where}: repo ${raw.repo} does not match epic ${ep.id} repo ${ep.repo}`);
+        if (repo && !repoNames.includes(repo)) errors.push(`${where}: unknown repo ${repo}; known: ${repoNames.join(', ')}`);
+        if (!repo && (kind === 'code' || kind === 'docs')) errors.push(`${where}: ${kind} tasks need a repo (an epic with a repo, or "repo")`);
       }
       const goal = goalId ? store.get(home, 'goal', goalId) : null;
       if (!goal) { errors.push(`${where}: goal_id missing or not found`); continue; }
@@ -224,7 +240,7 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
       }
       const id = store.nextId(home, 'task');
       if (raw.ref) refs.set(raw.ref, id);
-      planned.push({ id, raw, kind, role, goal });
+      planned.push({ id, raw, kind, role, goal, repo });
     }
     if (errors.length) throw Object.assign(fail(errors.join('\n')), { errors });
     // resolve refs
@@ -234,16 +250,19 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
         if (!refs.has(d) && ![...refs.values()].includes(d) && !store.get(home, 'task', d)) errors.push(`${p.id}: depends_on ${d} not found`);
       }
     }
-    // file ownership overlap with other open code tasks of the same goal and within the batch
-    const files = lsFiles(repoRoot(home));
+    // file ownership overlap with other open code tasks of the same goal and repo, and within the batch
+    const repoOf = (t) => repos.nameFor(home, cfg, { task: t, epic: t.epic_id ? store.get(home, 'epic', t.epic_id) : null });
+    const fileCache = new Map();
+    const filesIn = (name) => { if (!fileCache.has(name)) fileCache.set(name, lsFiles(repos.get(home, cfg, name).path)); return fileCache.get(name); };
     const open = store.list(home, 'task', (t) => t.kind === 'code' && !['done', 'cancelled', 'integrated'].includes(t.status));
     for (const [i, p] of planned.entries()) {
       if (p.kind !== 'code' || !(p.raw.files_owned || []).length) continue;
-      for (const t of open.filter((x) => x.goal_id === p.goal.id)) {
-        if (overlap(p.raw.files_owned, t.files_owned, files)) errors.push(`${p.id}: files_owned overlaps ${t.id}`);
+      const pr = p.repo || repos.defaultName(home, cfg);
+      for (const t of open.filter((x) => x.goal_id === p.goal.id && repoOf(x) === pr)) {
+        if (overlap(p.raw.files_owned, t.files_owned, filesIn(pr))) errors.push(`${p.id}: files_owned overlaps ${t.id}`);
       }
       for (const q of planned.slice(i + 1)) {
-        if (q.kind === 'code' && overlap(p.raw.files_owned, q.raw.files_owned || [], files)) errors.push(`${p.id}: files_owned overlaps ${q.id}`);
+        if (q.kind === 'code' && (q.repo || repos.defaultName(home, cfg)) === pr && overlap(p.raw.files_owned, q.raw.files_owned || [], filesIn(pr))) errors.push(`${p.id}: files_owned overlaps ${q.id}`);
       }
     }
     const existing = store.list(home, 'task');
@@ -258,7 +277,7 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
       const gateDeps = [...(p.raw.gate_deps || [])];
       if (p.role === 'frontend-engineer' && p.goal.needs_ui && !gateDeps.includes('G3')) gateDeps.push('G3');
       const fields = {
-        id: p.id, goal_id: p.goal.id, epic_id: p.raw.epic_id || null, kind: p.kind, role: p.role,
+        id: p.id, goal_id: p.goal.id, epic_id: p.raw.epic_id || null, repo: p.repo, kind: p.kind, role: p.role,
         title: String(p.raw.title).slice(0, 80), description: String(p.raw.description || '').slice(0, 1200),
         size: p.raw.size || 'M', acceptance_criteria: p.raw.acceptance_criteria || [],
         files_owned: p.raw.files_owned || [], files_shared: p.raw.files_shared || [], files_read: p.raw.files_read || [],

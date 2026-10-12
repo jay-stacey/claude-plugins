@@ -8,7 +8,7 @@ import { load as loadConfig } from './config.mjs';
 import { move, setGoalStatus, setEpicStatus } from './lifecycle.mjs';
 import { createTask, escalate, goalDocsRel, tasksOf, setGoalPaused, reviewsFor } from './actions.mjs';
 import { GATE_KINDS } from './roles.mjs';
-import { repoRoot } from './paths.mjs';
+import * as repos from './repos.mjs';
 import * as deps from './deps.mjs';
 import * as budget from './budget.mjs';
 
@@ -133,7 +133,9 @@ export async function onGateDecided(home, gate, { cfg = loadConfig(home) } = {})
     setGoalPaused(home, gate.goal_id, true, 'budget increase rejected');
   } else if (gate.type === 'destructive' && status === 'approved' && gate.request && gate.request.action === 'discard_goal_branches') {
     const wt = await deps.load('worktree');
-    try { wt.pruneBranches({ repoRoot: repoRoot(home), branches: gate.request.impact || [] }); } catch (e) { emit(home, { type: 'gate.decided', msg: `prune failed: ${e.message}`.slice(0, 140) }); }
+    for (const r of repos.list(home, cfg)) {
+      try { wt.pruneBranches({ repoRoot: r.path, branches: gate.request.impact || [] }); } catch (e) { emit(home, { type: 'gate.decided', msg: `prune failed in ${r.name}: ${e.message}`.slice(0, 140) }); }
+    }
   } else if (gate.type === 'tracker' && status === 'approved' && gate.request && gate.request.original) {
     const inbox = await import('./inbox.mjs');
     const by = (gate.decision && gate.decision.by) || 'human';
@@ -354,6 +356,7 @@ export async function advanceGoal(home, goalId, { cfg = loadConfig(home) } = {})
   for (const e of store.list(home, 'epic', (x) => x.goal_id === goalId && !['done', 'cancelled'].includes(x.status))) {
     await advanceEpic(home, e.id, { cfg });
   }
+  await advanceGoalQa(home, goalId, { cfg });
   // R12 goal done
   goal = store.get(home, 'goal', goalId);
   const epics = store.list(home, 'epic', (x) => x.goal_id === goalId && x.status !== 'cancelled');
@@ -366,24 +369,72 @@ export async function advanceGoal(home, goalId, { cfg = loadConfig(home) } = {})
   }
 }
 
+// ---------------- cross-repo goal QA (contracts §20.6) ----------------
+function liveEpics(home, goalId) { return store.list(home, 'epic', (x) => x.goal_id === goalId && x.status !== 'cancelled'); }
+
+/** True when the goal's non-cancelled epics live in two or more repos. */
+export function goalSpansRepos(home, goalId, cfg = loadConfig(home)) {
+  return new Set(liveEpics(home, goalId).map((e) => repos.nameFor(home, cfg, { epic: e }))).size >= 2;
+}
+
+/**
+ * Cross-repo QA (§20.6). Epics that still need delivery are those not pr_open, done, changes_requested or
+ * cancelled. When all of them wait in goal_qa, one qa_goal task is made; its pass opens a PR for every
+ * waiting epic. After a failed (or escalated) qa_goal, a new one is made once every pending epic is back
+ * in goal_qa and at least one of them re-entered goal_qa after that QA was created (`epic.goal_qa_at`).
+ * Epics that got no rework never leave goal_qa, so they do not have to re-enter. A goal that no longer
+ * spans two repos (e.g. the other repo's epic was cancelled) sends waiting epics straight to their PR.
+ */
+async function advanceGoalQa(home, goalId, { cfg }) {
+  const epics = liveEpics(home, goalId);
+  const waiting = epics.filter((e) => e.status === 'goal_qa');
+  if (!waiting.length) return;
+  const openPrs = async (qa) => {
+    for (const e of waiting) { // also retries an epic whose PR failed to open last time
+      try { await createPr(home, e.id, { cfg, goalQa: qa }); } catch (err) {
+        emit(home, { type: 'pr.updated', goal_id: goalId, epic_id: e.id, msg: `pr create failed: ${err.message}`.slice(0, 140) });
+      }
+    }
+  };
+  if (!goalSpansRepos(home, goalId, cfg)) { await openPrs(null); return; }
+  const goal = store.get(home, 'goal', goalId);
+  const pending = epics.filter((e) => !['pr_open', 'done', 'changes_requested'].includes(e.status));
+  const qa = latest(tasksOf(home, goalId), 'qa_goal');
+  const enteredAt = waiting.reduce((m, e) => (String(e.goal_qa_at || '') > m ? String(e.goal_qa_at || '') : m), '');
+  const current = !!qa && String(qa.created_at) >= enteredAt;
+  if (current && qa.status === 'done' && qa.verdict === 'pass') { await openPrs(qa); return; }
+  if (waiting.length !== pending.length) return;
+  if (qa && OPEN(qa) && qa.status !== 'failed') return;
+  if (current) return; // failed or escalated: wait until rework brings an epic back through goal_qa
+  const docs = goalDocsRel(goal);
+  createTask(home, {
+    goal_id: goalId, epic_id: null, repo: null, kind: 'qa_goal', status: 'ready',
+    title: `Cross-repo QA for ${goalId}`,
+    description: `Test the joined flow across ${waiting.map((e) => `${e.id} (${repos.nameFor(home, cfg, { epic: e })}, ${e.branch})`).join(', ')} against the goal's success criteria. Report at ${docs}/qa/${goalId}-goal.md.`.slice(0, 1200),
+    acceptance_criteria: goal.success_criteria.slice(0, 5),
+  });
+}
+
 // ---------------- epic rules ----------------
-async function baseRef(home, cfg) {
+function epicRepo(home, cfg, epic) { return repos.forRecord(home, cfg, { epic }); }
+
+async function baseRef(home, cfg, epic) {
   const git = await deps.load('git');
-  const root = repoRoot(home);
-  const base = cfg.delivery.base_branch;
-  const remoteRef = `${cfg.delivery.remote}/${base}`;
+  const repo = epicRepo(home, cfg, epic);
+  const base = repo.delivery.base_branch;
+  const remoteRef = `${repo.delivery.remote}/${base}`;
   try {
-    if (cfg.delivery.mode !== 'local' && git.headSha(root, `refs/remotes/${remoteRef}`)) return remoteRef;
+    if (repo.delivery.mode !== 'local' && git.headSha(repo.path, `refs/remotes/${remoteRef}`)) return remoteRef;
   } catch { /* fall through */ }
   return base;
 }
 
 export async function ensureEpicBranch(home, epic, cfg = loadConfig(home)) {
   const git = await deps.load('git');
-  const root = repoRoot(home);
   try {
+    const root = epicRepo(home, cfg, epic).path;
     if (git.branchExists(root, epic.branch)) return true;
-    const ref = await baseRef(home, cfg);
+    const ref = await baseRef(home, cfg, epic);
     const r = git.git(['branch', epic.branch, ref], { cwd: root });
     return r.code === 0;
   } catch (e) {
@@ -408,9 +459,10 @@ export async function integrateEpic(home, epicId, { cfg = loadConfig(home) } = {
   ready.forEach(visit);
   await ensureEpicBranch(home, epic, cfg);
   const integ = await deps.load('integrate');
+  const repo = epicRepo(home, cfg, epic);
   const res = integ.mergeTasks({
-    repoRoot: repoRoot(home), home, epicBranch: epic.branch, baseRef: await baseRef(home, cfg),
-    taskBranches: ordered.map((t) => t.branch), postMerge: cfg.checks.post_merge || [],
+    repoRoot: repo.path, home, epicBranch: epic.branch, baseRef: await baseRef(home, cfg, epic),
+    taskBranches: ordered.map((t) => t.branch), postMerge: repo.checks.post_merge || [],
   });
   const merged = new Set(res.merged || []);
   for (const t of ordered.filter((x) => merged.has(x.branch))) move(home, t.id, 'integrated', { reason: `merged into ${epic.branch}` });
@@ -445,6 +497,12 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   const tasks = () => epicTasks(home, epicId);
   const codeTasks = () => tasks().filter((t) => t.kind === 'code');
   const openEsc = () => tasks().some((t) => t.kind === 'escalation' && OPEN(t) && t.status !== 'failed');
+  const multi = goalSpansRepos(home, epic.goal_id, cfg);
+
+  // §20.6.7: rework code tasks added to an epic that waits in goal_qa send it back to building.
+  if (epic.status === 'goal_qa' && codeTasks().some((t) => !['integrated', 'done'].includes(t.status))) {
+    epic = setEpicStatus(home, epicId, 'building', 'rework after cross-repo QA');
+  }
 
   if (['building', 'docs', 'changes_requested', 'integrating'].includes(epic.status)) {
     try { await integrateEpic(home, epicId, { cfg }); } catch (e) {
@@ -476,7 +534,11 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   }
   if (epic.status === 'review') {
     const rv = latest(tasks(), 'review_epic');
-    if (rv && rv.status === 'done' && rv.verdict === 'pass') {
+    // Cross-repo rework: keep the docs task that is already integrated (§20.6.7).
+    const docsDone = multi && tasks().some((t) => t.kind === 'docs' && ['integrated', 'done'].includes(t.status));
+    if (rv && rv.status === 'done' && rv.verdict === 'pass' && docsDone) {
+      epic = setEpicStatus(home, epicId, 'docs', 'docs already written');
+    } else if (rv && rv.status === 'done' && rv.verdict === 'pass') {
       setEpicStatus(home, epicId, 'docs');
       createTask(home, {
         goal_id: epic.goal_id, epic_id: epicId, kind: 'docs', status: 'ready', size: 'S',
@@ -490,13 +552,19 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   }
   if (epic.status === 'docs') {
     const d = latest(tasks(), 'docs');
-    if (d && ['integrated', 'done'].includes(d.status)) { await createPr(home, epicId, { cfg }); epic = store.get(home, 'epic', epicId); }
+    if (d && ['integrated', 'done'].includes(d.status)) {
+      // A goal across repos waits for cross-repo QA before any PR (§20.6.2).
+      if (multi) setEpicStatus(home, epicId, 'goal_qa', 'waiting for cross-repo QA', (x) => { x.goal_qa_at = nowIso(); });
+      else await createPr(home, epicId, { cfg });
+      epic = store.get(home, 'epic', epicId);
+    }
   }
   if (epic.status === 'changes_requested') {
     const fb = latest(tasks(), 'pr_feedback');
     if (fb && fb.status === 'done' && allIntegrated() && !openEsc()) {
       const gh = await deps.load('gh');
-      if (cfg.delivery.mode !== 'local') gh.push({ cwd: repoRoot(home), remote: cfg.delivery.remote, branch: epic.branch });
+      const repo = epicRepo(home, cfg, epic);
+      if (repo.delivery.mode !== 'local') gh.push({ cwd: repo.path, remote: repo.delivery.remote, branch: epic.branch });
       setEpicStatus(home, epicId, 'pr_open', 'feedback addressed');
       emit(home, { type: 'pr.updated', goal_id: epic.goal_id, epic_id: epicId, msg: `${epicId} PR updated` });
     }
@@ -504,7 +572,7 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   if (store.get(home, 'epic', epicId).status === 'pr_open') await pollPr(home, epicId, { cfg, force: forcePoll });
 }
 
-function prBody(home, epic, goal) {
+function prBody(home, epic, goal, cfg, goalQa = null) {
   const tasks = epicTasks(home, epic.id);
   const lines = [`## ${epic.id} ${epic.title}`, '', `Goal ${goal.id}: ${goal.outcome}`, '', '### Tasks', ''];
   for (const t of tasks.filter((x) => x.kind === 'code' || x.kind === 'docs')) {
@@ -515,32 +583,47 @@ function prBody(home, epic, goal) {
     for (const w of t.waivers || []) lines.push(`  - Waived ${w.finding}: ${w.reason}`);
   }
   lines.push('', '### Success criteria', '', ...goal.success_criteria.map((c) => `- ${c}`));
+  // §20.5: list the goal's epics in other repos (PR url when one exists).
+  const mine = repos.nameFor(home, cfg, { epic });
+  const others = liveEpics(home, goal.id).filter((e) => e.id !== epic.id && repos.nameFor(home, cfg, { epic: e }) !== mine);
+  if (others.length) {
+    lines.push('', '### Same goal, other repos', '');
+    for (const e of others) lines.push(`- ${repos.nameFor(home, cfg, { epic: e })}: ${e.id} ${e.title}${e.pr && e.pr.url ? ` (${e.pr.url})` : ''}`);
+  }
+  if (goalQa) lines.push('', `Cross-repo QA ${goalQa.id} passed. Report: ${goalQa.report_path || `${goalDocsRel(goal)}/qa/${goal.id}-goal.md`}`);
   lines.push('', `Refs ${goal.id}, ${epic.id}`, '', 'Generated by software-factory. Rollback: revert the merge commit.');
   return lines.join('\n') + '\n';
 }
 
-export async function createPr(home, epicId, { cfg = loadConfig(home) } = {}) {
+export async function createPr(home, epicId, { cfg = loadConfig(home), goalQa = null } = {}) {
   const epic = store.mustGet(home, 'epic', epicId);
   const goal = store.mustGet(home, 'goal', epic.goal_id);
-  const root = repoRoot(home);
+  const repo = epicRepo(home, cfg, epic);
+  const root = repo.path;
   const git = await deps.load('git');
   let pr; let artifact;
-  if (cfg.delivery.mode === 'local') {
+  if (repo.delivery.mode === 'local') {
     const log = git.git(['log', '--oneline', `${epic.base_branch}..${epic.branch}`], { cwd: root });
     const stat = git.git(['diff', '--stat', `${epic.base_branch}...${epic.branch}`], { cwd: root });
     pr = { number: null, url: null, state: 'OPEN', head_sha: git.headSha(root, epic.branch), review_decision: null, mergeable: null, merged_at: null };
     artifact = { paths: [], summary: `Merge ${epic.branch} into ${epic.base_branch} locally.\n${(log.stdout || '').slice(0, 450)}`.slice(0, 600), diffstat: (stat.stdout || '').slice(-2000) };
   } else {
     const gh = await deps.load('gh');
-    const push = gh.push({ cwd: root, remote: cfg.delivery.remote, branch: epic.branch });
+    const push = gh.push({ cwd: root, remote: repo.delivery.remote, branch: epic.branch });
     if (push && push.ok === false) throw new Error(`push failed: ${push.stderr || ''}`.slice(0, 300));
     const bodyFile = join(home, 'run', `pr-body-${epicId}.md`);
     ensureDir(join(home, 'run'));
-    writeFileSync(bodyFile, prBody(home, epic, goal));
+    writeFileSync(bodyFile, prBody(home, epic, goal, cfg, goalQa));
     const r = gh.prCreate({ cwd: root, base: epic.base_branch, head: epic.branch, title: `[factory] ${epicId} ${epic.title}`, bodyFile });
     pr = { number: r.number, url: r.url, state: 'OPEN', head_sha: git.headSha(root, epic.branch), review_decision: null, mergeable: null, merged_at: null };
     artifact = { paths: [], pr_url: r.url, summary: `PR for ${epicId}: ${epic.title}`.slice(0, 600) };
   }
+  if (goalQa) {
+    const note = ` Cross-repo QA ${goalQa.id} passed: ${goalQa.report_path || `${goalDocsRel(goal)}/qa/${goal.id}-goal.md`}.`;
+    artifact.summary = `${artifact.summary.slice(0, Math.max(0, 600 - note.length))}${note}`.slice(0, 600);
+    if (goalQa.report_path) artifact.paths = [...(artifact.paths || []), goalQa.report_path];
+  }
+  if (repos.isWorkspace(cfg)) artifact.summary = `[${repo.name}] ${artifact.summary}`.slice(0, 600);
   setEpicStatus(home, epicId, 'pr_open', null, (e) => { e.pr = pr; });
   emit(home, { type: 'pr.opened', goal_id: goal.id, epic_id: epicId, msg: `${epicId} PR ${pr.url || '(local)'}`, data: { url: pr.url, number: pr.number } });
   const enabled = gateEnabled(cfg, goal, 'G4');
@@ -558,9 +641,10 @@ export async function pollPr(home, epicId, { cfg = loadConfig(home), force = fal
   const epic = store.mustGet(home, 'epic', epicId);
   if (!epic.pr) return null;
   if (!force && epic.pr.polled_at && Date.now() - Date.parse(epic.pr.polled_at) < 300000) return null;
-  const root = repoRoot(home);
+  const repo = epicRepo(home, cfg, epic);
+  const root = repo.path;
   let merged = false; let view = null;
-  if (cfg.delivery.mode === 'local' || !epic.pr.number) {
+  if (repo.delivery.mode === 'local' || !epic.pr.number) {
     const git = await deps.load('git');
     const head = git.headSha(root, epic.branch) || epic.pr.head_sha;
     merged = !!head && git.isAncestor(root, head, epic.base_branch);
@@ -611,7 +695,7 @@ export async function markMerged(home, epicId, { cfg = loadConfig(home), via = '
   emit(home, { type: 'pr.merged', goal_id: epic.goal_id, epic_id: epicId, msg: `${epicId} merged` });
   try {
     const wt = await deps.load('worktree');
-    wt.pruneBranches({ repoRoot: repoRoot(home), branches });
+    wt.pruneBranches({ repoRoot: epicRepo(home, cfg, epic).path, branches });
   } catch { /* best effort */ }
   await advanceGoal(home, epic.goal_id, { cfg });
   return store.get(home, 'epic', epicId);

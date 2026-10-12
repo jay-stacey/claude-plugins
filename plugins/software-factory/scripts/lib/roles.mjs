@@ -20,15 +20,15 @@ export const ROLE_INFO = {
 export const KIND_ROLE = {
   intake: 'cto', prd: 'product-manager', spec: 'staff-engineer', mockup: 'ui-ux-designer', breakdown: 'staff-engineer',
   sequence: 'project-manager', code: 'backend-engineer', docs: 'tech-writer', qa_epic: 'qa-engineer',
-  review_epic: 'code-reviewer', pr_feedback: 'staff-engineer', escalation: 'cto', research: 'staff-engineer',
+  review_epic: 'code-reviewer', qa_goal: 'qa-engineer', pr_feedback: 'staff-engineer', escalation: 'cto', research: 'staff-engineer',
 };
 
 export const CODE_ROLES = ['backend-engineer', 'frontend-engineer', 'data-engineer', 'devops-release'];
 
 /** Kinds whose work lives on a git branch. */
 export const BRANCH_KINDS = new Set(['code', 'docs']);
-/** Kinds that inspect an epic branch (detached). */
-export const EPIC_CHECK_KINDS = new Set(['qa_epic', 'review_epic']);
+/** Kinds that inspect integrated branches (detached). `qa_goal` spans every epic of a goal (§20.6). */
+export const EPIC_CHECK_KINDS = new Set(['qa_epic', 'review_epic', 'qa_goal']);
 export const PLANNING_KINDS = new Set(['intake', 'breakdown', 'sequence', 'escalation', 'research', 'pr_feedback']);
 export const GATE_KINDS = { prd: 'G1', spec: 'G2', mockup: 'G3' };
 
@@ -51,6 +51,7 @@ export function estimateFor(cfg, task, runKind) {
   switch (task.kind) {
     case 'code': return task.size === 'S' ? (e.code_S ?? 250000) : (e.code_M ?? 600000);
     case 'qa_epic': return e.qa ?? 300000;
+    case 'qa_goal': return e.qa_goal ?? 400000;
     case 'review_epic': return e.review ?? 150000;
     case 'pr_feedback': return e.breakdown ?? 300000;
     case 'research': return e.spec ?? 500000;

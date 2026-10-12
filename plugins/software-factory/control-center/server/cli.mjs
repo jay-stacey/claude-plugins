@@ -48,6 +48,9 @@ function request(port, method, p, token, body) {
   });
 }
 
+// Finds the factory home for a project folder. The folder need not be a git repo: a workspace
+// (contracts 20.1) is a plain folder that holds `.factory/config.json`, and `paths.findHome` also
+// walks up from a sub-folder or a CLI worktree to it.
 async function resolveHome(project) {
   if (process.env.FACTORY_HOME) return path.resolve(process.env.FACTORY_HOME);
   const direct = path.join(project, '.factory');
@@ -217,6 +220,10 @@ async function main() {
     console.log('No factory here. Run /software-factory:setup first.');
     return 4;
   }
+  // Started from inside the project (a sub-folder or a worktree under it): serve the folder that
+  // holds `.factory`, so the run file, health check and artifact root all agree.
+  const owner = path.dirname(home);
+  if (owner !== project && (project + path.sep).startsWith(owner + path.sep)) project = owner;
   if (cmd === 'stop') return stop(home);
   if (cmd === 'status') return status(home, project);
   if (cmd === 'restart') { await stop(home); return start(home, project, args, { forceOpen: true }); }

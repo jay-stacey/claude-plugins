@@ -10,7 +10,8 @@ const root = tmpDir('sfb-');
 const fwd = (p) => p.replace(/\\/g, '/');
 const REPO = path.join(root, 'r');
 const H = path.join(REPO, '.factory');
-const WT = path.join(REPO, '.claude', 'worktrees', 'agent-1');
+// Contracts §20.4: the CLI makes every run worktree at <home>/worktrees/<run id>.
+const WT = path.join(H, 'worktrees', 'R-000001');
 const IWT = path.join(H, 'worktrees', 'E-0001');
 const PLUG = path.join(root, 'plug');
 const CLI = path.join(PLUG, 'scripts', 'factory.mjs');
@@ -38,6 +39,9 @@ const CTX = {
   writer: { ...base, role: 'tech-writer', run: { id: 'R-000009', kind: 'author', branch: 'factory/T-0009-docs' }, task: { id: 'T-0009', files_owned: ['docs/**', '*.md'] }, worktreePath: WT, cwd: WT, outputPaths: ['docs/G-001-x/release-notes.md'] },
 };
 CTX.stateOut = { ...CTX.cto, outputPaths: ['state/x.json'] };
+// Agents now start in the session folder (the main checkout), not in their worktree.
+CTX.authorMain = { ...CTX.author, cwd: REPO };
+CTX.qaMain = { ...CTX.qa, cwd: REPO };
 
 const A = 'allow';
 const D = 'deny';
@@ -222,6 +226,34 @@ const CASES = [
   ['reviewer writes report to worktree outbox', write(path.join(WT, '.factory-out', 'docs', 'G-001-x', 'reviews', 'T-1.md')), 'reviewer', A],
   ['read id_utils source (not an ssh key)', read(path.join(WT, 'src', 'id_utils.ts')), 'author', A],
   ['read ssh public key', read(path.join(root, '.ssh', 'id_ed25519.pub')), 'author', D],
+  // ---- CLI worktree under the factory home (A9)
+  ['author writes another run worktree', write(path.join(H, 'worktrees', 'R-000099', 'src', 'vin', 'a.ts')), 'author', D, /not your worktree/],
+  ['author writes the checks worktree', write(path.join(H, 'worktrees', 'checks-R-000001', 'src', 'vin', 'a.ts')), 'author', D, /not your worktree/],
+  ['author writes owned json in own worktree', write(path.join(WT, 'src', 'vin', 'data.json')), 'author', A],
+  ['author edits shared package.json under the home', write(path.join(WT, 'package.json'), 'Edit'), 'author', A],
+  ['author writes worktree .factory folder', write(path.join(WT, '.factory', 'config.json')), 'author', D],
+  ['input redirect from own worktree', bash('wc -l < src/vin/a.ts'), 'author', A],
+  ['cd into another run worktree', bash(`cd "${path.join(H, 'worktrees', 'R-000099')}" && git add -A`), 'authorNoCwd', D, /worktree/],
+  // ---- classic: a worktree run is pinned to its worktree (no native isolation since A9)
+  ['bare install from the main checkout', bash('npm install'), 'authorMain', D, /cd_prefix/],
+  ['bare test with args from the main checkout', bash('npm test -- -u'), 'authorMain', D, /cd_prefix/],
+  ['bare ci from the main checkout', bash('npm ci'), 'authorMain', D, /cd_prefix/],
+  ['install after cd prefix', bash(`cd "${WT}" && npm ci`), 'authorMain', A],
+  ['test with args after cd prefix', bash(`cd "${WT}" && npm test -- -u`), 'authorMain', A],
+  ['build in another run worktree', bash(`cd "${path.join(H, 'worktrees', 'R-000002')}" && npm run build`), 'authorMain', D, /cd only into your worktree/],
+  ['cd into the main checkout', bash(`cd "${REPO}" && ls`), 'authorMain', D, /cd only into your worktree/],
+  ['git status in the main checkout', bash('git status'), 'authorMain', D, /cd_prefix/],
+  ['git -C main checkout log', bash(`git -C "${REPO}" log -1`), 'authorMain', D, /cd_prefix/],
+  ['cat from the main checkout', bash('cat src/vin/a.ts'), 'authorMain', D, /cd_prefix/],
+  ['factory CLI from the main checkout', cli('status'), 'authorMain', A],
+  ['factory CLI with the right --home', cli(`status --home "${H}"`), 'authorMain', A],
+  ['factory CLI with --home= form', cli(`task show T-0001 --home=${fwd(H)}`), 'authorMain', A],
+  ['factory CLI with a wrong --home', cli(`status --home "${path.join(root, 'elsewhere', '.factory')}"`), 'authorMain', D, /--home/],
+  ['evidence run without cd runs in the worktree', cli('evidence run --run R-000001 --label t -- npm test'), 'authorMain', A],
+  ['evidence run cannot cd to the main checkout', cli(`evidence run --run R-000001 --label t -- "cd ${fwd(REPO)} && npm test"`), 'authorMain', D, /evidence command blocked/],
+  ['qa bare commands.run in background from the main checkout', bg('npm start'), 'qaMain', D, /cd_prefix/],
+  ['qa commands.run in background after cd prefix', bg(`cd "${WT}" && npm start`), 'qaMain', A],
+  ['cto (no worktree) may still run a project command', bash('npm test'), 'cto', A],
   // ---- Glob / Grep
   ['glob source', { tool_name: 'Glob', tool_input: { pattern: 'src/**/*.ts' } }, 'author', A],
   ['glob .env files', { tool_name: 'Glob', tool_input: { pattern: '**/.env*' } }, 'author', D, /secret/],

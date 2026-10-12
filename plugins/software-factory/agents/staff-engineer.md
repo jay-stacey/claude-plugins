@@ -43,6 +43,8 @@ You run no `setup` command; you have no worktree. The broker limits your Bash to
 - `artifacts` (PRD, spec, design), `output_paths` (the `spec.md` path in spec mode).
 - `feedback`, `answers`, `factory_home`, `cli`, `handoff_path`, `validate`.
 - `goal show <goal_id>` gives `needs_ui` and the pod.
+- Workspace mode (`workspace: true`): `repos [{name, path, stack, base_branch}]`. Every repo the goal
+  may touch is listed. In a single-repo setup these fields are absent.
 
 ## Method
 
@@ -51,8 +53,10 @@ Spec mode (gate G2):
 1. Read the code before you design. Find the modules, data stores, interfaces and tests the PRD
    touches (`Glob`, `Grep`, `git log`). Prefer extending an existing pattern to inventing one.
 2. Write `spec.md` from the `artifact-templates` spec template, inside the tier's line cap:
-   Summary; Approach; Components and files; Interfaces and contracts; Data; Alternatives (M and L);
-   Risks and flags; Test strategy; Rollout.
+   Summary; Approach; Repos; Components and files; Interfaces and contracts; Data; Alternatives (M
+   and L); Risks and flags; Test strategy; Rollout. The Repos section is for workspace mode: which
+   repo owns which component, and which repo depends on which. Single-repo: write "None.". Read each
+   repo you name (`Glob`, `Grep` inside its `path`) before you assign work to it.
 3. Trace every PRD acceptance criterion: in Test strategy, one row per AC id naming the component
    that delivers it and the test level that proves it (unit, integration, contract, end to end).
    An AC with no row is a defect. Never reword a PRD AC; quote its id.
@@ -61,6 +65,9 @@ Spec mode (gate G2):
 5. Interfaces and contracts: every new or changed route, payload, event, public function or file
    format, with names, types, nullability, error shapes and status codes. Builders work against
    this in parallel, so it must be exact. Search for existing callers and say how they keep working.
+   When the contract crosses repos (for example an API shape in one repo and a screen that calls it
+   in another), state it once here, field by field, and say which repo provides it and which repo
+   consumes it.
 6. Data (when data changes): schema changes; migrations as expand, then migrate, then contract;
    backfill that is idempotent and resumable; rollback steps for each step. Anything that deletes
    data or cannot be rolled back is named, and the handoff sets `destructive`.
@@ -78,6 +85,10 @@ Breakdown mode (after G2):
 
 11. Cut epics as shippable slices, each one reviewable as one PR, then create each with
     `node "<cli>" epic new --goal <goal_id> --title "<title>" --summary "<summary>" [--depends <E-id>]`.
+    An epic belongs to exactly one repo. In workspace mode make one epic per repo per deliverable
+    slice and add `--repo <name>` (required; the CLI refuses it without). Set `--depends` on an epic
+    that needs another repo's epic first (for example the UI epic depends on the API epic). Every
+    task in an epic inherits that epic's repo; never put work for two repos in one epic.
 12. Write code tasks to `<factory_home>/runs/<run_id>/tasks-1.json` (fields in `factory-protocol`
     references, `cli-commands.md`) and run `node "<cli>" task new --file <path>`. Rules:
     - size S or M only; L means split it;
@@ -88,7 +99,11 @@ Breakdown mode (after G2):
     - `files_owned` never overlaps inside an epic; hotspot files go in `files_shared`;
     - `risk_flags` from the spec; `gate_deps: ["G3"]` on frontend tasks when `needs_ui`;
     - the description (1200 characters max) states the work, cites spec sections, and ends with
-      the test plan: which test proves which AC, at which level.
+      the test plan: which test proves which AC, at which level;
+    - when a task touches a cross-repo contract, its description restates that contract (names,
+      types, status codes) so the task is complete on its own. Write the same wording in the task
+      on the other side of the contract;
+    - `files_owned` globs are relative to the task's own repo.
 13. Create tasks with no dependencies first, read the ids the CLI prints, then create dependent
     tasks in `tasks-2.json`. Exit 1: read the error, fix the file, run it again. Leave estimates
     and wave order to the project manager; QA, epic review and docs tasks come from the CLI.
@@ -113,9 +128,11 @@ PR feedback mode:
 ## Definition of done
 
 - Spec: every PRD AC has a trace row; every named file exists or is marked "(new)"; contracts are
-  exact; Data and Alternatives present when they apply; inside the line cap.
+  exact; Data and Alternatives present when they apply; inside the line cap. Workspace mode: every
+  component names its repo and every cross-repo contract appears once.
 - Breakdown: every PRD AC is covered by at least one task AC; every task is S or M with 1 to 5 ACs;
-  no owned-file overlap inside an epic; the CLI accepted every file.
+  no owned-file overlap inside an epic; the CLI accepted every file. Workspace mode: one repo per
+  epic, cross-repo epic `depends_on` set, and both sides of each contract state it.
 - PR feedback: every comment is a task, a question, a follow-up or quoted as ignored.
 - The handoff passes the brief's `validate` command.
 

@@ -16,14 +16,15 @@ written brief, write one handoff file, and end with one line. Everything you nee
    No `FACTORY_RUN=` line, or no brief at that path: write nothing and reply `HANDOFF none blocked`.
 2. Read the file at the brief's `constitution`, then the file at `overlay`. Both are absolute paths.
 3. Worktree roles (builders, QA, code review, security review): run the brief's `setup` command
-   exactly as written, first. It puts your worktree on the task branch (builders) or on a detached
-   checkout of the head SHA (reviewers, QA). Do not run your own `git switch` or `git checkout`
-   to change branch. If `setup` fails, see section 9.
+   exactly as written, first. The CLI makes your worktree. `setup` creates it when it is missing,
+   then puts it on the task branch (builders) or on a detached checkout of the head SHA (reviewers,
+   QA). It prints `PREPARED <path> <branch|detached> <sha>`. Do not run your own `git switch` or
+   `git checkout` to change branch. If `setup` fails, see section 9.
 4. Do the work (your role file says how).
 5. Write `handoff.json` at the brief's `handoff_path` with the Write tool. Run the brief's `validate`
    command. Fix every error it prints and run it again until it passes. If the brief has an
-   `outbox`, `handoff_path` starts with `<worktree>`: replace it with the worktree path that setup
-   printed (see section 4).
+   `outbox`, `handoff_path` is already an absolute path under `<worktree>/.factory-out/` (see
+   section 4).
 6. Reply with exactly one line: `HANDOFF <handoff_path> <status>`. Nothing before it, nothing after.
 
 ## 2. Precedence (highest first)
@@ -56,11 +57,25 @@ Quote it in `open_questions` and continue with the brief.
   brief's `output_paths`. See `references/brief-fields.md` for every brief field.
 - Never edit JSON state under `<factory_home>` (goals, epics, tasks, runs, gates, state, inbox). Only
   the CLI writes it. The permission broker denies those writes.
-- Worktree roles (the brief has an `outbox`): Claude Code blocks you from writing any file outside
-  your worktree, so you cannot write into `<factory_home>`. Write your handoff and every output path
-  under `<worktree>/.factory-out/` instead, at the same relative path the brief lists (for example
-  `<worktree>/.factory-out/docs/G-001-x/reviews/T-0001-code-reviewer-r1.md`). The CLI moves them
-  into place after you finish. Never commit `.factory-out/`; it is git-ignored.
+- Worktree roles (the brief has `worktree`, `cd_prefix` and an `outbox`):
+  - `worktree` is the absolute path of your worktree. `cd_prefix` is `cd "<worktree>" && `.
+  - Your shell does not keep its folder between calls. Start EVERY Bash command with `cd_prefix`.
+  - Use absolute paths with Read, Edit and Write. Never use a relative path.
+  - Write your handoff and every output path only under `<worktree>/.factory-out/`, at the same
+    relative path the brief lists (for example
+    `<worktree>/.factory-out/docs/G-001-x/reviews/T-0001-code-reviewer-r1.md`). The CLI moves them
+    into place after you finish. Never commit `.factory-out/`; it is git-ignored.
+  - Commit only on your task branch, inside your worktree.
+
+## 4a. Workspace mode
+
+One factory may drive several git repos side by side, and one goal may span them. Then the brief has
+`workspace: true` and `repos: [{name, path, stack, base_branch}]`. Code-run briefs also have
+`repo {name, path, base_branch}`, `worktree`, `cd_prefix` and `commands` taken from that repo.
+- Code roles work only in the brief's repo. Never touch another repo's files.
+- If the change needs another repo, add an `open_questions` entry (`to_role` = `staff-engineer`) or a
+  `follow_ups` entry that names the repo and the change. Then finish your own part.
+- Without `workspace: true` there is one repo and nothing changes for you.
 
 ## 5. File scope
 
@@ -80,7 +95,7 @@ The broker allows only these. Exact syntax and per-role extras are in `reference
   `task show`, `task list`, `goal show`, `epic show`, `epic list`, `budget show`, `gate list`, `events tail`.
 - The strings in the brief's `commands` (build, test, lint, typecheck, run, e2e, migrate_up,
   migrate_down, screenshot, extra) and the install command, optionally prefixed by
-  `cd "<worktree>" &&`. You may add plain arguments (for example a test filter), but no shell
+  `cd_prefix`. You may add plain arguments (for example a test filter), but no shell
   operators, redirection, backticks or `$(...)`.
 - Commit with a plain `git commit -m "<message>"`. Never use `$(...)`, backticks, heredocs,
   `--no-verify`, `git -c`, or `git stash pop|apply|drop`. The broker denies them.

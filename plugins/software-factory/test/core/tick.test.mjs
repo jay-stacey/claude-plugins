@@ -35,7 +35,9 @@ test('tick plan prints DISPATCH lines in the exact contract format, then SYNC', 
   const cli = CLI.replace(/\\/g, '/');
   assert.equal(brief.cli, cli);
   assert.equal(brief.setup, null);
-  assert.equal(brief.validate, `node "${cli}" handoff validate "${home.replace(/\\/g, '/')}/runs/R-000001/handoff.json"`);
+  const H = home.replace(/\\/g, '/');
+  assert.equal(brief.validate, `node "${cli}" handoff validate "${H}/runs/R-000001/handoff.json" --home "${H}"`);
+  assert.equal(brief.evidence_cmd, `node "${cli}" evidence run --run R-000001 --home "${H}" --label <label> -- <command>`);
   assert.equal(brief.factory_home, home.replace(/\\/g, '/'));
   for (const k of ['run_id', 'task_id', 'goal_id', 'epic_id', 'role', 'kind', 'tier', 'round', 'constitution', 'overlay', 'goal_outcome', 'acceptance_criteria',
     'files_owned', 'files_shared', 'files_read', 'risk_flags', 'base_ref', 'branch', 'evidence_required', 'commands', 'diff_cmd', 'checks_result', 'integrate',
@@ -66,7 +68,7 @@ test('code task brief has the exact worktree setup command, overlay inlined to 1
   const line = await dispatch.dispatch(home, cand, { session: 'S1' });
   const text = readFileSync(join(home, 'runs', line.run_id, 'brief.md'), 'utf8');
   const brief = parseBrief(text);
-  assert.equal(brief.setup, `node "${CLI.replace(/\\/g, '/')}" worktree prepare --run ${line.run_id}`);
+  assert.equal(brief.setup, `node "${CLI.replace(/\\/g, '/')}" worktree prepare --run ${line.run_id} --home "${home.replace(/\\/g, '/')}"`);
   assert.equal(brief.branch, `factory/${t.id}-do-it`);
   assert.equal(brief.base_ref, e.branch);
   assert.ok(text.includes('line 150'));

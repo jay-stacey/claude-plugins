@@ -123,11 +123,51 @@
         "none"
       ]
     },
+    "repo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The run's repo (from its task or epic); null for planner runs and qa_goal runs."
+    },
     "worktree_path": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "CLI-made worktree <home>/worktrees/<run id>, set at dispatch for worktree runs. For qa_goal it is a plain parent folder."
+    },
+    "repo_worktrees": {
+      "type": "array",
+      "description": "qa_goal runs: one detached worktree per epic of the goal.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "epic_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "head_sha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "repo",
+          "epic_id",
+          "path"
+        ]
+      }
     },
     "branch": {
       "type": [

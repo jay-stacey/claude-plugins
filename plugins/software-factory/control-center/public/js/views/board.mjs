@@ -1,30 +1,32 @@
 // Board: epic strip + kanban columns + task detail drawer.
 import { html, useMemo, useState } from '../html.mjs';
 import {
-  Avatar, GateBadges, Meter, SideBadge, Tag, Icon, PrLink, Drawer, ArtifactButton, openArtifact,
+  Avatar, GateBadges, Meter, SideBadge, Tag, Icon, PrLink, Drawer, ArtifactButton, openArtifact, RepoChip,
   goalColorClass, roleInfo, useQueueState, QueuedStatus, FieldError, Tokens,
 } from '../components.mjs';
 import { submit } from '../api.mjs';
-import { COLUMNS, SIDE_STATES, columnOf, indexBy, taskMatches, taskGateBadges, epicProgress } from '../lib/model.mjs';
-import { fmtDuration, fmtTokens, statusWord, timeAgo, fmtDateTime } from '../lib/format.mjs';
+import { COLUMNS, SIDE_STATES, columnOf, indexBy, taskMatches, taskGateBadges, epicProgress, isWorkspace } from '../lib/model.mjs';
+import { fmtDuration, fmtTokens, statusWord, timeAgo, fmtDateTime, kindWord } from '../lib/format.mjs';
 import { buildHash } from '../router.mjs';
 
 const DONE_LIMIT = 20;
 const PRIO = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const byPriority = (a, b) => (PRIO[a.priority] ?? 9) - (PRIO[b.priority] ?? 9) || String(a.id).localeCompare(String(b.id));
 
-function EpicStrip({ snap, epics, gatesById, goalFilter }) {
-  const list = epics.filter((e) => e.status !== 'cancelled' && (!goalFilter || e.goal_id === goalFilter));
+function EpicStrip({ snap, epics, gatesById, goalFilter, repoFilter }) {
+  const ws = isWorkspace(snap);
+  const list = epics.filter((e) => e.status !== 'cancelled' && (!goalFilter || e.goal_id === goalFilter) && (!repoFilter || e.repo === repoFilter));
   if (!list.length) return null;
   return html`<section class="epic-strip" aria-label="Epics">
     <h2 class="sr-only">Epics</h2>
     <ul class="epic-list">
       ${list.map((e) => {
-        const steps = epicProgress(e, gatesById);
+        const steps = epicProgress(e, gatesById, { workspace: ws });
         return html`<li class=${`epic-chip ${goalColorClass(snap, e.goal_id)}`}>
           <div class="epic-top">
             <span class="mono small">${e.id}</span>
             <span class="epic-title" title=${e.title}>${e.title}</span>
+            ${ws && html`<${RepoChip} repo=${e.repo} />`}
           </div>
           <div class="epic-bottom">
             <span class="small muted">${statusWord(e.status)}</span>
@@ -42,6 +44,7 @@ function EpicStrip({ snap, epics, gatesById, goalFilter }) {
 }
 
 function TaskCard({ task, snap, idx, onOpen }) {
+  const ws = isWorkspace(snap);
   const badges = taskGateBadges(task, idx.goals, idx.epics, idx.gates);
   const epic = task.epic_id ? idx.epics.get(task.epic_id) : null;
   const ev = (task.evidence || [])[task.evidence ? task.evidence.length - 1 : 0];
@@ -53,6 +56,7 @@ function TaskCard({ task, snap, idx, onOpen }) {
   return html`<li class=${`card ${goalColorClass(snap, task.goal_id)}`} onClick=${open}>
     <div class="card-top">
       <span class="mono small">${task.id}</span>
+      ${ws && html`<${RepoChip} repo=${task.repo} kind=${task.kind} />`}
       ${task.status === 'draft' && html`<${Tag} tone="idle" icon="dot">Draft<//>`}
       ${task.status === 'changes_requested' && html`<${Tag} tone="warn" icon="cross">Changes requested<//>`}
       <${SideBadge} status=${task.status} />
@@ -132,18 +136,21 @@ function TaskDetail({ task, snap, idx, nowMs }) {
   const epic = task.epic_id ? idx.epics.get(task.epic_id) : null;
   const runsById = indexBy(snap.runs || []);
   const reviews = Object.entries(task.reviews || {});
+  const ws = isWorkspace(snap);
   return html`<div class="detail">
     <p class="row wrap">
       ${SIDE_STATES.includes(task.status) ? html`<${SideBadge} status=${task.status} />` : html`<${Tag} tone="neutral" icon="dot">${statusWord(task.status)}<//>`}
       <${Avatar} snap=${snap} role=${task.role} live=${!!task.live} size="sm" /><span>${roleInfo(snap, task.role).name}</span>
+      ${ws && html`<${RepoChip} repo=${task.repo} kind=${task.kind} />`}
       ${goal && html`<span class=${`goal-chip ${goalColorClass(snap, goal.id)}`}>${goal.id} ${goal.title}</span>`}
       ${epic && html`<span class="small muted">${epic.id} ${epic.title}</span>`}
       ${epic && html`<${PrLink} pr=${epic.pr} />`}
     </p>
     <dl class="kv small">
-      <dt>Kind</dt><dd>${task.kind || '-'}${task.size ? `, size ${task.size}` : ''}${task.priority ? `, ${task.priority}` : ''}</dd>
+      <dt>Kind</dt><dd>${kindWord(task.kind) || '-'}${task.size ? `, size ${task.size}` : ''}${task.priority ? `, ${task.priority}` : ''}</dd>
       <dt>Tokens</dt><dd><${Tokens} n=${task.tokens} />${task.estimate_tokens ? html` of <${Tokens} n=${task.estimate_tokens} /> estimate` : ''}</dd>
       <dt>Attempts</dt><dd>${task.attempts || 0} of ${task.max_attempts || 3}${task.rework_count ? `, rework ${task.rework_count}` : ''}</dd>
+      ${ws && html`<dt>Repo</dt><dd>${task.repo || (task.kind === 'qa_goal' ? 'All repos of the goal' : '-')}</dd>`}
       ${task.branch && html`<dt>Branch</dt><dd class="mono">${task.branch}</dd>`}
     </dl>
     ${task.status_reason && html`<p class="callout tone-info"><${Icon} name="activity" />${task.status_reason}</p>`}
@@ -163,7 +170,7 @@ function TaskDetail({ task, snap, idx, nowMs }) {
     ${(task.runs || []).length ? html`<ul class="plain">${[...task.runs].reverse().map((id) => {
       const r = runsById.get(id);
       return html`<li class="row small"><span class="mono">${id}</span>
-        ${r ? html`<span>${r.kind} by ${roleInfo(snap, r.role).short}</span><${Tag} tone="info" icon="activity">${r.status}<//>
+        ${r ? html`<span>${kindWord(r.kind)} by ${roleInfo(snap, r.role).short}</span>${ws && r.repo && html`<${RepoChip} repo=${r.repo} />`}<${Tag} tone="info" icon="activity">${r.status}<//>
           ${r.model && html`<span class="muted" title=${r.model}>${r.model}</span>`}<span><${Tokens} n=${r.tokens} /> tokens</span>` : html`<span class="muted">finished</span>`}
       </li>`;
     })}</ul>` : html`<p class="muted">No runs yet.</p>`}
@@ -190,12 +197,12 @@ export function BoardView({ snap, params, nowMs }) {
       if (c && taskMatches(t, params)) g[c].push(t);
     }
     return g;
-  }, [snap.tasks, params.goal, params.role, params.q]);
+  }, [snap.tasks, params.goal, params.role, params.q, params.repo]);
   const total = Object.values(grouped).reduce((n, l) => n + l.length, 0);
   const task = openId ? (snap.tasks || []).find((t) => t.id === openId) : null;
 
   return html`<div class="board">
-    <${EpicStrip} snap=${snap} epics=${snap.epics || []} gatesById=${idx.gates} goalFilter=${params.goal} />
+    <${EpicStrip} snap=${snap} epics=${snap.epics || []} gatesById=${idx.gates} goalFilter=${params.goal} repoFilter=${params.repo} />
     <p class="sr-only" role="status">${total} tasks shown</p>
     <div class="board-cols" tabindex="0" aria-label="Task columns, scroll sideways for more">
       ${COLUMNS.map((c) => html`<${Column} key=${c.id} col=${c} tasks=${grouped[c.id]} snap=${snap} idx=${idx} onOpen=${setOpenId} />`)}

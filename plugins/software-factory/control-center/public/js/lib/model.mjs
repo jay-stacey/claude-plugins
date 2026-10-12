@@ -25,10 +25,30 @@ export function indexBy(list, key = 'id') {
   return m;
 }
 
+/** Workspace mode (one factory, several repos): config.workspace comes from the server. */
+export function isWorkspace(snap) {
+  return !!(snap && snap.config && snap.config.workspace && snap.config.workspace.enabled);
+}
+
+/** Repo names in config order. Empty in classic mode. */
+export function workspaceRepos(snap) {
+  return isWorkspace(snap) ? (snap.config.workspace.repos || []) : [];
+}
+
+/** Repo names of a goal's live epics, in first-seen order. */
+export function goalRepos(goalId, snap) {
+  const out = [];
+  for (const e of snap.epics || []) {
+    if (e.goal_id === goalId && e.status !== 'cancelled' && e.repo && !out.includes(e.repo)) out.push(e.repo);
+  }
+  return out;
+}
+
 /** Task filter from the global filter bar. */
-export function taskMatches(task, { goal, role, q }) {
+export function taskMatches(task, { goal, role, q, repo }) {
   if (goal && task.goal_id !== goal) return false;
   if (role && task.role !== role) return false;
+  if (repo && task.repo !== repo) return false;
   if (q) {
     const hay = `${task.id} ${task.title || ''} ${task.epic_id || ''} ${task.role || ''} ${task.kind || ''}`.toLowerCase();
     if (!hay.includes(q.toLowerCase())) return false;
@@ -67,15 +87,20 @@ export function taskGateBadges(task, goalsById, epicsById, gatesById) {
 }
 
 export const EPIC_STEPS = ['qa', 'review', 'docs', 'pr_open', 'G4'];
-const EPIC_STEP_LABEL = { qa: 'QA', review: 'Review', docs: 'Docs', pr_open: 'PR open', G4: 'G4' };
+const EPIC_STEP_LABEL = { qa: 'QA', review: 'Review', docs: 'Docs', goal_qa: 'Cross-repo QA', pr_open: 'PR open', G4: 'G4' };
+// Epic status -> the step it is on. Statuses before QA map to no step.
+const EPIC_STATUS_STEP = { qa: 'qa', review: 'review', docs: 'docs', goal_qa: 'goal_qa', pr_open: 'pr_open', changes_requested: 'pr_open' };
 
-/** Epic progress: [{id, label, state: done|current|todo|failed}]. */
-export function epicProgress(epic, gatesById) {
-  const order = { draft: -1, building: -1, integrating: -1, qa: 0, review: 1, docs: 2, pr_open: 3, changes_requested: 3, done: 5, cancelled: -1 };
-  const at = order[epic.status] ?? -1;
+/**
+ * Epic progress: [{id, label, state: done|current|todo|failed}].
+ * Workspace mode (or an epic in goal_qa) adds a "Cross-repo QA" step between Docs and PR open.
+ */
+export function epicProgress(epic, gatesById, { workspace = false } = {}) {
+  const steps = workspace || epic.status === 'goal_qa' ? ['qa', 'review', 'docs', 'goal_qa', 'pr_open', 'G4'] : EPIC_STEPS;
+  const at = epic.status === 'done' ? steps.length : steps.indexOf(EPIC_STATUS_STEP[epic.status]);
   const g4 = epic.gates && epic.gates.G4 ? gatesById.get(epic.gates.G4) : null;
   const g4s = gateState(g4);
-  return EPIC_STEPS.map((s, i) => {
+  return steps.map((s, i) => {
     let state = 'todo';
     if (s === 'G4') {
       state = g4s === 'approved' || epic.status === 'done' ? 'done' : g4s === 'pending' ? 'current' : (g4s === 'rejected' || g4s === 'changes') ? 'failed' : 'todo';

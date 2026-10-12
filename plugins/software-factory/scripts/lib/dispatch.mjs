@@ -9,7 +9,8 @@ import { reviewState, reviewRound } from './flow.mjs';
 import { move } from './lifecycle.mjs';
 import { slugify } from './ids.mjs';
 import { overlap, lsFiles } from './glob.mjs';
-import { repoRoot, fwd } from './paths.mjs';
+import { fwd } from './paths.mjs';
+import * as repos from './repos.mjs';
 import * as budget from './budget.mjs';
 import { render, outputPaths } from './brief.mjs';
 import * as deps from './deps.mjs';
@@ -24,7 +25,7 @@ function authorKind(task) {
   if (task.pending_kind === 'integrate') return 'integrate';
   if (task.pending_kind === 'fixup') return 'fixup';
   if (task.kind === 'escalation') return 'escalation';
-  if (task.kind === 'qa_epic') return 'qa';
+  if (task.kind === 'qa_epic' || task.kind === 'qa_goal') return 'qa';
   if (task.kind === 'review_epic') return 'review';
   return 'author';
 }
@@ -82,6 +83,7 @@ export function candidates(home, cfg = loadConfig(home)) {
 }
 
 function filesOf(t) { return [...(t.files_owned || []), ...(t.files_shared || [])]; }
+function repoOfTask(home, cfg, t) { return repos.nameFor(home, cfg, { task: t, epic: t.epic_id ? store.get(home, 'epic', t.epic_id) : null }); }
 function isBuilderRun(c) { return !c.review_role && (BRANCH_KINDS.has(c.task.kind) || c.kind === 'integrate'); }
 
 /**
@@ -106,9 +108,10 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
     perRole[r.role] = (perRole[r.role] || 0) + 1;
     if (slot === 'builders') buildingGoals.add(r.goal_id);
     const t = store.get(home, 'task', r.task_id);
-    if (t && !r.review_role && (BRANCH_KINDS.has(t.kind) || r.kind === 'integrate')) busyFiles.push({ id: t.id, files: r.kind === 'integrate' ? (t.conflict_files || []) : filesOf(t) });
+    if (t && !r.review_role && (BRANCH_KINDS.has(t.kind) || r.kind === 'integrate')) busyFiles.push({ id: t.id, repo: repoOfTask(home, cfg, t), files: r.kind === 'integrate' ? (t.conflict_files || []) : filesOf(t) });
   }
-  let files = null;
+  const fileCache = new Map(); // repo name -> tracked files
+  const filesIn = (name) => { if (!fileCache.has(name)) fileCache.set(name, lsFiles(repos.get(home, cfg, name).path)); return fileCache.get(name); };
   const b = budget.compute(home, cfg);
   const blocked = new Set();
   const seenTask = new Set();
@@ -124,9 +127,10 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
     if (slot === 'builders' && !buildingGoals.has(c.goal.id) && buildingGoals.size >= (cc.max_goals_building ?? 99)) { skip('max goals building'); continue; }
     if (isBuilderRun(c)) {
       const mine = c.kind === 'integrate' ? (c.task.conflict_files || []) : filesOf(c.task);
-      if (mine.length && busyFiles.length) {
-        files = files || lsFiles(repoRoot(home));
-        const hit = busyFiles.find((x) => x.id !== c.task.id && overlap(mine, x.files, files));
+      const myRepo = repoOfTask(home, cfg, c.task);
+      const same = busyFiles.filter((x) => x.id !== c.task.id && x.repo === myRepo); // only tasks in the same repo can collide
+      if (mine.length && same.length) {
+        const hit = same.find((x) => overlap(mine, x.files, filesIn(myRepo)));
         if (hit) { skip(`files overlap ${hit.id}`); continue; }
       }
     }
@@ -144,7 +148,7 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
     seenTask.add(key);
     count.total += 1; count[slot] += 1; perRole[c.role] = (perRole[c.role] || 0) + 1;
     if (slot === 'builders') buildingGoals.add(c.goal.id);
-    if (isBuilderRun(c)) busyFiles.push({ id: c.task.id, files: c.kind === 'integrate' ? (c.task.conflict_files || []) : filesOf(c.task) });
+    if (isBuilderRun(c)) busyFiles.push({ id: c.task.id, repo: repoOfTask(home, cfg, c.task), files: c.kind === 'integrate' ? (c.task.conflict_files || []) : filesOf(c.task) });
   }
   return res;
 }
@@ -159,33 +163,65 @@ export function modelFor(cfg, task, role, kind, review_role) {
   return (ROLE_INFO[role] || {}).model || 'sonnet';
 }
 
+/** True when the run gets a CLI-made worktree (contracts §20.4): a worktree role on branch work or an epic check. */
+export function getsWorktree(role, task, runKind) {
+  if ((ROLE_INFO[role] || {}).isolation !== 'worktree') return false;
+  return runKind === 'integrate' || BRANCH_KINDS.has(task.kind) || EPIC_CHECK_KINDS.has(task.kind);
+}
+
+/**
+ * Planned per-epic worktrees of a `qa_goal` run (§20.6): `<parent>/<repo name>`, or `<repo>-<epic id>`
+ * when a repo holds more than one epic of the goal.
+ */
+export function goalRepoWorktrees(home, cfg, goalId, parent) {
+  const epics = store.list(home, 'epic', (e) => e.goal_id === goalId && e.status !== 'cancelled');
+  const used = new Set();
+  return epics.map((e) => {
+    const repo = repos.nameFor(home, cfg, { epic: e });
+    const name = used.has(repo) ? `${repo}-${e.id}` : repo;
+    used.add(repo);
+    // A merged (done) epic's branch may be pruned; its work is on the repo's base branch.
+    const branch = e.status === 'done' ? repos.get(home, cfg, repo).delivery.base_branch : e.branch;
+    return { repo, epic_id: e.id, path: fwd(join(parent, name)), branch, head_sha: null };
+  });
+}
+
 /** Create the run, move the task, reserve tokens, render the brief. Returns the DISPATCH object. */
 export async function dispatch(home, c, { cfg = loadConfig(home), session = null } = {}) {
   let task = store.mustGet(home, 'task', c.task.id);
   const epic = task.epic_id ? store.get(home, 'epic', task.epic_id) : null;
+  const repo = repos.forRecord(home, cfg, { task, epic });
   if (BRANCH_KINDS.has(task.kind) && !task.branch) {
     task = store.update(home, 'task', task.id, (t) => {
       t.branch = `factory/${t.id}-${slugify(t.title)}`;
-      t.base_ref = epic ? epic.branch : cfg.delivery.base_branch;
+      t.base_ref = epic ? epic.branch : repo.delivery.base_branch;
     });
   }
   let headSha = null;
   if (c.review_role && BRANCH_KINDS.has(task.kind)) headSha = task.head_sha || null;
   if (EPIC_CHECK_KINDS.has(task.kind) && epic) {
-    try { const git = await deps.load('git'); headSha = git.headSha(repoRoot(home), epic.branch); } catch { headSha = null; }
+    try { const git = await deps.load('git'); headSha = git.headSha(repo.path, epic.branch); } catch { headSha = null; }
   }
   const id = store.nextId(home, 'run');
   const round = c.review_role ? reviewRound(task) : (task.rework_count || 0) + 1;
+  const wt = getsWorktree(c.role, task, c.kind);
+  // Run repo: the task's (or epic's) repo; worktree runs always have one, except qa_goal (one per epic).
+  let runRepo = task.repo || (epic && epic.repo) || null;
+  if (!runRepo && wt && task.kind !== 'qa_goal' && repos.isWorkspace(cfg)) runRepo = repo.name;
+  // An earlier author run of this task kept its worktree (unsaved work, merge state): continue there.
+  const reuse = wt && !c.review_role && task.kept_worktree && task.kept_worktree.path ? task.kept_worktree : null;
   const runFields = {
     id, task_id: task.id, goal_id: task.goal_id, epic_id: task.epic_id, kind: c.kind, role: c.role,
     subagent_type: subagentType(c.role), model: modelFor(cfg, task, c.role, c.kind, c.review_role), status: 'dispatching',
-    session_id: session, dispatched_at: nowIso(), isolation: (ROLE_INFO[c.role] || {}).isolation || 'none',
+    session_id: session, dispatched_at: nowIso(), isolation: wt ? 'worktree' : 'none',
+    repo: runRepo, worktree_path: wt ? (reuse ? reuse.path : repos.runWorktreeDir(home, id)) : null,
     branch: c.review_role || EPIC_CHECK_KINDS.has(task.kind) ? null : task.branch, head_sha: headSha,
     handoff_path: fwd(join(home, 'runs', id, 'handoff.json')), brief_path: fwd(join(home, 'runs', id, 'brief.md')),
     estimate_tokens: c.estimate ?? estimateFor(cfg, task, c.kind), round, review_role: c.review_role || null,
     merge_first: c.kind === 'integrate' && epic ? [epic.branch] : [],
   };
   if (EPIC_CHECK_KINDS.has(task.kind) && epic) runFields.detach_ref = epic.branch;
+  if (task.kind === 'qa_goal' && wt) runFields.repo_worktrees = goalRepoWorktrees(home, cfg, task.goal_id, runFields.worktree_path);
   ensureDir(join(home, 'runs', id, 'evidence'));
   const goal = store.get(home, 'goal', task.goal_id);
   runFields.output_paths = outputPaths(home, runFields, task, goal);
@@ -196,6 +232,7 @@ export async function dispatch(home, c, { cfg = loadConfig(home), session = null
       data: (t) => {
         if (c.kind === 'author' || c.kind === 'qa' || c.kind === 'review' || c.kind === 'escalation') t.attempts += 1;
         t.current_run_id = id; t.runs.push(id); t.pending_kind_run = t.pending_kind; t.pending_kind = null;
+        if (reuse) t.kept_worktree = null;
       },
     });
   } else {

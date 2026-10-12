@@ -153,3 +153,7 @@ file is the build spec. `docs/design.md` explains the reasons.
 - `control-center/` is a local web server with no build step. It writes only
   signed inbox requests.
 - Keep the stored paths short. Deep Windows paths break git worktrees.
+- Workspace mode: `.factory/` can sit in a plain folder of several repos.
+  Resolve a record's repo with `scripts/lib/repos.mjs`. Never use
+  `repoRoot(home)` for git, commands or delivery. The CLI makes every agent
+  worktree. Agent files must not set `isolation: worktree`.

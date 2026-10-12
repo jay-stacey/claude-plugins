@@ -14,6 +14,7 @@ The engine creates most tasks itself. Use this table when you create tasks in an
 | docs | tech-writer | commits | one per epic, after epic review |
 | qa_epic | qa-engineer | `qa/<E-id>.md` | all epic tasks integrated |
 | review_epic | code-reviewer (stronger model) | `reviews/<E-id>.md` | after qa_epic passes |
+| qa_goal | qa-engineer | `qa/<G-id>-goal.md` | workspace goals that span two or more repos: all epics of the goal are integrated and reviewed |
 | pr_feedback | staff-engineer | rework tasks | PR gets changes requested |
 | escalation | cto | decision via CLI | failures, stalemates, replans |
 | research | any planner | a document | optional, to answer a question |
@@ -23,6 +24,7 @@ Choosing the builder role for a new code task:
 - Touches server code (even if it reads new data): `backend-engineer`.
 - Touches client or UI code: `frontend-engineer`.
 - Touches CI, build scripts, infrastructure or release config: `devops-release`.
+- Work in two repos is always two tasks, one in each repo's epic, with `depends_on` when one needs the other.
 - Mixed: split it into one task per role with `depends_on` between them.
 
 Review groups (lean profile) are set by the engine: code review per code task, plus security review

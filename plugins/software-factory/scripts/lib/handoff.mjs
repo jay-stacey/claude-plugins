@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import { readLines } from './fsutil.mjs';
 import * as store from './store.mjs';
 import { validateHandoffShape } from './schema.mjs';
-import { BRANCH_KINDS } from './roles.mjs';
+import { BRANCH_KINDS, EPIC_CHECK_KINDS } from './roles.mjs';
 
 export function evidenceIds(home, runId) {
   return new Set(readLines(join(home, 'runs', runId, 'evidence', 'index.jsonl')).map((e) => e.id).filter(Boolean));
@@ -37,7 +37,7 @@ export function validateHandoff(home, file, { run = null } = {}) {
   if (h.from_role && h.from_role !== run.role) errors.push(`from_role ${h.from_role} does not match ${run.role}`);
 
   const isBench = !!run.review_role;
-  const isEpicCheck = task && (task.kind === 'qa_epic' || task.kind === 'review_epic');
+  const isEpicCheck = !!task && EPIC_CHECK_KINDS.has(task.kind);
   if ((isBench || isEpicCheck) && h.status === 'handed_off' && !['pass', 'fail', 'escalate'].includes(h.verdict)) {
     errors.push('verdict: reviewers and QA must give pass, fail or escalate');
   }

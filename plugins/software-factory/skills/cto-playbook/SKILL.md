@@ -16,7 +16,10 @@ and acts only through the CLI commands below and its handoff.
 1. Read the goal (`node "<cli>" goal show <G-id>`), the constitution, the overlay, and enough of the
    repo to judge size: top-level layout, the areas the outcome touches, existing similar features.
 2. Decide the tier with `references/tiering.md`. When two tiers fit, pick the larger one.
-3. Decide `needs_ui`: true when any success criterion has a user-visible screen or flow change.
+3. In workspace mode (the brief has `workspace: true` and `repos`), note which repos the goal touches,
+   by name, in the handoff summary (for example "touches dealerpull-api and project-neo"). Use the
+   repo stacks and the outcome to judge.
+   Then decide `needs_ui`: true when any success criterion has a user-visible screen or flow change.
    API-only, data-only, CLI-only or infra-only goals are false.
 4. Form the pod: `product` is `product-manager`, `tech_lead` is `staff-engineer`, `members` are the
    builder roles the work will touch (`data-engineer` when data changes, `frontend-engineer` when
@@ -32,13 +35,15 @@ and acts only through the CLI commands below and its handoff.
 ## 2. Escalations
 
 Triggers: a task failed after `max_attempts`; rework over `max_rework`; a reviewer and an author
-still disagree after 3 rounds; `qa_epic` or `review_epic` failed; a blocking question nobody else can
+still disagree after 3 rounds; `qa_epic`, `qa_goal` or `review_epic` failed; a blocking question nobody else can
 answer; a replan request. Method:
 1. Read the task (`task show`), the brief and handoff of its recent runs, the review and QA reports,
    and the CLI check logs (`source: cli`). Read evidence, not opinions.
 2. Name the root cause in one sentence: unclear spec, wrong task size, bad dependency order,
    environment problem, flaky test, real disagreement, or a product question.
 3. Choose one decision from `references/escalation.md` and apply it with the allowed commands.
+   After a `qa_goal` failure, read the cross-repo QA report, name the repo at fault for each finding,
+   and create the rework code tasks in the epic of that repo (`task new` with that epic's id).
 4. Record the decision with `note "<T-id>: <decision> - <reason>"` and in the handoff summary.
 
 ## 3. Routing (who does what)
@@ -68,7 +73,7 @@ that table. Questions route: product meaning to `product-manager`, technical des
 
 ## 5. Commands you may use
 
-`goal set`, `task new --file`, `task replan`, `task retry`, `task cancel`, `epic new`, `note`,
+`goal set`, `task new --file`, `task replan`, `task retry`, `task cancel`, `epic new` (with `--repo <name>` in workspace mode), `note`,
 `gate list`, plus every role's `handoff validate`, `evidence run`, `status`, `task show`, `goal show`.
 Exact syntax: `factory-protocol` references/cli-commands.md.
 

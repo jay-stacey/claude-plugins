@@ -6,6 +6,7 @@ import { Icon } from './components.mjs';
 import { ArtifactViewer } from './artifact.mjs';
 import { applyTheme, loadTheme, applyMotion, loadMotion, THEMES } from './lib/a11y.mjs';
 import { nextTickText } from './lib/format.mjs';
+import { workspaceRepos } from './lib/model.mjs';
 import { BoardView } from './views/board.mjs';
 import { TeamView } from './views/team.mjs';
 import { TokensView } from './views/tokens.mjs';
@@ -53,7 +54,7 @@ function Header({ s, route }) {
   };
   const toggleMotion = () => { setMotion(!motion); applyMotion(!motion); };
   const keep = {};
-  for (const k of ['goal', 'role', 'q']) if (route.params[k]) keep[k] = route.params[k];
+  for (const k of ['goal', 'role', 'q', 'repo']) if (route.params[k]) keep[k] = route.params[k];
 
   return html`<header class="app-header">
     <div class="header-row">
@@ -94,6 +95,7 @@ function Filters({ snap, params }) {
   };
   const goals = (snap && snap.goals) || [];
   const roles = ((snap && snap.roles) || []).filter((r) => r.id !== 'user');
+  const repos = workspaceRepos(snap);
   return html`<form class="filters" role="search" aria-label="Filters" onSubmit=${(e) => e.preventDefault()}>
     <label class="field-inline">Goal
       <select value=${params.goal || ''} onChange=${(e) => setParams({ goal: e.currentTarget.value })}>
@@ -105,9 +107,14 @@ function Filters({ snap, params }) {
         <option value="">All roles</option>
         ${roles.map((r) => html`<option value=${r.id}>${r.name}</option>`)}
       </select></label>
+    ${repos.length > 0 && html`<label class="field-inline">Repo
+      <select value=${params.repo || ''} onChange=${(e) => setParams({ repo: e.currentTarget.value })}>
+        <option value="">All repos</option>
+        ${repos.map((r) => html`<option value=${r}>${r}</option>`)}
+      </select></label>`}
     <label class="field-inline field-grow">Search
       <input type="search" value=${q} onInput=${onSearch} placeholder="Task id, title, epic" autocomplete="off" /></label>
-    ${(params.goal || params.role || params.q) && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setQ(''); setParams({ goal: '', role: '', q: '' }); }}>Clear filters</button>`}
+    ${(params.goal || params.role || params.q || params.repo) && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setQ(''); setParams({ goal: '', role: '', q: '', repo: '' }); }}>Clear filters</button>`}
   </form>`;
 }
 

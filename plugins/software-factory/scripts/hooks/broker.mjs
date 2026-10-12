@@ -16,6 +16,12 @@ runHook('broker', async ({ payload, home, env }) => {
     let rel = relative(home, abs).replace(/\\/g, '/');
     if (process.platform === 'win32') rel = relative(home.toLowerCase(), abs.toLowerCase()).replace(/\\/g, '/');
     if (rel.startsWith('..') || isAbsolute(rel)) return null;
+    // An outbox is imported by collect as agent output (handoff, reports): never hand-written.
+    if (/(^|\/)\.factory-out(\/|$)/i.test(rel)) {
+      return preToolDecision('deny', 'software-factory: .factory-out/ is an agent outbox that collect imports; the main session may not write it');
+    }
+    // CLI-made worktrees live under the home (contracts §20.4); their files are repo files, not state.
+    if (/^worktrees(\/|$)/i.test(rel)) return null;
     if (/^(state|run|inbox)(\/|$)/i.test(rel) || /\.json$/i.test(rel)) {
       return preToolDecision('deny', 'software-factory: factory state is changed only through the factory CLI (node <plugin>/scripts/factory.mjs ...)');
     }
@@ -39,9 +45,12 @@ runHook('broker', async ({ payload, home, env }) => {
     run = running.sort((a, b) => String(a.dispatched_at).localeCompare(String(b.dispatched_at))).pop() || null;
   }
   const task = run ? store.get(home, 'task', run.task_id) : null;
+  // Workspace mode (contracts §20): the broker picks the run's repo from task > epic > run.
+  const epicId = (task && task.epic_id) || (run && run.epic_id) || null;
+  const epic = epicId ? store.get(home, 'epic', epicId) : null;
   const ctx = {
     home, pluginRoot: env.CLAUDE_PLUGIN_ROOT || pluginRoot(), pluginDataDir: pluginDataDir(home, env.CLAUDE_PLUGIN_DATA) || null,
-    cliPath: cliPath(), run, task, config: load(home), role, worktreePath: run ? run.worktree_path || null : null,
+    cliPath: cliPath(), run, task, epic, config: load(home), role, worktreePath: run ? run.worktree_path || null : null,
     outputPaths: run ? run.output_paths || [] : [], cwd: payload.cwd || null,
     integrate: run && run.kind === 'integrate' ? { conflict_files: (task && task.conflict_files) || [] } : null,
   };

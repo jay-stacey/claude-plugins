@@ -171,6 +171,7 @@ Ignored: everything else.
 ```
 
 `.factory/` is found with `git rev-parse --git-common-dir`, so every worktree resolves the main one.
+In workspace mode (v0.2) it sits in a plain folder of repos and is found by walking up to `.factory/config.json`.
 PR branches must never touch `.factory/`. The factory never commits in the main checkout.
 
 ## 9. Canonical contracts
@@ -390,3 +391,22 @@ New-project path asks stack, app type, remote, and seeds "Bootstrap repo" goal.
 3. Transcript format is undocumented (versioned parser, doctor check).
 4. Worktree auto-cleanup semantics (CLI-managed fallback).
 5. Tracker normalization false conflicts (fixture tests per adapter).
+
+## 19. Workspace mode (v0.2)
+
+Why: real systems often span several repos that sit side by side, for example a .NET API and two
+Angular apps. A goal such as "website hosting" needs backend and frontend work in different repos, and
+the factory must plan, build, test and ship that work as one goal.
+
+Decisions (spec: contracts.md section 20):
+- The factory home can live in a plain folder that holds the repos. Config lists each repo with its own
+  stack, commands, checks and delivery settings. One-repo setups keep the old shape.
+- An epic belongs to one repo, so one epic ships as one pull request in one repo. A goal can own epics in
+  several repos, and epics can depend on epics in other repos.
+- The CLI makes every agent worktree itself. Claude Code's built-in worktree isolation only works for the
+  session's own repo, so it cannot serve a workspace. The permission broker is now the only wall that
+  keeps an agent inside its worktree. It already checked every write and command; tests cover the new
+  layout. One code path serves both modes.
+- Cross-repo QA: when a goal's epics span repos, each epic is tested and reviewed on its own, then waits.
+  When all are ready, one QA run checks out every epic branch side by side, runs the apps together and
+  tests the goal's success criteria end to end. Only then are the pull requests opened.

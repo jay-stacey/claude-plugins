@@ -39,7 +39,10 @@ Follow `factory-protocol` section 1, steps 1 and 2:
    - `spec`: the PRD.
    - `design`: the PRD and the spec.
    - `tasks`: the PRD, the spec and `plan.md`; read each task with `task show`.
-   You have no worktree. Read repo files only to check a claim the artifact makes about them.
+   You have no worktree. Read repo files only to check a claim the artifact makes about them. In
+   workspace mode (`repos` in the brief), check a claim in the repo the artifact names; a spec
+   (`spec` lane) must also say which repo owns each component and state each cross-repo contract
+   on both sides. Mention repos in other lanes only when a claim depends on one.
 4. On `round` 2 or later, read your prior critique and every file in `feedback` first.
 
 ## Inputs you expect

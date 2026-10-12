@@ -42,7 +42,8 @@ worktrees. You approve at four gates and merge the pull requests.
 
 ## Quick start
 
-1. Open Claude Code in your repo and run `/software-factory:setup`.
+1. Open Claude Code in your repo and run `/software-factory:setup`. For a
+   folder that holds several repos, see [workspace mode](#many-repos-in-one-folder-workspace-mode).
 
    Setup does three things:
    - It scans the repo: stack, commands, CI, CLAUDE.md, ADRs (short architecture decision records) and CODEOWNERS.
@@ -54,6 +55,43 @@ worktrees. You approve at four gates and merge the pull requests.
 4. Watch it work: `/software-factory:control-center`.
 5. Approve gates in the control center or with `/software-factory:approve`.
 6. Merge the pull request on GitHub. The factory sees the merge and closes the work.
+
+## Many repos in one folder (workspace mode)
+
+Some systems live in several repos side by side, for example:
+
+```
+source/
+  dealerpull-api/        (.NET API)
+  project-neo/           (Angular app)
+  dp-web-ui/             (older Angular app)
+  InventoryFeeds/        (Azure Functions)
+```
+
+Run `/software-factory:setup` in the parent folder (`source/` here). It is not
+a git repo, and that is fine.
+
+1. Setup finds the git repos in the folder. It asks which ones the factory may change.
+2. It scans each repo and asks you to confirm each repo's build, test and lint commands.
+3. It writes `source/.factory/`. Config lists each repo under `repos`.
+
+One goal can then span repos. For example, "website hosting" can need API work
+and UI work:
+
+- The Staff Engineer's spec says which repo owns each part and how they talk
+  to each other.
+- Breakdown makes one epic per repo. An epic is a group of tasks that ships as
+  one pull request. Each epic's branch, checks and pull request live in its own repo.
+- The UI epic can wait for the API epic.
+- **Cross-repo QA.** Each repo is tested on its own first. Then QA checks out
+  every repo's finished branch side by side and runs the API and the UI
+  together. It tests the whole goal end to end.
+- After cross-repo QA passes, the factory opens one pull request per repo.
+  Each pull request links to the other repos' pull requests. You approve and
+  merge each one.
+
+`source/.factory/` is not inside any repo, so it is not committed. To share
+your setup with the team, make `.factory` its own git repo.
 
 ## How it works
 

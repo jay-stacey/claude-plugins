@@ -24,18 +24,37 @@ sources: [{{sources}}]
 ## Stack for this role
 
 {{#each stack_for_role}}- `{{path}}`: {{language}}, {{frameworks}} ({{package_manager}})
-{{/each}}
+{{/each}}   <!-- Workspace mode: start each path with its repo name, for example `project-neo/src` -->
 
+{{#if workspace}}## Repos
+
+<!-- Workspace mode only. One row per repo in config `repos` that this role works in (all repos for
+     cto, product-manager, project-manager, staff-engineer, qa-engineer and the reviewers; only repos
+     whose stack fits for a builder). Write `none` for a null command. In classic mode drop this
+     whole section, this comment included, and use the single "Stack for this role", "Folder layout"
+     and "Commands" sections as they are. -->
+
+| Repo | Path | Stack | Build | Test | Lint |
+|---|---|---|---|---|---|
+{{#each repos_for_role}}| {{name}} | `{{path}}` | {{stack}} | `{{commands.build}}` | `{{commands.test}}` | `{{commands.lint}}` |
+{{/each}}
+Work only in the repo your task names. Run that repo's commands from inside its folder.
+{{/if}}
 ## Folder layout
 
-{{layout}}   <!-- 3-8 lines: where source, tests, migrations, docs and generated code live -->
+{{layout}}   <!-- 3-8 lines: where source, tests, migrations, docs and generated code live. Workspace mode: one short line per repo in the Repos table -->
 
 ## Commands
 
-| Purpose | Command | Source |
+{{#if workspace}}<!-- Workspace mode: add a Repo column, one row per command per repo in the Repos table. Build, test and lint are in the Repos table; list here the other commands (install, run, e2e, migrations, screenshot) that apply to this role. -->
+
+| Repo | Purpose | Command | Source |
+|---|---|---|---|
+{{#each commands_for_role}}| {{repo}} | {{purpose}} | `{{command}}` | {{source}} |
+{{/each}}{{else}}| Purpose | Command | Source |
 |---|---|---|
 {{#each commands_for_role}}| {{purpose}} | `{{command}}` | {{source}} |
-{{/each}}
+{{/each}}{{/if}}
 
 Run commands exactly as written; extra arguments are fine. Other shell commands are blocked by the
 factory's permission broker. Allowed extra commands: {{commands.extra}}.

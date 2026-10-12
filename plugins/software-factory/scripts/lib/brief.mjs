@@ -5,6 +5,7 @@ import { writeTextAtomic, readJson } from './fsutil.mjs';
 import * as store from './store.mjs';
 import { load as loadConfig } from './config.mjs';
 import { cliPath, fwd } from './paths.mjs';
+import * as repos from './repos.mjs';
 import { goalDocsRel } from './actions.mjs';
 import { BRANCH_KINDS, EPIC_CHECK_KINDS } from './roles.mjs';
 import { OUTBOX_DIR, usesOutbox, agentHandoffPath } from './outbox.mjs';
@@ -31,6 +32,7 @@ export function outputPaths(home, run, task, goal) {
     case 'sequence': return [`${docs}/plan.md`];
     case 'research': return [`${docs}/research-${task.id}.md`];
     case 'qa_epic': return [`${docs}/qa/${task.epic_id}.md`];
+    case 'qa_goal': return [`${docs}/qa/${goal.id}-goal.md`];
     case 'review_epic': return [`${docs}/reviews/${task.epic_id}.md`];
     case 'docs': return [`${docs}/release-notes.md`];
     case 'escalation': case 'intake': case 'breakdown': case 'pr_feedback':
@@ -39,10 +41,15 @@ export function outputPaths(home, run, task, goal) {
   }
 }
 
+/** The CLI makes every worktree (contracts §20.4), so every worktree run starts with `worktree prepare`. */
 export function needsSetup(run, task) {
   if (run.kind === 'integrate') return true;
   if (BRANCH_KINDS.has(task.kind) || EPIC_CHECK_KINDS.has(task.kind)) return run.isolation === 'worktree';
   return false;
+}
+
+function pickCommands(c) {
+  return { build: c.build ?? null, test: c.test ?? null, lint: c.lint ?? null, typecheck: c.typecheck ?? null, run: c.run ?? null, e2e: c.e2e ?? null, screenshot: c.screenshot ?? null };
 }
 
 function readOverlay(home, role) {
@@ -73,9 +80,24 @@ export function briefFields(home, run, { cfg = loadConfig(home) } = {}) {
     integrate = { epic_branch: epic ? epic.branch : null, task_branches: [task.branch], conflict_files: task.conflict_files || [] };
     filesOwned = task.conflict_files || [];
   }
-  const c = cfg.commands || {};
-  const setup = needsSetup(run, task) ? `node "${cli}" worktree prepare --run ${run.id}` : null;
+  const ws = repos.isWorkspace(cfg);
+  const repo = repos.forRecord(home, cfg, { task, epic, run });
+  const H = fwd(home); // every CLI string names the home, so agents never depend on home lookup
+  const setup = needsSetup(run, task) ? `node "${cli}" worktree prepare --run ${run.id} --home "${H}"` : null;
   const headSha = run.head_sha || null;
+  const worktree = run.worktree_path ? fwd(run.worktree_path) : null;
+  const goalQa = task.kind === 'qa_goal';
+  const extra = {};
+  if (goalQa) {
+    extra.repo_worktrees = run.repo_worktrees || [];
+    extra.commands_by_repo = {};
+    for (const rw of extra.repo_worktrees) {
+      try { extra.commands_by_repo[rw.repo] = pickCommands(repos.get(home, cfg, rw.repo).commands); } catch { /* unknown repo */ }
+    }
+  }
+  if (ws) {
+    extra.repos = repos.list(home, cfg).map((r) => ({ name: r.name, path: r.path, stack: r.stack, base_branch: r.delivery.base_branch }));
+  }
   return {
     run_id: run.id, task_id: task.id, goal_id: goal.id, epic_id: run.epic_id || null, role: run.role,
     kind: task.kind, run_kind: run.kind, review_role: run.review_role || null, tier: goal.tier, round: run.round,
@@ -85,14 +107,16 @@ export function briefFields(home, run, { cfg = loadConfig(home) } = {}) {
     title: task.title, description: task.description,
     acceptance_criteria: task.acceptance_criteria, ac_version: task.ac_version,
     files_owned: filesOwned, files_shared: task.files_shared, files_read: task.files_read, risk_flags: task.risk_flags || [],
-    setup,
-    validate: usesOutbox(run) ? `node "${cli}" handoff validate --run ${run.id}` : `node "${cli}" handoff validate "${handoffPath}"`,
-    outbox: usesOutbox(run) ? `<worktree>/${OUTBOX_DIR}/` : null,
+    setup, worktree, cd_prefix: worktree ? `cd "${worktree}" && ` : null,
+    workspace: ws,
+    repo: (run.repo || worktree || !ws) && !goalQa ? { name: repo.name, path: repo.path, base_branch: repo.delivery.base_branch } : null,
+    validate: usesOutbox(run) ? `node "${cli}" handoff validate --run ${run.id} --home "${H}"` : `node "${cli}" handoff validate "${handoffPath}" --home "${H}"`,
+    outbox: usesOutbox(run) ? `${worktree || '<worktree>'}/${OUTBOX_DIR}/` : null,
     base_ref: task.base_ref || (epic ? epic.branch : null), branch: task.branch || null, head_sha: headSha,
     merge_first: run.merge_first || [],
     evidence_required: BRANCH_KINDS.has(task.kind) && !isReviewer,
-    evidence_cmd: `node "${cli}" evidence run --run ${run.id} --label <label> -- <command>`,
-    commands: { build: c.build ?? null, test: c.test ?? null, lint: c.lint ?? null, typecheck: c.typecheck ?? null, run: c.run ?? null, e2e: c.e2e ?? null, screenshot: c.screenshot ?? null },
+    evidence_cmd: `node "${cli}" evidence run --run ${run.id} --home "${H}" --label <label> -- <command>`,
+    commands: pickCommands(repo.commands),
     diff_cmd: isReviewer && BRANCH_KINDS.has(task.kind) && task.base_ref && headSha ? `git diff ${task.base_ref}...${headSha}` : null,
     checks_result: checksResult, integrate,
     artifacts: {
@@ -104,6 +128,7 @@ export function briefFields(home, run, { cfg = loadConfig(home) } = {}) {
     feedback: (task.feedback || []).slice(-10), answers: task.answers || [], resume_from: task.resume_from || null,
     findings_open: isReviewer ? [] : (task.findings || []).filter((f) => f.round === (task.rework_count || 0) && ['blocker', 'major'].includes(f.severity)).slice(0, 20),
     handoff_path: agentHandoffPath(run, handoffPath), to_role: 'cto', token_hint: run.estimate_tokens,
+    ...extra,
     _overlay: overlay,
   };
 }
@@ -119,7 +144,23 @@ export function renderText(b) {
   L.push(`1. Read the constitution: ${b.constitution}`);
   L.push(`2. Read your overlay${b.overlay ? `: ${b.overlay} (inlined below)` : ': none for this repo'}.`);
   L.push(b.setup ? `3. Run setup first: \`${b.setup}\`` : '3. No setup command: work from the main checkout, read only.');
+  if (b.worktree) {
+    L.push(`4. Your worktree is ${b.worktree}. Your shell may not keep its folder between calls, so start every Bash command with \`${b.cd_prefix}\` (for example \`${b.cd_prefix}git status\`). Use absolute paths under the worktree with Read, Edit and Write.`);
+  }
   L.push('');
+  if (b.workspace && b.repos) {
+    L.push('## Repos', '', 'This factory drives several repos in one workspace:', ...b.repos.map((r) => `- ${r.name}: ${r.path} (${(r.stack || []).join(', ') || 'no stack'}, base ${r.base_branch})`));
+    if (b.repo) L.push('', `This run works in repo ${b.repo.name} only.`);
+    L.push('');
+  }
+  if (b.repo_worktrees && b.repo_worktrees.length) {
+    L.push('## Repo worktrees', '', `Setup makes one detached worktree per epic under ${b.worktree}. Test the joined flow across them; never write in them, only in your outbox.`);
+    for (const rw of b.repo_worktrees) {
+      const c = (b.commands_by_repo || {})[rw.repo] || {};
+      L.push(`- ${rw.repo} (${rw.epic_id}, ${rw.branch}): ${rw.path}${c.run ? `; run: \`${c.run}\`` : ''}${c.test ? `; test: \`${c.test}\`` : ''}`);
+    }
+    L.push('');
+  }
   L.push('## Goal', '', b.goal_outcome, '');
   L.push('## Task', '', b.description || b.title, '');
   if (b.acceptance_criteria.length) {
@@ -132,7 +173,9 @@ export function renderText(b) {
   }
   if (b.outbox) {
     L.push('## Write only here', '',
-      `You work in a git worktree, and you cannot write files outside it. Write every factory output inside your worktree's outbox folder \`${OUTBOX_DIR}/\`. Replace \`<worktree>\` with the worktree path that setup printed (the PREPARED line). The factory moves these files into place after you finish. The outbox is git-ignored, so never commit it.`,
+      b.worktree
+        ? `Write every factory output inside your worktree's outbox folder \`${b.outbox}\`. The factory moves these files into place after you finish. The outbox is git-ignored, so never commit it.`
+        : `You work in a git worktree, and you cannot write files outside it. Write every factory output inside your worktree's outbox folder \`${OUTBOX_DIR}/\`. Replace \`<worktree>\` with the worktree path that setup printed (the PREPARED line). The factory moves these files into place after you finish. The outbox is git-ignored, so never commit it.`,
       ...b.output_paths.map((p) => `- ${b.outbox}${p}`), `- ${b.outbox}handoff.json`, '');
   } else if (b.output_paths.length) {
     L.push('## Write only here', '', ...b.output_paths.map((p) => `- ${b.factory_home}/${p}`), `- ${b.run_dir}`, '');

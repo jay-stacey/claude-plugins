@@ -20,6 +20,7 @@ export function defaults() {
       estimates: {
         intake: 150000, prd: 300000, spec: 500000, mockup: 300000, breakdown: 300000, sequence: 150000,
         code_S: 250000, code_M: 600000, review: 150000, qa: 300000, docs: 200000, escalation: 200000, fixup: 150000,
+        qa_goal: 400000,
       },
       hard_kill: false,
     },
@@ -35,6 +36,8 @@ export function defaults() {
     notifications: { desktop: true },
     control_center: { port: 47610, open_browser: true, show_cost: false },
     worktree: { include_files: [] },
+    workspace: { enabled: false, default_repo: null },
+    repos: {},
   };
 }
 

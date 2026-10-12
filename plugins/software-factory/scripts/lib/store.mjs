@@ -65,11 +65,11 @@ const DEFAULTS = {
     created_by: { kind: 'human', via: 'cli' }, epics: [],
   }),
   epic: () => ({
-    goal_id: null, title: '', slug: '', summary: '', depends_on: [], status: 'draft', branch: '', base_branch: 'main',
+    goal_id: null, title: '', slug: '', summary: '', depends_on: [], status: 'draft', branch: '', base_branch: 'main', repo: null,
     pr: null, gates: { G4: null }, tasks: [],
   }),
   task: () => ({
-    goal_id: null, epic_id: null, kind: 'code', title: '', description: '', role: 'backend-engineer', size: 'M',
+    goal_id: null, epic_id: null, repo: null, kind: 'code', title: '', description: '', role: 'backend-engineer', size: 'M',
     priority: 'P2', acceptance_criteria: [], ac_version: 1, files_owned: [], files_shared: [], files_read: [],
     depends_on: [], gate_deps: [], gate: null, risk_flags: [], reviews_required: [], reviews: {}, status: 'draft',
     status_reason: null, attempts: 0, max_attempts: 3, rework_count: 0, max_rework: 3, fixups: 0, estimate_tokens: 0,
@@ -79,7 +79,7 @@ const DEFAULTS = {
   run: () => ({
     task_id: null, goal_id: null, epic_id: null, kind: 'author', role: 'cto', subagent_type: '', model: 'sonnet',
     status: 'dispatching', session_id: null, agent_id: null, tool_use_id: null, dispatched_at: null, started_at: null,
-    ended_at: null, isolation: 'none', worktree_path: null, branch: null, head_sha: null, brief_path: null,
+    ended_at: null, isolation: 'none', repo: null, worktree_path: null, branch: null, head_sha: null, brief_path: null,
     handoff_path: null, estimate_tokens: 0, round: 1, review_role: null, exit: null,
   }),
   gate: () => ({

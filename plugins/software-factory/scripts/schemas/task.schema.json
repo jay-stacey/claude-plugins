@@ -32,6 +32,13 @@
         "null"
       ]
     },
+    "repo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Workspace mode: the repo this task works in (task file, else its epic). Null in classic mode and for qa_goal."
+    },
     "kind": {
       "enum": [
         "intake",
@@ -44,6 +51,7 @@
         "docs",
         "qa_epic",
         "review_epic",
+        "qa_goal",
         "pr_feedback",
         "escalation",
         "research"
