@@ -119,10 +119,19 @@ export function acquireMutex(home, { waitMs = 15000, staleMs = 120000 } = {}) {
     const owner = readJson(join(dir, 'owner.json'), null);
     let age = 0;
     if (owner && owner.at) age = Date.now() - Date.parse(owner.at);
-    else age = Date.now() - mtimeMs(dir);
+    else {
+      // No owner yet: either the holder is still writing owner.json, or the lock was just released.
+      // A missing folder must never count as stale, or we would delete the next holder's fresh lock.
+      const m = mtimeMs(dir);
+      if (!m) continue;
+      age = Date.now() - m;
+    }
     const dead = owner && owner.pid && !pidAlive(owner.pid);
     if (dead || age > staleMs) {
-      try { rmSync(dir, { recursive: true, force: true }); } catch { /* raced */ }
+      // Break the lock only if it still belongs to the owner we judged (it may have changed hands).
+      const now = readJson(join(dir, 'owner.json'), null);
+      const same = owner ? (now && now.token === owner.token) : !now;
+      if (same) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* raced */ } }
       continue;
     }
     if (Date.now() - start > waitMs) throw new MutexTimeout(`mutex busy (pid ${owner && owner.pid})`);
