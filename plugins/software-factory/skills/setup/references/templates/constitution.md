@@ -16,10 +16,25 @@ updated: {{date}}
 The rules every factory agent follows in this repo. Precedence: a role's Never rules and the factory
 protocol, then this file, then the brief, then the role overlay.
 
+{{#if workspace}}## Repos
+
+<!-- Workspace mode only. One row per repo in config `repos` (the repos the factory may change).
+     Fill from `repos.<name>`: path, stack summary (language and frameworks), build, test, lint.
+     Write `none` for a null command. In classic mode drop this whole section, this comment
+     included, and keep C-Q2 as written below. -->
+
+This workspace holds several repos. Each task and epic belongs to one repo; work only inside it.
+Default repo: {{workspace.default_repo}}.
+
+| Repo | Path | Stack | Build | Test | Lint |
+|---|---|---|---|---|---|
+{{#each repos}}| {{name}} | `{{path}}` | {{stack}} | `{{commands.build}}` | `{{commands.test}}` | `{{commands.lint}}` |
+{{/each}}
+{{/if}}
 ## Quality bars (C-Q)
 
 - C-Q1: Change only what the task needs. Prefer the existing patterns in the code over new ones.
-- C-Q2: Code builds, lints and passes the test suite at the branch head (`{{commands.build}}`, `{{commands.lint}}`, `{{commands.test}}`).
+- C-Q2: Code builds, lints and passes the test suite at the branch head (`{{commands.build}}`, `{{commands.lint}}`, `{{commands.test}}`){{#if workspace}}; use the commands of the task's repo from the Repos table{{/if}}.
 - C-Q3: No dead code, commented-out code, or TODOs without a follow-up in the handoff.
 
 ## Testing (C-T)

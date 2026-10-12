@@ -50,6 +50,7 @@
         "qa",
         "review",
         "docs",
+        "goal_qa",
         "pr_open",
         "changes_requested",
         "done",
@@ -62,6 +63,20 @@
     },
     "base_branch": {
       "type": "string"
+    },
+    "repo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Workspace mode: the repo this epic lives in (config repos key). Null in classic mode."
+    },
+    "goal_qa_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "When the epic last entered goal_qa (cross-repo QA)."
     },
     "pr": {
       "type": [

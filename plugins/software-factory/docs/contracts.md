@@ -555,3 +555,205 @@ These override earlier sections where they differ.
    ticks on their completion notices after `-p` has returned. Another session must not tick until that
    lease is released or stale.
 5. The hook timing test runs only with `FACTORY_PERF=1`; exit code and silence are always tested.
+
+## 20. Contract amendments (A9, 2026-10-12, workspace mode and CLI worktrees)
+
+These override earlier sections where they differ. Goal: one factory drives several git repos that
+live side by side in a plain folder (a "workspace"), and one goal can span them (for example API work
+in `dealerpull-api` plus UI work in `project-neo`). Classic single-repo setups keep working unchanged.
+
+### 20.1 Locations
+
+1. Workspace = a folder that is not itself a git repo and holds git repos (depth 1, or depth 2 under a
+   plain sub-folder). Its factory home is `<workspace>/.factory`. `init --workspace` creates it at cwd.
+2. Home lookup (`paths.findHome`, `paths.existingHome`): `FACTORY_HOME`; else `<main checkout>/.factory`
+   when that folder exists; else the nearest ancestor of cwd that holds `.factory/config.json`
+   (`paths.workspaceHome`); else `<main checkout>/.factory` (not created yet). So a CLI worktree at
+   `<workspace>/.factory/worktrees/R-000123` resolves to the workspace home even though its git common
+   dir belongs to a repo.
+3. `paths.repoRoot(home)` keeps meaning "the folder that holds `.factory`". Code must not use it for git,
+   commands or delivery. It uses `lib/repos.mjs` instead.
+4. `.factory/` in a workspace is not inside any repo, so nothing is committed by default. Setup tells the
+   user they may `git init` the `.factory` folder itself to share config, constitution and docs.
+
+### 20.2 Config
+
+```json
+{
+  "workspace": {"enabled": true, "default_repo": "dealerpull-api"},
+  "repos": {
+    "dealerpull-api": {
+      "path": "dealerpull-api",
+      "stack": ["dotnet"],
+      "commands": {"install": null, "build": "dotnet build", "test": "dotnet test", "lint": null, "typecheck": null,
+                   "run": "dotnet run --project src/Api", "e2e": null, "migrate_up": null, "migrate_down": null,
+                   "screenshot": null, "extra": []},
+      "checks": {"pre_review": [], "post_merge": []},
+      "delivery": {"base_branch": "main", "remote": "origin", "mode": "github"},
+      "remote": {"provider": "github", "owner": "org", "repo": "dealerpull-api"},
+      "include_files": []
+    }
+  }
+}
+```
+
+- `path` is relative to the workspace root (or absolute). Default: the repo name.
+- Per repo, `checks.pre_review` defaults to `[build, lint, test]` minus nulls. `delivery` falls back to
+  top-level `delivery`, then `default_branch`, then `main`/`origin`/`github`. `include_files` falls back
+  to `worktree.include_files`.
+- Workspace mode is on when `workspace.enabled` is true and `repos` is not empty. Then top-level
+  `project.remote`, `stack`, `commands` and `checks` are unused (setup leaves them empty).
+- Classic mode: `repos.list()` returns one implicit repo named `project.name` (or the folder name) at
+  `repoRoot(home)` built from the top-level keys, so all code can use the same `repos.*` calls.
+- API (`scripts/lib/repos.mjs`): `isWorkspace(cfg)`, `list(home, cfg)`, `names`, `defaultName`,
+  `get(home, cfg, name|null)` (throws exit 1 on an unknown name), `nameFor(home, cfg, {task, epic, run})`,
+  `forRecord(home, cfg, {task, epic, run})`, `allCommandStrings(home, cfg)`, `runWorktreeDir(home, runId)`,
+  `validName(name)`. A resolved repo is `{name, path, rel, stack, commands, checks {pre_review, post_merge},
+  delivery {mode, base_branch, remote}, remote {provider, owner, repo}, include_files}`. `path` is absolute
+  with forward slashes.
+
+### 20.3 Records
+
+- Epic adds `repo` (string|null). An epic belongs to exactly one repo: its branch, integration worktree,
+  post-merge checks and PR all live there. `epic new --goal G --title T --summary S --repo <name>`.
+  In workspace mode `--repo` is required; in classic mode it is optional and ignored (stored null).
+- Task adds `repo` (string|null). `task new` sets it from the task file, else from the epic, else null.
+  A task with an epic must have the epic's repo (validation error otherwise). In workspace mode every
+  code and docs task must resolve to a repo (an epic, or `repo` in the task file).
+- Run adds `repo` (string|null, copied from the task's resolved repo at dispatch, null for planner runs
+  without a repo) and `worktree_path` is set at dispatch (20.4).
+- One goal may have epics in several repos. Epic `depends_on` may name epics in other repos.
+- Epic status adds `goal_qa`. Task kind adds `qa_goal` (role qa-engineer, an epic-check kind with
+  `epic_id: null`). Repo resolution order everywhere: `task.repo` > `epic.repo` > `run.repo` > default repo.
+
+### 20.4 Worktrees: the CLI makes every worktree (replaces §0.3, §6 bullets 2-3, §17.1 first sentence)
+
+1. No agent file uses `isolation: worktree` any more. Claude Code can only make worktrees for the
+   session's own repo, which cannot serve several repos.
+2. `ROLE_INFO[role].isolation` stays `worktree` for the 8 worktree roles; it now means "the CLI gives this
+   run a worktree". At dispatch the run gets `worktree_path = <home>/worktrees/<run id>` (from
+   `repos.runWorktreeDir`) and `repo`.
+3. `worktree prepare --run R` (the brief's `setup` command, run from any cwd) creates the worktree when it
+   is missing: `git -C <repo.path> worktree add --detach <worktree_path> <start>` where `<start>` is the
+   detach ref/SHA for reviewers and QA, else the task branch when it exists, else
+   `resume_from.commit || base_ref || epic.branch`. Then it runs the existing prepare logic with
+   `cwd = worktree_path` and `repoRoot = repo.path` (free the branch from other worktrees, switch/create,
+   merge `merge_first`, or detach). It adds `.factory-out/` to the repo's shared `info/exclude`. It prints
+   `PREPARED <worktree_path> <branch|detached> <sha>`. Running it twice is safe.
+4. The brief gives the real absolute `worktree` path (no `<worktree>` placeholder) and a `cd_prefix`
+   field `cd "<worktree_path>" && `. Agents start every Bash command with that prefix (subagent shells
+   may not keep a cwd between calls) and use absolute paths with Read/Edit/Write.
+5. The outbox protocol (§17.1, §17.2, §19) is unchanged: worktree runs still write their handoff and
+   outputs to `<worktree_path>/.factory-out/`, and `collect` imports them.
+6. `collect` removes the run worktree with `worktree.remove({repoRoot: repo.path, dir: worktree_path})`
+   wherever it used to remove the native agent worktree. Runs recorded before A9 (worktree path under
+   `.claude/worktrees/agent-*`) still go through `removeAgentWorktree`.
+7. `control.mjs`, `recovery.mjs` and `worktree prune` use `run.worktree_path` and the run's repo.
+8. CLI-made checks and integration worktrees stay at `<home>/worktrees/checks-<run>` and
+   `<home>/worktrees/<E-id>`, created from the epic's repo.
+
+### 20.5 Repo-aware delivery (replaces repo-root use in §6)
+
+- Epic branch from `<repo.delivery.remote>/<repo.delivery.base_branch>` in the epic's repo (local base
+  when no remote ref). `epic.base_branch` = the repo's base branch.
+- Check runner: `checks run --run R` runs the repo's `checks.pre_review` in a detached worktree of the
+  repo, copying the repo's `include_files`. `integrate` runs the repo's `checks.post_merge`.
+- File overlap (`choose`, `task new` validation) compares tasks only within the same repo and lists
+  files with `lsFiles(repo.path)`.
+- `pr create`: push and `gh pr create` with `cwd = repo.path`, base = repo base branch, remote = repo
+  remote. The PR body adds a "Same goal, other repos" list with the other epics of the goal (repo, epic
+  id, PR url when one exists). `pr poll` and `markMerged` use the epic's repo. Local delivery mode is
+  per repo.
+- Doctor (workspace mode): every repo path exists and is a git work tree; warns when
+  `<home>/worktrees/R-000000` + 120 is over 240 characters; gh auth once if any repo is in github mode.
+- `status` and the dashboard show the repo next to each epic and code task when in workspace mode.
+
+### 20.6 Cross-repo QA (`qa_goal`)
+
+1. Applies when a goal's non-cancelled epics span two or more repos. Otherwise nothing changes.
+2. Where §5 step 8 would run `pr create` after the docs task is integrated, the epic instead moves to
+   `goal_qa` and waits.
+3. When every non-cancelled epic of the goal is in `goal_qa` (and no open `qa_goal` task exists), the flow
+   creates one `qa_goal` task: role qa-engineer, `epic_id: null`, `repo: null`, title
+   `Cross-repo QA for <goal id>`, acceptance criteria = the goal's success criteria (max 5, as AC-1..),
+   output `docs/<goal docs>/qa/<goal id>-goal.md`.
+4. Dispatch: the run's `worktree_path` is `<home>/worktrees/<run id>` used as a parent folder. `worktree
+   prepare --run R` makes one detached worktree per epic at `<worktree_path>/<repo name>` on that epic's
+   branch head, and records `run.repo_worktrees = [{repo, epic_id, path, branch, head_sha}]`. The brief
+   adds `repo_worktrees` and `commands_by_repo {<repo>: commands}`. The outbox is
+   `<worktree_path>/.factory-out/` (plain folder, not a git worktree).
+5. The broker treats every `repo_worktrees[].path` as inside the run's worktree, allows each listed repo's
+   commands, and allows `cd` into any of them. QA writes nothing in the repo worktrees; only the outbox.
+6. Verdict pass: every epic of the goal in `goal_qa` runs `pr create` (§6) and moves to `pr_open` with its
+   own G4 gate. Each G4 gate's summary names the cross-repo QA report.
+7. Verdict fail: open a CTO escalation (`qa_goal failed; create rework tasks in the right epics`), and
+   leave the epics in `goal_qa`. When the CTO adds rework code tasks to an epic, that epic returns to
+   `building` (the normal rework path: integrate, `qa_epic`, `review_epic`, then back to `goal_qa`; a docs
+   task is created only if the epic has none that is done). When all epics are back in `goal_qa`, a new
+   `qa_goal` task is created (step 3). Verdict escalate: same as `qa_epic` escalate.
+8. Budget estimate key `qa_goal` (default 400000). Slot class reviewers.
+9. Collect removes all repo worktrees of a `qa_goal` run (each with its repo) and then the parent folder.
+
+### 20.7 Setup
+
+1. Phase 0: when cwd is not a git repo, run `scan-repo.mjs --workspace <cwd>`. It prints JSON
+   `{root, repos: [{name, path (relative), default_branch, remote_url|null, kind}]}` for git repos at depth 1
+   (and depth 2 under folders that are not repos), skipping `node_modules`, dot-folders and folders that
+   are git worktrees of another repo. If it finds repos, ask: "Workspace mode with these N repos
+   (Recommended) / Pick one repo instead / Stop". Workspace: `factory init --workspace`. Never `git init`
+   a folder that holds repos.
+2. Scan: `scan-repo.mjs --root <repo> --out .factory/setup/scan-<repo>.json` per repo. The interviewer
+   reads each repo's top docs (README, CLAUDE.md or AGENTS.md) only, not every doc, to stay fast.
+3. Interview: one repos question (which repos the factory may change; default all with a detected stack),
+   one commands confirmation per repo that has a detected stack, asked together in as few calls as the
+   4-question limit allows, then the usual sections. Config mapping writes `workspace` and `repos.*`.
+4. Overlays and the constitution list the repos with their stacks and commands in a "Repos" table.
+
+### 20.8 Agents and skills
+
+- Every brief in workspace mode adds `workspace: true` and `repos: [{name, path, stack, base_branch}]`.
+  Code-run briefs add `repo {name, path, base_branch}`, `worktree`, `cd_prefix`, and `commands` from that
+  repo.
+- staff-engineer: the spec has a "Repos" section (which repo owns which component). Breakdown makes one
+  epic per repo per deliverable slice (`epic new --repo`), and cross-repo contracts (API shape) are
+  stated in the spec and in both epics' task descriptions.
+- project-manager: sequences across repos with epic `depends_on` and task `depends_on`.
+- qa-engineer: `qa_goal` mode runs each repo's `commands.run` in the background from its repo worktree,
+  then tests the joined flow against the goal's success criteria.
+- cto: intake notes which repos a goal touches; escalations after `qa_goal` failure name the repo.
+- tech-writer: docs for an epic stay inside that epic's repo.
+
+### 20.9 Build notes (from the workspace build)
+
+1. `init --workspace [--repos a,b]` refuses inside a git repo (exit 2). `--repos` checks each folder is a
+   git repo, records its current branch as `default_branch`, sets `workspace.enabled` and `default_repo`
+   (the first repo). Without `--repos`, `workspace.enabled` stays false until setup merges `repos`.
+2. `run.isolation` is `worktree` only when the run really gets a CLI worktree: code and docs tasks,
+   integrate runs and epic or goal checks. A spec-mode security-reviewer run is `none` and writes
+   straight to the home (no outbox).
+3. `qa_goal` prepare prints `PREPARED <parent> detached <n> repos`, then one `REPO <name> <path> <sha12>`
+   line per repo. `run.repo_worktrees` is planned at dispatch with `head_sha: null` and filled by prepare.
+   Two epics of one goal in the same repo get worktrees `<repo>` and `<repo>-<epic id>`.
+4. Epic adds `goal_qa_at` (when it last entered `goal_qa`). After a failed `qa_goal`, a new one is
+   created when every pending epic is in `goal_qa` and at least one re-entered it after the failure.
+   Epics that got no rework never leave `goal_qa`. Pending epics exclude `pr_open`, `done`,
+   `changes_requested` and `cancelled`. If the goal no longer spans 2 or more repos, epics waiting in
+   `goal_qa` go straight to `pr create`.
+5. Collect also removes CLI worktrees after reviews, deferred runs and closed tasks. A rejected
+   handoff ("no new commits") and a blocked integrate run keep their worktree as `task.kept_worktree`,
+   and the next run of that task reuses it, so unsaved work survives. Recovery also finds a handoff
+   left in the outbox.
+6. Brief `repo` is null for workspace planner runs and for `qa_goal`. `workspace` is always a boolean.
+7. Broker: a run with a worktree is pinned to it. Every project, read-only shell and git command must
+   run inside the run's worktree (or its `repo_worktrees`): the folder is the leading `cd` target, else
+   the hook cwd, and for git its `-C` folder. Factory CLI calls are allowed from any folder, and a
+   `--home` argument must equal the real home. Briefs add `--home "<H>"` to `setup`, `validate` and
+   `evidence_cmd`. `evidence run` executes in the agent's folder when it is inside the run's worktrees,
+   else in `run.worktree_path`. Home lookup checks `<X>/.factory/worktrees/` first, then the repo's own
+   `.factory`, then a workspace home above the repo only when its config lists that repo. Plain `init`
+   always targets the repo's own `.factory`.
+   Runs without a repo allow every repo's commands. `qa_goal` runs may read and `cd` in every
+   repo worktree and write only the outbox, their run folder and `output_paths`. The main-session
+   state guard ignores `H/worktrees/**`.
+8. `repos.<name>.stack` holds the scanner's stack objects (`path, language, frameworks,
+   package_manager`), the same shape as top-level `stack`.

@@ -9,7 +9,8 @@ import { move } from './lifecycle.mjs';
 import * as flow from './flow.mjs';
 import * as budget from './budget.mjs';
 import { writeSnapshot, latestSnapshots } from './usage.mjs';
-import { repoRoot } from './paths.mjs';
+import * as repos from './repos.mjs';
+import { usesOutbox, outboxDir } from './outbox.mjs';
 import * as deps from './deps.mjs';
 
 export const NEVER_STARTED_S = 600;
@@ -36,7 +37,8 @@ export async function recover(home, { session = null, mtimes = {}, cfg = loadCon
       }
       continue;
     }
-    if (run.handoff_path && existsSync(run.handoff_path) && idle > 120000) {
+    const outboxHandoff = usesOutbox(run) && outboxDir(run) ? join(outboxDir(run), 'handoff.json') : null; // worktree runs write here first
+    if (((run.handoff_path && existsSync(run.handoff_path)) || (outboxHandoff && existsSync(outboxHandoff))) && idle > 120000) {
       store.update(home, 'run', run.id, (r) => { r.status = 'completed'; r.ended_at = r.ended_at || nowIso(); r.exit = { reason: 'handoff', message: 'handoff file found by recovery' }; });
       emit(home, { type: 'run.ended', source: 'reconcile', run_id: run.id, task_id: run.task_id, goal_id: run.goal_id, msg: `${run.id} ended (handoff found)` });
       out.push({ run_id: run.id, outcome: 'completed' });
@@ -68,7 +70,8 @@ export async function recover(home, { session = null, mtimes = {}, cfg = loadCon
       if (task.branch) {
         try {
           const git = await deps.load('git');
-          const head = git.headSha(repoRoot(home), task.branch);
+          const epic = task.epic_id ? store.get(home, 'epic', task.epic_id) : null;
+          const head = git.headSha(repos.forRecord(home, cfg, { task, epic, run }).path, task.branch);
           if (head) store.update(home, 'task', task.id, (x) => { x.resume_from = { branch: task.branch, commit: head, checkpoint_path: existsSync(join(home, 'runs', run.id, 'checkpoint.md')) ? join(home, 'runs', run.id, 'checkpoint.md').replace(/\\/g, '/') : null }; });
         } catch { /* ignore */ }
       }

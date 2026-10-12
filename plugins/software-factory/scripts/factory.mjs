@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
 
-const BOOL = new Set(['json', 'quick', 'reindex', 'takeover', 'now', 'stop', 'loop', 'discard', 'force', 'once', 'all-done', 'all', 'help']);
+const BOOL = new Set(['json', 'quick', 'reindex', 'takeover', 'now', 'stop', 'loop', 'discard', 'force', 'once', 'all-done', 'all', 'help', 'workspace']);
 const MULTI = new Set(['criteria', 'constraint', 'depends']);
 
 export function parseArgs(argv) {
@@ -46,9 +46,9 @@ function out(ctx, lines, obj) {
 }
 
 function short(rec, kind) {
-  if (kind === 'task') return `${rec.id} ${rec.status} ${rec.kind}/${rec.role} ${rec.title}`;
+  if (kind === 'task') return `${rec.id} ${rec.status} ${rec.kind}/${rec.role}${rec.repo ? ` ${rec.repo}` : ''} ${rec.title}`;
   if (kind === 'goal') return `${rec.id} ${rec.status} ${rec.priority} ${rec.title}`;
-  if (kind === 'epic') return `${rec.id} ${rec.status} ${rec.branch} ${rec.title}`;
+  if (kind === 'epic') return `${rec.id} ${rec.status}${rec.repo ? ` ${rec.repo}` : ''} ${rec.branch} ${rec.title}`;
   if (kind === 'gate') return `${rec.id} ${rec.status} ${rec.type} ${rec.subject.kind} ${rec.subject.id || ''} ${rec.artifact.summary ? `- ${rec.artifact.summary.split('\n')[0].slice(0, 80)}` : ''}`.trim();
   if (kind === 'run') return `${rec.id} ${rec.status} ${rec.kind} ${rec.role} ${rec.task_id}`;
   return rec.id;
@@ -68,7 +68,34 @@ const COMMANDS = {
   async init(ctx) {
     const { init } = await lib('state');
     const created = init(ctx.home);
-    out(ctx, [`INIT ${ctx.home.replace(/\\/g, '/')}`, ...(created.length ? [`created: ${created.join(', ')}`] : ['already initialized'])], { home: ctx.home, created });
+    const lines = [`INIT ${ctx.home.replace(/\\/g, '/')}`, ...(created.length ? [`created: ${created.join(', ')}`] : ['already initialized'])];
+    let repoList = [];
+    if (ctx.flags.workspace) {
+      // Workspace mode (contracts §20.1): `.factory` in a plain folder of repos. `--repos a,b` registers
+      // those sub-folders and turns workspace mode on; without it, setup merges the repos later.
+      const cfg = await lib('config');
+      const repos = await lib('repos');
+      const { runGit } = await lib('fsutil');
+      const root = dirname(resolve(ctx.home));
+      repoList = String(ctx.flags.repos || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const patch = { workspace: { enabled: false } };
+      if (repoList.length) {
+        patch.repos = {};
+        for (const name of repoList) {
+          if (!repos.validName(name)) throw fail(`bad repo name ${name}`);
+          const dir = join(root, name);
+          const top = existsSync(dir) ? runGit(['rev-parse', '--show-toplevel'], dir) : null;
+          if (!top || top.code !== 0) throw fail(`${name} is not a git repo under ${root.replace(/\\/g, '/')}`);
+          const head = runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], dir);
+          patch.repos[name] = { path: name, ...(head.code === 0 && head.stdout.trim() ? { default_branch: head.stdout.trim() } : {}) };
+        }
+        const cur = cfg.readRaw(ctx.home) || {};
+        patch.workspace = { enabled: true, default_repo: (cur.workspace && cur.workspace.default_repo) || repoList[0] };
+      }
+      cfg.merge(ctx.home, patch);
+      lines.push(repoList.length ? `workspace: ${repoList.length} repos (${repoList.join(', ')})` : 'workspace: no repos yet; setup adds them');
+    }
+    out(ctx, lines, { home: ctx.home, created, workspace: !!ctx.flags.workspace, repos: repoList });
   },
 
   async doctor(ctx) {
@@ -213,7 +240,7 @@ const COMMANDS = {
     const a = await lib('actions');
     const [sub, id] = ctx.pos;
     if (sub === 'new') {
-      const e = a.newEpic(ctx.home, { goal_id: ctx.flags.goal, title: ctx.flags.title, summary: ctx.flags.summary || '', depends_on: ctx.flags.depends || [] });
+      const e = a.newEpic(ctx.home, { goal_id: ctx.flags.goal, title: ctx.flags.title, summary: ctx.flags.summary || '', depends_on: ctx.flags.depends || [], repo: ctx.flags.repo || null });
       out(ctx, [e.id], e); return 0;
     }
     if (sub === 'show') { const e = store.mustGet(ctx.home, 'epic', id); out(ctx, [JSON.stringify(e, null, 2)], e); return 0; }
@@ -305,8 +332,18 @@ const COMMANDS = {
     const ev = await deps.load('evidence');
     const git = await deps.load('git');
     const command = ctx.rest.length === 1 ? ctx.rest[0] : ctx.rest.map((x) => (/[\s"]/.test(x) ? `"${x.replace(/"/g, '\\"')}"` : x)).join(' ');
-    let head = null; try { head = git.headSha(process.cwd()); } catch { head = null; }
-    const e = ev.run({ runDir: join(ctx.home, 'runs', run.id), label: ctx.flags.label, command, cwd: process.cwd(), source: 'agent', headSha: head });
+    // Run where the agent works: its cwd when that is inside the run's worktree (or one of a qa_goal's repo
+    // worktrees), else the run's worktree. Runs without a worktree keep the cwd.
+    let cwd = process.cwd();
+    const inside = (p) => { try { return git.isInside(cwd, p); } catch { return false; } };
+    if (run.worktree_path && existsSync(run.worktree_path)) {
+      const spots = [...(run.repo_worktrees || []).map((x) => x.path), run.worktree_path];
+      if (!spots.some(inside)) cwd = run.worktree_path;
+    }
+    const goalParent = (run.repo_worktrees || []).length && !(run.repo_worktrees || []).some((x) => inside(x.path));
+    let head; // undefined: the evidence module reads it (a qa_goal parent folder is not a git worktree)
+    if (!goalParent) { try { head = git.headSha(cwd); } catch { head = null; } }
+    const e = ev.run({ runDir: join(ctx.home, 'runs', run.id), label: ctx.flags.label, command, cwd, source: 'agent', headSha: head });
     out(ctx, [`${e.id} exit ${e.exit_code}${e.exit_code === 0 ? '' : ' FAILED'} log ${String(e.log_path).replace(/\\/g, '/')}`], e);
   },
 
@@ -394,7 +431,9 @@ const COMMANDS = {
   async worktree(ctx) {
     const store = await lib('store');
     const deps = await lib('deps');
-    const { repoRoot, fwd } = await lib('paths');
+    const { fwd } = await lib('paths');
+    const repos = await lib('repos');
+    const cfg = (await lib('config')).load(ctx.home);
     const sub = ctx.pos[0];
     if (sub === 'prepare') {
       if (!ctx.flags.run) throw usage('worktree prepare --run R');
@@ -404,22 +443,58 @@ const COMMANDS = {
       const epic = task.epic_id ? store.get(ctx.home, 'epic', task.epic_id) : null;
       const wt = await deps.load('worktree');
       const git = await deps.load('git');
-      const root = repoRoot(ctx.home);
-      let opts;
-      if (run.review_role || run.detach_ref) {
-        const sha = run.head_sha || (run.detach_ref ? git.headSha(root, run.detach_ref) : null) || task.head_sha;
-        if (!sha) throw fail('no head SHA to check out for this review');
-        opts = { cwd: process.cwd(), repoRoot: root, detachSha: sha };
-      } else {
-        if (!task.branch) throw fail(`${task.id} has no branch`);
-        opts = { cwd: process.cwd(), repoRoot: root, branch: task.branch, fromRef: (task.resume_from && task.resume_from.commit) || task.base_ref || (epic && epic.branch), mergeFirst: [] };
+      // Runs from before A9 ran inside Claude Code's native worktree (cwd); newer runs get a CLI worktree (§20.4).
+      const native = !run.worktree_path || /\/\.claude\/worktrees\/agent-/.test(fwd(run.worktree_path));
+      const isWt = (dir) => { try { return existsSync(dir) && git.samePath(git.toplevel(dir), dir); } catch { return false; } };
+      if (task.kind === 'qa_goal' && !native) {
+        // One detached worktree per epic under the run folder (§20.6.4); the folder itself holds the outbox.
+        const { mkdirSync } = await import('node:fs');
+        mkdirSync(run.worktree_path, { recursive: true });
+        const plan = (run.repo_worktrees || []).length ? run.repo_worktrees : (await lib('dispatch')).goalRepoWorktrees(ctx.home, cfg, run.goal_id, run.worktree_path);
+        const done = [];
+        for (const rw of plan) {
+          const ep = store.get(ctx.home, 'epic', rw.epic_id);
+          const repo = repos.get(ctx.home, cfg, rw.repo);
+          const branch = rw.branch || (ep && ep.branch);
+          const sha = git.headSha(repo.path, branch);
+          if (!sha) throw fail(`${rw.epic_id}: branch ${branch} not found in repo ${repo.name}`);
+          if (!(isWt(rw.path) && git.headSha(rw.path) === sha)) {
+            try { wt.addDetached({ repoRoot: repo.path, dir: rw.path, sha }); } catch (e) { throw fail(`worktree add failed in ${repo.name}: ${e.message}`); }
+          }
+          done.push({ repo: rw.repo, epic_id: rw.epic_id, path: fwd(rw.path), branch, head_sha: sha });
+        }
+        store.update(ctx.home, 'run', run.id, (x) => { x.repo_worktrees = done; });
+        out(ctx, [`PREPARED ${fwd(run.worktree_path)} detached ${done.length} repos`, ...done.map((d) => `REPO ${d.repo} ${d.path} ${d.head_sha.slice(0, 12)}`)], { worktree_path: fwd(run.worktree_path), repo_worktrees: done });
+        return 0;
       }
+      const repo = repos.forRecord(ctx.home, cfg, { task, epic, run });
+      const root = repo.path;
+      let detach = null;
+      if (run.review_role || run.detach_ref) {
+        detach = run.head_sha || (run.detach_ref ? git.headSha(root, run.detach_ref) : null) || task.head_sha;
+        if (!detach) throw fail('no head SHA to check out for this review');
+      } else if (!task.branch) throw fail(`${task.id} has no branch`);
+      const fromRef = (task.resume_from && task.resume_from.commit) || task.base_ref || (epic && epic.branch);
+      let dir = process.cwd();
+      if (!native) {
+        dir = run.worktree_path;
+        if (!isWt(dir)) { // create it once; a second prepare reuses it
+          const start = detach || (git.branchExists(root, task.branch) ? task.branch : fromRef);
+          if (!start) throw fail(`${task.id}: no start point for the worktree`);
+          try { wt.addDetached({ repoRoot: root, dir, sha: start }); } catch (e) { throw fail(`worktree add failed in ${repo.name}: ${e.message}`); }
+        }
+      }
+      const opts = detach ? { cwd: dir, repoRoot: root, detachSha: detach } : { cwd: dir, repoRoot: root, branch: task.branch, fromRef, mergeFirst: [] };
       let r;
       try { r = wt.prepare(opts); } catch (e) {
         if (e.code === 'MERGE_CONFLICT') { out(ctx, [`MERGE_CONFLICT ${(e.files || []).join(' ')}`]); return 1; }
         throw fail(`prepare failed: ${e.message}`);
       }
-      store.update(ctx.home, 'run', run.id, (x) => { x.worktree_path = fwd(r.worktree_path); x.branch = r.branch || null; if (!x.head_sha || !x.review_role) x.head_sha = r.head_sha; });
+      if (!native) r.worktree_path = fwd(run.worktree_path); // keep the path the brief and broker know
+      store.update(ctx.home, 'run', run.id, (x) => {
+        x.worktree_path = fwd(r.worktree_path); x.branch = r.branch || null; if (!x.head_sha || !x.review_role) x.head_sha = r.head_sha;
+        if (!x.repo && repos.isWorkspace(cfg)) x.repo = repo.name;
+      });
       // Keep the agent's outbox (.factory-out/) out of git: info/exclude is shared by all worktrees.
       try {
         const ex = git.git(['rev-parse', '--path-format=absolute', '--git-path', 'info/exclude'], { cwd: r.worktree_path });
@@ -444,9 +519,17 @@ const COMMANDS = {
       else if (ctx.flags.epic) tasks = store.list(ctx.home, 'task', (t) => t.epic_id === ctx.flags.epic);
       else if (ctx.flags['all-done']) tasks = store.list(ctx.home, 'task', (t) => ['done', 'cancelled'].includes(t.status));
       else throw usage('worktree prune --task T|--epic E|--all-done');
-      const branches = tasks.map((t) => t.branch).filter(Boolean);
-      const r = wt.pruneBranches({ repoRoot: repoRoot(ctx.home), branches });
-      out(ctx, [`PRUNED ${branches.length} branches`], r); return 0;
+      const byRepo = new Map(); // each task's branches live in its own repo
+      for (const t of tasks.filter((x) => x.branch)) {
+        const name = repos.nameFor(ctx.home, cfg, { task: t, epic: t.epic_id ? store.get(ctx.home, 'epic', t.epic_id) : null });
+        byRepo.set(name, [...(byRepo.get(name) || []), t.branch]);
+      }
+      const r = { deleted: [], skipped: [] };
+      for (const [name, branches] of byRepo) {
+        const one = wt.pruneBranches({ repoRoot: repos.get(ctx.home, cfg, name).path, branches });
+        r.deleted.push(...(one.deleted || [])); r.skipped.push(...(one.skipped || []));
+      }
+      out(ctx, [`PRUNED ${[...byRepo.values()].flat().length} branches`], r); return 0;
     }
     throw usage('worktree prepare|prune');
   },
@@ -483,11 +566,13 @@ const COMMANDS = {
     const store = await lib('store');
     const deps = await lib('deps');
     const cfg = (await lib('config')).load(ctx.home);
-    const { repoRoot } = await lib('paths');
+    const repos = await lib('repos');
     const run = store.mustGet(ctx.home, 'run', ctx.flags.run);
     const task = store.get(ctx.home, 'task', run.task_id);
+    const epic = task && task.epic_id ? store.get(ctx.home, 'epic', task.epic_id) : null;
+    const repo = repos.forRecord(ctx.home, cfg, { task, epic, run }); // §20.5: the run's repo, its checks and include files
     const ck = await deps.load('checks');
-    const r = ck.runChecks({ repoRoot: repoRoot(ctx.home), home: ctx.home, runId: run.id, runDir: join(ctx.home, 'runs', run.id), sha: run.head_sha || (task && task.head_sha), commands: cfg.checks.pre_review, includeFiles: cfg.worktree.include_files || [] });
+    const r = ck.runChecks({ repoRoot: repo.path, home: ctx.home, runId: run.id, runDir: join(ctx.home, 'runs', run.id), sha: run.head_sha || (task && task.head_sha), commands: repo.checks.pre_review, includeFiles: repo.include_files || [] });
     out(ctx, [`CHECKS ${r.status}${r.failed_command ? ` ${r.failed_command}` : ''}`], r);
     return 0;
   },
@@ -559,11 +644,21 @@ export async function main(argv = process.argv.slice(2)) {
     agentRole: null, argvRest: [],
   };
   if (cmd === 'dashboard') ctx.argvRest = rest.slice(1).filter((a) => a !== '--json');
+  if (cmd === 'init' && flags.workspace) {
+    // `.factory` at cwd unless --home or FACTORY_HOME says otherwise; never inside a git repo.
+    const { commonDirFs } = await lib('paths');
+    if (!flags.home && !process.env.FACTORY_HOME) ctx.home = ctx.homeMaybe = join(process.cwd(), '.factory');
+    if (commonDirFs(dirname(resolve(ctx.home)))) throw fail('init --workspace needs a plain folder that holds repos, not a git repository (run init without --workspace here)', 2);
+  } else if (cmd === 'init' && !flags.home && !process.env.FACTORY_HOME) {
+    // Plain init always targets this repo's own `<main checkout>/.factory`, never a workspace above it.
+    const { repoHomeOf } = await lib('paths');
+    ctx.home = ctx.homeMaybe = repoHomeOf(process.cwd());
+  }
   if (!NO_HOME.has(cmd)) {
-    if (!homeMaybe) throw fail('not inside a git repository (or set --home)', 4);
+    if (!homeMaybe) throw fail('not inside a git repository or a factory workspace (or set --home)', 4);
     const { isInitialized } = await lib('state');
     if (!isInitialized(homeMaybe)) throw fail(`factory not initialized at ${homeMaybe}; run /software-factory:setup`, 4);
-  } else if (cmd === 'init' && !homeMaybe) throw fail('not inside a git repository (or pass --home)', 2);
+  } else if (cmd === 'init' && !ctx.home) throw fail('not inside a git repository (or pass --home, or --workspace for a folder of repos)', 2);
   const code = await fn(ctx);
   return typeof code === 'number' ? code : 0;
 }

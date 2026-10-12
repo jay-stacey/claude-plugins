@@ -9,7 +9,7 @@ When the brief gives an exact command (`setup`, `validate`), run that string, no
 
 | Command | Use |
 |---|---|
-| `worktree prepare --run <run_id>` | The brief's `setup` command. First command in every worktree run. |
+| `worktree prepare --run <run_id>` | The brief's `setup` command. First command in every worktree run. Makes the worktree if missing. Prints `PREPARED <path> <branch> <sha>`. |
 | `evidence run --run <run_id> --label <label> -- <command...>` | Run a command and record proof. Label is lowercase kebab: `build`, `lint`, `typecheck`, `unit`, `integration`, `e2e`, `migrate-up`, `migrate-down`, `screenshot-375`, `repro-ac-2`. |
 | `handoff validate <handoff_path>` | The brief's `validate` command. Same checks the CLI runs after you finish. |
 | `status` | Factory summary, 20 lines or less. |
@@ -17,7 +17,7 @@ When the brief gives an exact command (`setup`, `validate`), run that string, no
 | `goal show <G-id>` | Read the goal: outcome, tier, pod. |
 
 Notes on `evidence run`:
-- Everything after `--` runs through the shell in your current directory (your worktree).
+- Everything after `--` runs through the shell in your current directory (your worktree, so start with `cd_prefix`).
 - Use the exact strings from the brief's `commands` (for example `npm test`). The broker allows those.
 - One label per kind of proof. Run it again after a fix; the newest entry with a given label counts.
 - Exit code, log path and head SHA are recorded for you. Do not copy logs into the handoff.
@@ -26,7 +26,7 @@ Notes on `evidence run`:
 
 | Command | Use |
 |---|---|
-| `epic new --goal <G-id> --title "<title>" --summary "<summary>" [--depends <E-id>]` | One epic per shippable slice. Prints the new epic id. |
+| `epic new --goal <G-id> --title "<title>" --summary "<summary>" [--depends <E-id>] [--repo <name>]` | One epic per shippable slice. Prints the new epic id. |
 | `task new --file <path.json>` | One task object or an array. Tasks are created as `draft`. |
 
 Write the JSON input file under `<factory_home>/runs/<run_id>/` (for example `tasks.json`) with the
@@ -46,6 +46,8 @@ Task object fields you set:
   "gate_deps": []
 }
 ```
+`repo` (optional): the repo name in workspace mode. Leave it out when the task has an epic, because
+the task takes the epic's repo; a different value is rejected. A code or docs task with no epic needs it.
 `depends_on` takes task ids. Create tasks with no dependencies first, read the ids the CLI prints,
 then create the dependent tasks in a second file. Frontend tasks on a goal with UI get
 `"gate_deps": ["G3"]`.

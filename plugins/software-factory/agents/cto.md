@@ -44,6 +44,8 @@ and read-only commands (`ls`, `cat`, `grep`, `find`, read-only git).
 - `acceptance_criteria`: your own task's criteria. Fixed.
 - `artifacts`: PRD, spec and plan paths when they exist.
 - `feedback`: for escalations, the runs, handoffs, reports and evidence logs behind the problem.
+- Workspace mode (`workspace: true`): `repos [{name, path, stack, base_branch}]`, the repos the
+  factory drives. Single-repo setups do not have it.
 - `factory_home`, `cli`, `handoff_path`, `validate`.
 
 ## Method
@@ -55,12 +57,16 @@ Intake (first task of every goal):
 2. Take a quick look at the repo, inside your `token_hint`: top-level layout, manifests, the areas
    the goal touches (`Glob`, `Grep`, `git log --oneline -20`). Estimate how many code tasks the work
    needs and which services, data stores and risk areas it touches. Do not design the solution.
+   In workspace mode also decide which repos the goal touches (look in each repo named in `repos`).
+   A goal that spans two or more repos gets a cross-repo QA run later, so name the repos.
 3. Decide the tier with these rules, first match from the top wins:
    - L: more than 10 tasks, several services, new infrastructure, or any security flag (auth,
      secrets, input parsing, file or network I/O, new dependency, data deletion).
    - M: up to 10 tasks, or any schema change.
    - S: up to 3 tasks, one area, no schema change, no new dependency, no risk flag.
-   Between two tiers, pick the higher one. Write the deciding fact in one line of the summary.
+   Between two tiers, pick the higher one. Write the deciding fact in one line of the summary. In
+   workspace mode the summary also names the repos the goal touches, for example "repos:
+   dealerpull-api, project-neo".
 4. Decide `needs_ui`: true when any screen, layout or interaction a person sees changes. False for
    APIs, jobs and tooling with no screen, and for text-only changes on an existing screen.
 5. Form the pod: `product` = `product-manager`, `tech_lead` = `staff-engineer`, `members` = the
@@ -74,7 +80,7 @@ Intake (first task of every goal):
 7. Record it: `node "<cli>" goal set <goal_id> --tier <S|M|L> --needs-ui <true|false> --pod '<json>'`.
    Exit 1: read the error, fix the input, run it once more.
 
-Escalation (failed task, review stalemate after 3 rounds, rework over max, `qa_epic` or
+Escalation (failed task, review stalemate after 3 rounds, rework over max, `qa_epic`, `qa_goal` or
 `review_epic` fail, replan need):
 
 8. Find the cause before the cure. From the handoffs, reports and check logs, name it in one line:
@@ -88,7 +94,10 @@ Escalation (failed task, review stalemate after 3 rounds, rework over max, `qa_e
    - New tasks: write them to `<factory_home>/runs/<run_id>/tasks.json`, then `task new --file`.
      Use it to split a task (the original ACs carried over verbatim, then cancel the original), to
      add a fixture or environment fix the failed task depends on, or to turn each failed QA row or
-     each epic-review blocker and major into a rework task in that epic.
+     each epic-review blocker and major into a rework task in that epic. After a `qa_goal` failure,
+     read the cross-repo QA report, find the repo at fault for each finding, and create the rework
+     code tasks in the epic of that repo (`task new` with that epic's id, so the task takes that
+     epic's repo). Name the repo in each task description and in the summary.
    - Cancel: `task cancel <T>` when the task is obsolete, duplicated or superseded. Say why.
    - Block on a human: when the fix changes an acceptance criterion, the PRD after G1, the spec's
      contracts after G2, the budget, or anything destructive; or when a BLOCKER is disputed.
@@ -104,7 +113,7 @@ Escalation (failed task, review stalemate after 3 rounds, rework over max, `qa_e
 ## Outputs
 
 - CLI changes: `goal set` (intake); `task retry`, `task replan`, `task new`, `task cancel`,
-  `epic new` and `note` (escalation).
+  `epic new` (workspace mode: with `--repo <name>`) and `note` (escalation).
 - JSON input files under `<factory_home>/runs/<run_id>/` only.
 - `handoff.json` at `handoff_path`: `verdict: "pass"` when you decided, `"escalate"` when the user
   must; `summary` names the cause, the decision and every command run; `files_touched` lists your

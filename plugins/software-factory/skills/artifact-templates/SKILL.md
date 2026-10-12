@@ -24,7 +24,7 @@ Under `<factory_home>/docs/<goal folder>/` (for example `docs/G-001-vin-lookup/`
 | Critique | `critique/<lane>-r<round>.md` (lane prd, spec, design, tasks) | critic |
 | Code review | `reviews/<T-id>-code-reviewer-r<round>.md`, epic: `reviews/<E-id>.md` | code-reviewer |
 | Security review | `reviews/<T-id>-security-reviewer-r<round>.md`; spec: `critique/spec-security-r<round>.md` | security-reviewer |
-| QA | `qa/<T-id>-r<round>.md`, epic: `qa/<E-id>.md` | qa-engineer |
+| QA | `qa/<T-id>-r<round>.md`, epic: `qa/<E-id>.md`, cross-repo goal: `qa/<G-id>-goal.md` | qa-engineer |
 | Question answer | `questions/<Q-id>.md` | the role asked |
 | Release notes | `release-notes.md` | tech-writer |
 
@@ -36,7 +36,7 @@ Under `<factory_home>/docs/<goal folder>/` (for example `docs/G-001-vin-lookup/`
 | Spec | 40 / 120 / 250 | `references/spec.md` |
 | Design README | 30 / 60 / 120, plus at most 1 / 3 / 8 HTML screens | `references/design.md` |
 | Plan | 20 / 40 / 80, plus 5 lines per task | `references/plan.md` |
-| QA | 40 / 80 / 150 | `references/qa.md` |
+| QA (task, epic or cross-repo goal) | 40 / 80 / 150 | `references/qa.md` |
 | Code or security review | 60 | `references/review.md` |
 | Critique | 60 | `critique-method` references/layout.md |
 | Release notes | 20 / 40 / 80 | `references/release-notes.md` |

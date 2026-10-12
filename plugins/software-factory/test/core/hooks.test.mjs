@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, copyFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { makeHome, lib, P, join, readFileSync, existsSync } from './_helpers.mjs';
+import { makeHome, lib, P, join, readFileSync, writeFileSync, existsSync } from './_helpers.mjs';
 
 const HOOKS = ['session-start', 'prompt', 'pre-agent', 'post-agent', 'broker', 'subagent-stop', 'precompact', 'session-end', 'stop'];
 
@@ -124,6 +124,60 @@ test('prompt hook records human intent; broker guards state files in the main se
   // a factory agent goes through the delivery broker (deny git push)
   const r = JSON.parse(runHook('broker', { session_id: 'S1', agent_id: 'zz', agent_type: 'software-factory:backend-engineer', tool_name: 'Bash', tool_input: { command: 'git push origin main' } }, env).stdout);
   assert.equal(r.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('hooks find a workspace home from a non-git workspace root and broker the run in its repo (A9)', async () => {
+  const ws = mkdtempSync(join(tmpdir(), 'sfws-'));
+  const home = join(ws, '.factory');
+  const prev = process.env.FACTORY_HOME;
+  process.env.FACTORY_HOME = home;
+  try { (await lib('state')).init(home); } finally { if (prev === undefined) delete process.env.FACTORY_HOME; else process.env.FACTORY_HOME = prev; }
+  const cfgFile = join(home, 'config.json');
+  const cfg = JSON.parse(readFileSync(cfgFile, 'utf8'));
+  cfg.workspace = { enabled: true, default_repo: 'api' };
+  cfg.repos = {
+    api: { path: 'api', commands: { build: 'dotnet build', test: 'dotnet test' } },
+    web: { path: 'web', commands: { build: 'npm run build', test: 'npm test' } },
+  };
+  writeFileSync(cfgFile, JSON.stringify(cfg, null, 2));
+  for (const d of ['api', 'web']) mkdirSync(join(ws, d), { recursive: true });
+  const wt = join(home, 'worktrees', 'R-000001');
+  mkdirSync(wt, { recursive: true });
+  // Records written as files so this test does not depend on schema details owned by core.
+  mkdirSync(join(home, 'runs', 'R-000001'), { recursive: true });
+  writeFileSync(join(home, 'runs', 'R-000001', 'run.json'), JSON.stringify({
+    id: 'R-000001', task_id: 'T-0001', goal_id: 'G-001', epic_id: null, kind: 'author', role: 'frontend-engineer',
+    status: 'running', agent_id: 'wa1', repo: 'web', branch: 'factory/T-0001-x', worktree_path: wt.replace(/\\/g, '/'), output_paths: [],
+  }));
+  mkdirSync(join(home, 'tasks'), { recursive: true });
+  writeFileSync(join(home, 'tasks', 'T-0001.json'), JSON.stringify({ id: 'T-0001', goal_id: 'G-001', epic_id: null, repo: 'web', kind: 'code', files_owned: ['src/**'], files_shared: [] }));
+  // Plain workspace root: no git repo, no FACTORY_HOME. The home is found by walking up to .factory/config.json.
+  const env = { FACTORY_HOME: '', CLAUDE_PROJECT_DIR: ws };
+  const main = JSON.parse(runHook('broker', { session_id: 'S1', cwd: ws, tool_name: 'Write', tool_input: { file_path: join(home, 'state', 'factory.json') } }, env).stdout);
+  assert.equal(main.hookSpecificOutput.permissionDecision, 'deny');
+  // Repo files in a CLI worktree are not factory state for the main session.
+  assert.equal(runHook('broker', { session_id: 'S1', cwd: ws, tool_name: 'Write', tool_input: { file_path: join(wt, 'package.json') } }, env).stdout, '');
+  // ...but an outbox is agent output that collect imports: the main session may not forge it.
+  for (const f of [join(wt, '.factory-out', 'handoff.json'), join(wt, '.factory-out', 'docs', 'G-001-x', 'qa', 'r.md')]) {
+    const out = JSON.parse(runHook('broker', { session_id: 'S1', cwd: ws, tool_name: 'Write', tool_input: { file_path: f } }, env).stdout);
+    assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /outbox/);
+  }
+  // A factory agent started in the workspace root is pinned to its worktree.
+  const bare = JSON.parse(runHook('broker', { session_id: 'S1', cwd: ws, agent_id: 'wa1', agent_type: 'software-factory:frontend-engineer', tool_name: 'Bash', tool_input: { command: 'npm run build' } }, env).stdout);
+  assert.equal(bare.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(bare.hookSpecificOutput.permissionDecisionReason, /cd_prefix/);
+  const agent = (command) => JSON.parse(runHook('broker', { session_id: 'S1', cwd: ws, agent_id: 'wa1', agent_type: 'software-factory:frontend-engineer', tool_name: 'Bash', tool_input: { command } }, env).stdout).hookSpecificOutput;
+  assert.equal(agent(`cd "${wt}" && npm run build`).permissionDecision, 'allow');
+  assert.equal(agent(`cd "${wt}" && dotnet build`).permissionDecision, 'deny');
+  assert.equal(agent(`cd "${wt}" && git add -A && git commit -m "x"`).permissionDecision, 'allow');
+  const w = JSON.parse(runHook('broker', { session_id: 'S1', cwd: ws, agent_id: 'wa1', agent_type: 'software-factory:frontend-engineer', tool_name: 'Write', tool_input: { file_path: join(wt, 'src', 'a.ts') } }, env).stdout);
+  assert.equal(w.hookSpecificOutput.permissionDecision, 'allow');
+  // Also from inside a repo of the workspace (its own git common dir has no .factory).
+  const repo = join(ws, 'web');
+  spawnSync('git', ['init', '-q'], { cwd: repo, windowsHide: true });
+  const fromRepo = JSON.parse(runHook('broker', { session_id: 'S1', cwd: repo, tool_name: 'Write', tool_input: { file_path: join(home, 'state', 'factory.json') } }, { ...env, CLAUDE_PROJECT_DIR: repo }).stdout);
+  assert.equal(fromRepo.hookSpecificOutput.permissionDecision, 'deny');
 });
 
 test('precompact writes the CTO checkpoint for the lease holder; session-end releases the lease', async () => {

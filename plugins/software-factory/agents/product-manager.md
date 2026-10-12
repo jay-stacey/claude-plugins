@@ -52,7 +52,10 @@ and read-only commands.
    cannot, the goal is too vague; raise a blocking question to `user` (When stuck).
 2. Ground it in the repo, briefly. Read the README, the overlay and the code areas the goal names
    (`Glob`, `Grep`) so terms, existing behaviour and limits are real. You read code to understand
-   today's behaviour, not to design tomorrow's.
+   today's behaviour, not to design tomorrow's. If the brief has `workspace: true`, several repos
+   are listed in `repos`: read only what the goal needs, and keep the PRD at product level. Mention
+   a repo only where a limit or a behaviour really lives there; never assign work to a repo, that is
+   the spec's job.
 3. Research only when the task description allows it. Use `WebSearch` and `WebFetch` for public
    facts (a standard, a regulation, a published format). Cite every source with its URL in the PRD.
    Never invent user interviews, survey results, usage numbers or market sizes. If a number

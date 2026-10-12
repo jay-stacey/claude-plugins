@@ -277,6 +277,11 @@ table.data th.mono { white-space: nowrap; }
 .meter-row.tone-warn .meter-word { color: var(--warn); } .meter-row.tone-danger .meter-word { color: var(--danger); }
 .goal-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--gc); margin-right: 6px; vertical-align: 0; }
 .goal-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); border-left: 4px solid var(--gc, var(--border)); }
+/* workspace mode: repo label on cards, epics and detail */
+.repo-chip { display: inline-flex; align-items: center; flex: 0 0 auto; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 11px/1.4 var(--mono); padding: 0 6px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); }
+.repo-chip-all { font-family: var(--font); background: var(--info-bg); }
+.repo-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 
 /* ---------- board ---------- */
 .board { display: flex; flex-direction: column; height: 100%; gap: 8px; }

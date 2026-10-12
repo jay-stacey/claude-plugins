@@ -106,11 +106,16 @@ export function statusWord(s) {
   const map = {
     in_progress: 'In progress', in_review: 'In review', changes_requested: 'Changes requested',
     awaiting_approval: 'Awaiting approval', awaiting_g1: 'Awaiting G1', budget_blocked: 'Budget blocked',
-    pr_open: 'PR open', checking: 'Checks running',
+    pr_open: 'PR open', checking: 'Checks running', goal_qa: 'Cross-repo QA',
   };
   if (map[s]) return map[s];
   const w = String(s).replace(/_/g, ' ');
   return w.charAt(0).toUpperCase() + w.slice(1);
+}
+
+/** Task or run kind as shown to people. Only the cross-repo QA kind has its own wording. */
+export function kindWord(kind) {
+  return kind === 'qa_goal' ? 'Cross-repo QA' : kind;
 }
 
 export function clamp(v, lo, hi) {

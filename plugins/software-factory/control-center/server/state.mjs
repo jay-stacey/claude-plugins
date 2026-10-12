@@ -308,7 +308,17 @@ export class FactoryState {
       warn_pct: c.budget?.warn_pct ?? 80, stop_pct: c.budget?.stop_pct ?? 100,
       inbox_s: c.cadence?.inbox_s ?? 120, active_s: c.cadence?.active_s ?? 270,
       weights: this.weights(),
+      workspace: this.workspaceInfo(),
     };
+  }
+
+  // Workspace mode (contracts 20.2): on when workspace.enabled and repos is not empty.
+  workspaceInfo() {
+    const c = this.config || {};
+    const names = c.repos && typeof c.repos === 'object' && !Array.isArray(c.repos) ? Object.keys(c.repos) : [];
+    const enabled = !!c.workspace?.enabled && names.length > 0;
+    const def = typeof c.workspace?.default_repo === 'string' && names.includes(c.workspace.default_repo) ? c.workspace.default_repo : (names[0] ?? null);
+    return { enabled, default_repo: enabled ? def : null, repos: enabled ? names : [] };
   }
 
   goalsSlice() {

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   scan, isSecretPath, classifyCommand, parseRemote, trackerHints, pmRun, summarize, bodyHash, stampFile, checkFile,
+  discoverWorkspace, scanAllRepos,
 } from '../../scripts/setup/scan-repo.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -313,4 +314,100 @@ test('stamp and check detect user edits outside Local notes', () => {
   assert.equal(res.stdout.trim(), 'EDITED');
   const bad = spawnSync(process.execPath, [SCRIPT, '--stamp', plain], { encoding: 'utf8' });
   assert.equal(bad.status, 1);
+});
+
+// ---------- workspace discovery ----------
+
+function wsFixture() {
+  const ws = tmpDir('ws');
+  const mk = (rel, files = {}) => {
+    const d = path.join(ws, rel);
+    fs.mkdirSync(d, { recursive: true });
+    git(d, 'init', '-q', '-b', 'main');
+    for (const [f, t] of Object.entries(files)) write(d, f, t);
+    commit(d, 'init');
+    return d;
+  };
+  const api = mk('dealerpull-api', { 'Api.sln': '', 'src/Api/Api.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>' });
+  git(api, 'remote', 'add', 'origin', 'https://user:secret-token@github.com/acme/dealerpull-api.git');
+  mk('project-neo', { 'package.json': JSON.stringify({ name: 'neo', scripts: { build: 'ng build', test: 'ng test' }, dependencies: { '@angular/core': '^20.0.0' } }) });
+  mk('legacy/dp-web-ui', { 'package.json': JSON.stringify({ name: 'dp-web-ui', scripts: { test: 'karma start' } }) });
+  // A plain folder with no repo inside must add nothing.
+  write(ws, 'notes/readme.txt', 'just notes\n');
+  // A .git inside node_modules and inside a dot-folder must be skipped.
+  fs.mkdirSync(path.join(ws, 'node_modules', 'pkg', '.git'), { recursive: true });
+  fs.mkdirSync(path.join(ws, 'legacy', 'node_modules', 'pkg', '.git'), { recursive: true });
+  fs.mkdirSync(path.join(ws, '.hidden', 'repo', '.git'), { recursive: true });
+  // A linked worktree of another repo, next to its parent.
+  git(api, 'worktree', 'add', '-q', '--detach', path.join(ws, 'api-wt'));
+  return ws;
+}
+
+test('discoverWorkspace finds repos at depth 1 and depth 2, skips node_modules, dot-folders and linked worktrees', () => {
+  const ws = wsFixture();
+  assert.ok(fs.statSync(path.join(ws, 'api-wt', '.git')).isFile(), 'fixture has a linked worktree');
+  const out = discoverWorkspace(ws);
+  assert.equal(out.root, ws.replace(/\\/g, '/'));
+  assert.deepEqual(out.repos.map((r) => r.name), ['dealerpull-api', 'dp-web-ui', 'project-neo']);
+  assert.deepEqual(out.repos.map((r) => r.path), ['dealerpull-api', 'legacy/dp-web-ui', 'project-neo']);
+  for (const r of out.repos) {
+    assert.deepEqual(Object.keys(r).sort(), ['default_branch', 'kind', 'name', 'path', 'remote_url']);
+    assert.equal(r.default_branch, 'main');
+    assert.ok(!r.path.includes('\\') && !path.isAbsolute(r.path));
+  }
+  const api = out.repos.find((r) => r.name === 'dealerpull-api');
+  assert.equal(api.remote_url, 'https://github.com/acme/dealerpull-api.git'); // credentials stripped
+  assert.equal(out.repos.find((r) => r.name === 'project-neo').remote_url, null);
+  assert.equal(out.repos.find((r) => r.name === 'project-neo').kind, 'new'); // under 10 source files
+});
+
+test('discoverWorkspace returns no repos for a repo root and for an empty folder', () => {
+  const r = tmpDir('notws');
+  git(r, 'init', '-q', '-b', 'main');
+  fs.mkdirSync(path.join(r, 'inner', '.git'), { recursive: true });
+  assert.deepEqual(discoverWorkspace(r).repos, []);
+  assert.deepEqual(discoverWorkspace(tmpDir('empty')).repos, []);
+});
+
+test('discoverWorkspace makes unique names when two folders share a base name', () => {
+  const ws = tmpDir('dup');
+  for (const rel of ['a/web', 'b/web']) {
+    const d = path.join(ws, rel);
+    fs.mkdirSync(d, { recursive: true });
+    git(d, 'init', '-q', '-b', 'main');
+  }
+  const out = discoverWorkspace(ws);
+  assert.deepEqual(out.repos.map((r) => r.name), ['web', 'b-web']);
+});
+
+test('CLI --workspace prints JSON and --scan-all writes one scan file per repo', () => {
+  const ws = wsFixture();
+  const plain = spawnSync(process.execPath, [SCRIPT, '--workspace', ws], { encoding: 'utf8' });
+  assert.equal(plain.status, 0, plain.stderr);
+  const j = JSON.parse(plain.stdout);
+  assert.equal(j.repos.length, 3);
+  assert.ok(!fs.existsSync(path.join(ws, '.factory')), 'plain discovery writes nothing');
+
+  const outDir = path.join(ws, '.factory', 'setup');
+  const all = spawnSync(process.execPath, [SCRIPT, '--workspace', ws, '--scan-all', '--out-dir', outDir], { encoding: 'utf8' });
+  assert.equal(all.status, 0, all.stderr);
+  const k = JSON.parse(all.stdout);
+  for (const r of k.repos) {
+    assert.ok(r.scan_file.endsWith(`/scan-${r.name}.json`), r.scan_file);
+    const s = JSON.parse(fs.readFileSync(r.scan_file, 'utf8'));
+    assert.equal(s.schema, 'factory/scan@1');
+    assert.equal(s.root, path.join(ws, r.path).replace(/\\/g, '/'));
+  }
+  assert.ok(k.repos.find((r) => r.name === 'dealerpull-api').stack.some((x) => x.startsWith('csharp')));
+  assert.ok(!fs.readFileSync(path.join(outDir, 'scan-dealerpull-api.json'), 'utf8').includes('secret-token'));
+
+  // Default out-dir is <workspace>/.factory/setup.
+  fs.rmSync(path.join(ws, '.factory'), { recursive: true, force: true });
+  const def = spawnSync(process.execPath, [SCRIPT, '--workspace', ws, '--scan-all'], { encoding: 'utf8' });
+  assert.equal(def.status, 0, def.stderr);
+  assert.ok(fs.existsSync(path.join(ws, '.factory', 'setup', 'scan-project-neo.json')));
+
+  for (const args of [['--scan-all'], ['--out-dir', outDir], ['--workspace', ws, '--out-dir', outDir]]) {
+    assert.equal(spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' }).status, 2, args.join(' '));
+  }
 });

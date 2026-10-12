@@ -5,7 +5,11 @@
 // Usage: node scan-repo.mjs [--root <dir>] [--out <file>] [--stdout] [--new]
 //        node scan-repo.mjs --stamp <file.md>   set generated_hash in the front matter
 //        node scan-repo.mjs --check <file.md>   print UNCHANGED | EDITED | NO_HASH | MISSING
+//        node scan-repo.mjs --workspace <dir>   print JSON for the git repos inside a plain folder
+//        node scan-repo.mjs --workspace <dir> --scan-all [--out-dir <dir>]
+//                                               also write scan-<name>.json per repo
 // Default out: <root>/.factory/setup/scan.json
+// Default out-dir: <workspace>/.factory/setup
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -734,6 +738,92 @@ export function checkFile(file) {
   return m[1] === bodyHash(text) ? 'UNCHANGED' : 'EDITED';
 }
 
+// ---------- workspace discovery ----------
+// A workspace is a plain folder (not a git repo) that holds git repos at depth 1, or at depth 2 under
+// a plain sub-folder. Linked git worktrees of another repo are skipped. Reads only `.git` pointer files.
+
+/** 'repo' | 'worktree' | null for one folder. A `.git` file that points into `worktrees/` is a linked worktree. */
+function gitKind(dir) {
+  const dotGit = path.join(dir, '.git');
+  let st;
+  try { st = fs.lstatSync(dotGit); } catch { return null; }
+  if (st.isDirectory()) return 'repo';
+  if (!st.isFile()) return null;
+  let text = '';
+  try { text = fs.readFileSync(dotGit, 'utf8').slice(0, 1024); } catch { return 'repo'; }
+  const m = text.match(/^gitdir:\s*(.+?)\s*$/m);
+  if (m && /[\\/]worktrees[\\/]/.test(m[1])) return 'worktree';
+  return 'repo'; // submodule or separate git dir
+}
+
+function subDirs(dir) {
+  let ents = [];
+  try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  return ents
+    .filter((e) => e.isDirectory() && !e.isSymbolicLink() && !e.name.startsWith('.') && !SKIP_DIRS.has(e.name))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function repoName(raw, parent, used) {
+  const clean = (x) => x.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'repo';
+  let name = clean(raw);
+  if (used.has(name) && parent) name = clean(`${parent}-${raw}`);
+  for (let n = 2; used.has(name); n++) name = `${clean(raw).slice(0, 60)}-${n}`;
+  used.add(name);
+  return name;
+}
+
+/** Find git repos in a workspace folder. Returns {root, repos: [{name, path, default_branch, remote_url, kind}]}. */
+export function discoverWorkspace(dir) {
+  const root = path.resolve(dir);
+  const out = { root: root.replace(/\\/g, '/'), repos: [] };
+  if (gitKind(root) === 'repo') return out; // a repo is not a workspace
+  const used = new Set();
+  const add = (rel, parent) => {
+    const abs = path.join(root, rel);
+    const g = scanGit(abs);
+    if (!g.is_repo) return; // a `.git` entry that git does not accept
+    const isNew = g.commit_count === 0 || g.tracked_source_files < 10;
+    out.repos.push({
+      name: repoName(path.basename(abs), parent, used),
+      path: rel.replace(/\\/g, '/'),
+      default_branch: g.default_branch || 'main',
+      remote_url: g.remote ? g.remote.url : null,
+      kind: isNew ? 'new' : 'existing',
+    });
+  };
+  for (const a of subDirs(root)) {
+    const k = gitKind(path.join(root, a));
+    if (k === 'repo') { add(a, null); continue; }
+    if (k === 'worktree') continue;
+    for (const b of subDirs(path.join(root, a))) {
+      if (gitKind(path.join(root, a, b)) === 'repo') add(path.posix.join(a, b), a);
+    }
+  }
+  return out;
+}
+
+/** Scan every discovered repo and write scan-<name>.json into outDir. Adds scan_file and stack per repo. */
+export function scanAllRepos(ws, outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const r of ws.repos) {
+    try {
+      const result = scan(path.join(ws.root, r.path));
+      const file = path.join(outDir, `scan-${r.name}.json`);
+      const tmp = `${file}.tmp-${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify(result, null, 2) + '\n');
+      fs.renameSync(tmp, file);
+      r.scan_file = file.replace(/\\/g, '/');
+      r.stack = result.stack.map((x) => `${x.language}${x.frameworks.length ? '(' + x.frameworks.slice(0, 3).join(',') + ')' : ''}`);
+      r.kind = result.kind;
+    } catch (e) {
+      r.scan_error = String((e && e.message) || e).slice(0, 200);
+    }
+  }
+  return ws;
+}
+
 function parseArgs(argv) {
   const a = { root: process.cwd(), out: null, stdout: false, forceNew: false };
   for (let i = 0; i < argv.length; i++) {
@@ -744,6 +834,9 @@ function parseArgs(argv) {
     else if (v === '--new') a.forceNew = true;
     else if (v === '--stamp') a.stamp = argv[++i];
     else if (v === '--check') a.check = argv[++i];
+    else if (v === '--workspace') a.workspace = argv[++i];
+    else if (v === '--scan-all') a.scanAll = true;
+    else if (v === '--out-dir') a.outDir = argv[++i];
     else if (v === '--help' || v === '-h') a.help = true;
     else { a.bad = v; }
   }
@@ -753,7 +846,7 @@ function parseArgs(argv) {
 function main() {
   const a = parseArgs(process.argv.slice(2));
   if (a.help || a.bad) {
-    process.stderr.write(`${a.bad ? `unknown argument: ${a.bad}\n` : ''}usage: scan-repo.mjs [--root <dir>] [--out <file>] [--stdout] [--new] | --stamp <file.md> | --check <file.md>\n`);
+    process.stderr.write(`${a.bad ? `unknown argument: ${a.bad}\n` : ''}usage: scan-repo.mjs [--root <dir>] [--out <file>] [--stdout] [--new] | --stamp <file.md> | --check <file.md> | --workspace <dir> [--scan-all] [--out-dir <dir>]\n`);
     process.exit(a.bad ? 2 : 0);
   }
   try {
@@ -762,6 +855,16 @@ function main() {
   } catch (e) {
     process.stderr.write(`${e.message}\n`);
     process.exit(1);
+  }
+  if (a.workspace || a.scanAll || a.outDir) {
+    if (!a.workspace || (a.outDir && !a.scanAll)) {
+      process.stderr.write('--scan-all needs --workspace <dir>; --out-dir needs --scan-all\n');
+      process.exit(2);
+    }
+    const ws = discoverWorkspace(a.workspace);
+    if (a.scanAll) scanAllRepos(ws, path.resolve(a.outDir || path.join(a.workspace, '.factory', 'setup')));
+    process.stdout.write(JSON.stringify(ws, null, 2) + '\n');
+    return;
   }
   const result = scan(a.root, { forceNew: a.forceNew });
   const json = JSON.stringify(result, null, 2) + '\n';

@@ -97,6 +97,13 @@ export function GoalStatus({ status }) {
   return html`<${Tag} tone=${tone} icon=${icon}>${statusWord(status || 'unknown')}<//>`;
 }
 
+// ---------- repo chip (workspace mode only; callers check isWorkspace first) ----------
+export function RepoChip({ repo, kind }) {
+  if (repo) return html`<span class="repo-chip" title=${`Repository ${repo}`}><span class="sr-only">Repository </span>${repo}</span>`;
+  if (kind === 'qa_goal') return html`<span class="repo-chip repo-chip-all" title="Checks every repository of the goal">Cross-repo QA</span>`;
+  return null;
+}
+
 // ---------- gate badges ----------
 const GATE_ICON = { open: 'open', pending: 'half', approved: 'check', rejected: 'cross', changes: 'cross' };
 export function GateBadges({ badges }) {

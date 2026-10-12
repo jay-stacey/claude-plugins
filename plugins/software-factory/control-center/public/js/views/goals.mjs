@@ -1,8 +1,8 @@
 // Goals: factory card (pause/resume), goals table (pause/resume/remove), add-goal form.
 import { html, useState } from '../html.mjs';
-import { Icon, Tag, GoalStatus, Meter, Modal, goalColorClass, useQueueState, QueuedStatus, FieldError } from '../components.mjs';
+import { Icon, Tag, GoalStatus, Meter, Modal, RepoChip, goalColorClass, useQueueState, QueuedStatus, FieldError } from '../components.mjs';
 import { submit } from '../api.mjs';
-import { goalSpend } from '../lib/model.mjs';
+import { goalSpend, goalRepos, isWorkspace } from '../lib/model.mjs';
 import { timeAgo, fmtDateTime, nextTickText, fmtTokens, statusWord } from '../lib/format.mjs';
 import { nextTickIn } from '../store.mjs';
 
@@ -99,7 +99,8 @@ function GoalRow({ goal, snap, nowMs, onRemove }) {
   return html`<tr>
     <th scope="row" class="mono">${goal.id}</th>
     <td><span class=${`goal-dot ${goalColorClass(snap, goal.id)}`} aria-hidden="true"></span><span class="sr-only">colour ${(goal.color_index ?? 0) + 1}</span></td>
-    <td>${goal.title}${goal.status_reason && html`<div class="small muted">${goal.status_reason}</div>`}</td>
+    <td>${goal.title}${goal.status_reason && html`<div class="small muted">${goal.status_reason}</div>`}
+      ${isWorkspace(snap) && goalRepos(goal.id, snap).length > 0 && html`<div class="repo-chips">${goalRepos(goal.id, snap).map((r) => html`<${RepoChip} repo=${r} />`)}</div>`}</td>
     <td><${GoalStatus} status=${goal.status} /></td>
     <td>${goal.priority || '-'}</td>
     <td class="cell-meter">${s.limit > 0 ? html`<${Meter} value=${s.spent} max=${s.limit} warn=${(snap.config || {}).warn_pct ?? 80} stop=${(snap.config || {}).stop_pct ?? 100}

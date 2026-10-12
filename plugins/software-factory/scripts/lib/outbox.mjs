@@ -1,6 +1,5 @@
-// Worktree outbox. Claude Code stops an agent isolated in a worktree from writing any file outside
-// that worktree, so those agents write their handoff and reports to `<worktree>/.factory-out/`.
-// `collect` imports the files into the factory home before it validates the handoff.
+// Worktree outbox. Worktree runs write their handoff and reports to `<worktree>/.factory-out/`
+// (contracts §17.1, §20.4.5). `collect` imports the files into the factory home before it validates the handoff.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fwd } from './paths.mjs';
@@ -90,7 +89,8 @@ export function importOutbox(home, run) {
   return result;
 }
 
-/** The handoff path an agent should write to, as shown in its brief. */
+/** The handoff path an agent should write to, as shown in its brief. Runs from before A9 keep the placeholder. */
 export function agentHandoffPath(run, homeHandoffPath) {
-  return usesOutbox(run) ? `<worktree>/${OUTBOX_DIR}/handoff.json` : homeHandoffPath;
+  if (!usesOutbox(run)) return homeHandoffPath;
+  return `${run.worktree_path ? fwd(run.worktree_path) : '<worktree>'}/${OUTBOX_DIR}/handoff.json`;
 }

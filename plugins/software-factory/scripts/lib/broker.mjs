@@ -3,6 +3,7 @@
 // It never returns "ask": a background agent cannot answer a prompt.
 import path from 'node:path';
 import { normPath, isInside, relInside, toSlash } from './git.mjs';
+import * as repos from './repos.mjs';
 
 const IS_WIN = process.platform === 'win32';
 const PREFIX = 'software-factory:';
@@ -211,6 +212,63 @@ function configCommands(config) {
   return out;
 }
 
+/** Every command string of one resolved repo (contracts §20.2): commands.*, commands.extra[], checks.*. */
+function repoCommands(repo, out = new Set()) {
+  if (!repo) return out;
+  for (const k of repos.COMMAND_KEYS) if (repo.commands?.[k]) out.add(normCmd(repo.commands[k]));
+  for (const x of repo.commands?.extra || []) if (x) out.add(normCmd(x));
+  for (const x of [...(repo.checks?.pre_review || []), ...(repo.checks?.post_merge || [])]) if (x) out.add(normCmd(x));
+  return out;
+}
+
+function safeRepo(home, cfg, name) {
+  try { return repos.get(home, cfg, name); } catch { return null; }
+}
+
+/**
+ * Repo scope of a run (contracts §20). Classic mode: the folder that holds `.factory` and the
+ * top-level commands, exactly as before. Workspace mode: the run's repo (task > epic > run) and its
+ * commands; a run without a repo (planners) gets the workspace root and the union of all repos'
+ * commands; a cross-repo QA run (`qa_goal`) gets every repo in `run.repo_worktrees`.
+ */
+function repoScope(ctx, home, run, task, worktree) {
+  const cfg = ctx.config || null;
+  const parent = home ? normPath(path.dirname(home)) : null;
+  const runCommand = (c) => (typeof c === 'string' && c.trim() ? [normCmd(c)] : []);
+  if (!cfg || !home || !repos.isWorkspace(cfg)) {
+    return { repoRoot: parent, cmds: configCommands(cfg), runCmds: runCommand(cfg?.commands?.run), extraRoots: [], qaGoal: false };
+  }
+  const listed = Array.isArray(run?.repo_worktrees) ? run.repo_worktrees.filter((x) => x && x.path) : [];
+  if (listed.length || task?.kind === 'qa_goal' || run?.kind === 'qa_goal') {
+    const names = [...new Set(listed.map((x) => x.repo).filter(Boolean))];
+    const list = names.length ? names.map((n) => safeRepo(home, cfg, n)).filter(Boolean) : repos.list(home, cfg);
+    const cmds = new Set();
+    for (const r of list) repoCommands(r, cmds);
+    return {
+      repoRoot: worktree || parent,
+      cmds,
+      runCmds: list.flatMap((r) => runCommand(r.commands?.run)),
+      extraRoots: listed.map((x) => normPath(x.path)),
+      qaGoal: true,
+    };
+  }
+  const hasRepo = Boolean(task?.repo || ctx.epic?.repo || run?.repo);
+  if (!hasRepo) {
+    const all = repos.list(home, cfg);
+    return {
+      repoRoot: parent,
+      cmds: new Set(repos.allCommandStrings(home, cfg).map(normCmd)),
+      runCmds: all.flatMap((r) => runCommand(r.commands?.run)),
+      extraRoots: [],
+      qaGoal: false,
+    };
+  }
+  let repo = null;
+  try { repo = repos.forRecord(home, cfg, { task, epic: ctx.epic || null, run }); } catch { repo = null; }
+  if (!repo) return { repoRoot: worktree || parent, cmds: new Set(), runCmds: [], extraRoots: [], qaGoal: false };
+  return { repoRoot: normPath(repo.path), cmds: repoCommands(repo), runCmds: runCommand(repo.commands?.run), extraRoots: [], qaGoal: false };
+}
+
 // Extra arguments after a configured command may not carry shell operators, redirection or substitution.
 const UNSAFE_EXTRA = /[;&|<>`\n\r]|\$\(/;
 
@@ -265,21 +323,53 @@ function buildState(ctx, role) {
   const run = ctx.run || null;
   const worktree = ctx.worktreePath ? normPath(ctx.worktreePath) : (run?.worktree_path ? normPath(run.worktree_path) : null);
   const kind = run?.kind || null;
+  const task = ctx.task || null;
+  const scope = repoScope(ctx, home, run, task, worktree);
   return {
     ctx,
     role,
     home,
-    repoRoot: home ? normPath(path.dirname(home)) : null,
+    repoRoot: scope.repoRoot,
     dataDir: ctx.pluginDataDir ? normPath(ctx.pluginDataDir) : null,
     cli: ctx.cliPath ? normPath(ctx.cliPath) : (ctx.pluginRoot ? normPath(path.join(ctx.pluginRoot, 'scripts', 'factory.mjs')) : null),
     run,
-    task: ctx.task || null,
+    task,
     worktree,
-    writer: Boolean(worktree && run && ['author', 'fixup', 'integrate'].includes(kind)),
+    // The run's own folders: its worktree plus, for qa_goal, each repo worktree (contracts §20.6.5).
+    roots: [worktree, ...scope.extraRoots].filter(Boolean),
+    qaGoal: scope.qaGoal,
+    writer: Boolean(worktree && run && !scope.qaGoal && ['author', 'fixup', 'integrate'].includes(kind)),
     integrator: Boolean(worktree && kind === 'integrate' && role === 'devops-release'),
-    configCmds: configCommands(ctx.config),
+    configCmds: scope.cmds,
+    runCmds: scope.runCmds,
     cwd: ctx.cwd ? normPath(ctx.cwd) : null,
   };
+}
+
+function inRoots(st, abs) {
+  return Boolean(abs) && st.roots.some((r) => isInside(abs, r));
+}
+
+/**
+ * A run with a worktree is pinned to it: project, git and shell commands must run inside its roots
+ * (own worktree, or the qa_goal repo worktrees). Agents no longer start inside their worktree (A9),
+ * so the folder is the leading `cd` target, else the hook payload cwd.
+ */
+function pinned(st) {
+  return st.roots.length > 0;
+}
+
+function folderDeny(st) {
+  return deny(`run commands inside your worktree: start with your cd_prefix cd "${st.worktree}" && `);
+}
+
+function folderOk(st, cwd) {
+  return !pinned(st) || inRoots(st, cwd);
+}
+
+function sameHome(raw, st) {
+  const a = normPath(raw);
+  return IS_WIN ? a.toLowerCase() === st.home.toLowerCase() : a === st.home;
 }
 
 function ownedGlobs(st) {
@@ -386,10 +476,16 @@ function decideWrite(input, st) {
     if (owns(st, rel)) return allow();
     return deny(`${rel} is not in files_owned or files_shared for ${st.task?.id || 'this task'}; ask in open_questions`);
   }
+  // 4. Non-author runs never edit their checkout (it may live under the factory home since A9).
+  if (inRoots(st, abs)) {
+    if (st.qaGoal) return deny(`cross-repo QA writes nothing in the repo worktrees; write only to ${st.worktree}/.factory-out/`);
+    return deny('your role does not edit project files; write only the output paths in your brief');
+  }
 
   const relHome = st.home ? relInside(abs, st.home) : null;
   if (relHome != null) {
     if (relHome.startsWith('docs/')) return deny(`${relHome} is not one of your output paths; write only the paths named in your brief`);
+    if (/^worktrees(\/|$)/i.test(relHome)) return deny(`that is not your worktree; edit only inside ${st.worktree || 'your own worktree'}`);
     return deny('factory state under .factory/ is written only by the factory CLI; write your handoff and outputs only');
   }
   if (st.writer) return deny(`edit only inside your worktree ${st.worktree}`);
@@ -408,7 +504,7 @@ function decideBash(command, st, depth = 0) {
   if (segs.some((x) => x.subst)) return deny('command substitution ($(...), backticks, <(...)) is not allowed; run each command on its own');
 
   // Whole command (or command after a leading cd) is a configured command (§12.3).
-  if (matchesConfigCommand(text, st.configCmds)) return allow();
+  if (matchesConfigCommand(text, st.configCmds)) return folderOk(st, st.cwd) ? allow() : folderDeny(st);
   if (segs.length > 1 && isCd(segs[0]) && segs[0].sep === '&&') {
     const rest = text.slice(segs[1].start);
     if (matchesConfigCommand(rest, st.configCmds)) {
@@ -439,7 +535,8 @@ function cdTarget(seg, st, cwd) {
   if (seg.tokens.length !== 2) return { deny: 'use `cd "<your worktree>"` with one path' };
   const target = resolveArg(seg.tokens[1].raw, cwd || st.worktree || st.repoRoot);
   if (!target) return { deny: 'use an absolute path with cd' };
-  if (st.worktree && isInside(target, st.worktree)) return { cwd: target };
+  if (inRoots(st, target)) return { cwd: target };
+  if (pinned(st)) return { deny: `cd only into your worktree; use your cd_prefix cd "${st.worktree}" && ` };
   if (st.repoRoot && isInside(target, st.repoRoot)) return { cwd: target };
   return { deny: `stay inside your worktree${st.worktree ? ` (${st.worktree})` : ''}; cd elsewhere is blocked` };
 }
@@ -452,7 +549,8 @@ function checkRedirects(seg, st, cwd) {
     if (out && NULL_TARGETS.has(r.target)) continue;
     if (r.op.startsWith('<<')) continue; // here-doc / here-string feeds stdin only
     const abs = resolveArg(r.targetRaw || r.target, cwd || st.worktree || st.repoRoot);
-    if (abs && st.home && isInside(abs, st.home)) return { deny: 'do not write factory files with shell redirection; the factory CLI owns .factory/' };
+    // The run's own worktree may live under the factory home (A9); output there is still caught below.
+    if (abs && st.home && isInside(abs, st.home) && !inRoots(st, abs)) return { deny: 'do not write factory files with shell redirection; the factory CLI owns .factory/' };
     if (abs && st.dataDir && isInside(abs, st.dataDir)) return { deny: 'the plugin data folder is off limits' };
     if (!out && isSecretPath(r.target)) return { deny: 'secret files are off limits' };
     if (out) writes = true;
@@ -463,6 +561,12 @@ function checkRedirects(seg, st, cwd) {
 function checkSegment(seg, st, cwd, depth) {
   const red = checkRedirects(seg, st, cwd);
   if (red.deny) return deny(red.deny);
+  // Folder pin: everything except factory CLI calls (any folder) and git (checked on its -C folder).
+  if (pinned(st) && seg.tokens.length) {
+    const p0 = bareProgram(seg.tokens[0].value);
+    const cliCall = p0 === 'node' && isNodeExe(seg.tokens[0]) && seg.tokens[1] && isCliPath(seg.tokens[1], st, cwd);
+    if (!cliCall && p0 !== 'git' && !inRoots(st, cwd)) return folderDeny(st);
+  }
   if (!seg.redirects.length ? matchesConfigCommand(seg.raw, st.configCmds) : st.configCmds.has(normCmd(seg.raw))) return allow();
   if (red.writes) return deny('output redirection is not allowed; use `evidence run` to capture output');
   if (!seg.tokens.length) return deny(REASON_DEFAULT);
@@ -535,7 +639,7 @@ function checkCli(args, st, cwd, depth) {
     }
     positionals.push(v);
   }
-  if (flags.home && st.home && normPath(flags.home.raw) !== st.home) return deny('use the factory home from your brief');
+  if (flags.home && (!st.home || flags.home.value === 'true' || !sameHome(flags.home.raw, st))) return deny('use the factory home from your brief (--home)');
   if (!positionals.length) return deny('name a factory CLI subcommand');
   const sub = CLI_SINGLE.has(positionals[0]) ? positionals[0] : positionals.slice(0, 2).join(' ');
   const allowed = cliSubcommandsFor(st.role);
@@ -549,7 +653,8 @@ function checkCli(args, st, cwd, depth) {
     if (!rest || !rest.length) return deny('evidence run needs `-- <command>`');
     if (depth > 0) return deny('evidence run cannot be nested');
     const inner = rest.length === 1 ? rest[0].value : rest.map((t) => t.value).join(' ');
-    const r = decideBash(inner, { ...st, cwd }, depth + 1);
+    // `evidence run` executes in run.worktree_path (core), whatever the agent's shell folder is.
+    const r = decideBash(inner, { ...st, cwd: pinned(st) ? st.worktree : cwd }, depth + 1);
     if (r.decision !== 'allow') return deny(`evidence command blocked: ${r.reason}`);
   }
   return allow();
@@ -574,6 +679,7 @@ function checkGit(args, st, cwd) {
   const sub = args[i]?.value;
   const rest = args.slice(i + 1).map((t) => t.value);
   if (!sub) return deny('name a git subcommand');
+  if (pinned(st) && !inRoots(st, gitCwd)) return folderDeny(st);
   if (sub === 'push') return deny('agents never push; the factory CLI pushes after review');
 
   if (GIT_READ.has(sub)) {
@@ -679,16 +785,18 @@ function checkReadOnly(prog, args, st, cwd) {
   return allow();
 }
 
-/** Contracts §12.3: only QA may start `commands.run` in the background (optionally after cd into its worktree). */
+/**
+ * Contracts §12.3: only QA may start `commands.run` in the background (optionally after cd into its
+ * worktree). §20: the run's repo `commands.run`; for qa_goal, each listed repo's `commands.run`.
+ */
 function decideBackground(command, st) {
-  const runCmd = st.ctx.config?.commands?.run;
   const deny_ = deny('background commands are only for QA starting the app with commands.run; run commands in the foreground');
-  if (st.role !== 'qa-engineer' || typeof runCmd !== 'string' || !runCmd.trim()) return deny_;
-  const only = new Set([normCmd(runCmd)]);
+  if (st.role !== 'qa-engineer' || !st.runCmds.length) return deny_;
+  const only = new Set(st.runCmds);
   const text = String(command ?? '');
   const lex = lexCommand(text);
   if (lex.error || !lex.segments.length || lex.segments.some((x) => x.subst)) return deny_;
-  if (matchesConfigCommand(text, only)) return allow();
+  if (matchesConfigCommand(text, only)) return folderOk(st, st.cwd) ? allow() : folderDeny(st);
   const segs = lex.segments;
   if (segs.length > 1 && isCd(segs[0]) && segs[0].sep === '&&' && matchesConfigCommand(text.slice(segs[1].start), only)) {
     const r = cdTarget(segs[0], st, st.cwd);
@@ -701,7 +809,8 @@ function decideBackground(command, st) {
 
 /**
  * @param {{tool_name:string, tool_input:object, agent_type?:string, agent_id?:string}} call
- * @param {{home, pluginRoot, pluginDataDir, cliPath, run, task, config, role, worktreePath, outputPaths, cwd?}} ctx
+ * @param {{home, pluginRoot, pluginDataDir, cliPath, run, task, epic?, config, role, worktreePath, outputPaths, cwd?}} ctx
+ *   `run.repo`, `task.repo`, `epic.repo` and `run.repo_worktrees` select the repo scope in workspace mode (§20).
  * @returns {{decision:'allow'|'deny'|'pass', reason:string}}
  */
 export function decide({ tool_name, tool_input, agent_type } = {}, ctx = {}) {

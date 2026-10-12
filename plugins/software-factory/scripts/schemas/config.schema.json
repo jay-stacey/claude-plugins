@@ -364,6 +364,174 @@
           }
         }
       }
+    },
+    "workspace": {
+      "type": "object",
+      "description": "Workspace mode: one factory drives several git repos in a plain folder (contracts §20).",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "default_repo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "repos": {
+      "type": "object",
+      "description": "Workspace repos by name. Used only when workspace.enabled is true.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative to the workspace root, or absolute. Default: the repo name."
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "commands": {
+            "type": "object",
+            "properties": {
+              "install": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "build": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "test": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "typecheck": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "run": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "e2e": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "migrate_up": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "migrate_down": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "screenshot": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "extra": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "pre_review": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Default: [build, lint, test] minus nulls."
+              },
+              "post_merge": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "delivery": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "enum": [
+                  "github",
+                  "local"
+                ]
+              },
+              "base_branch": {
+                "type": "string"
+              },
+              "remote": {
+                "type": "string"
+              }
+            }
+          },
+          "remote": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "owner": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              }
+            }
+          },
+          "include_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Default: worktree.include_files."
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "required": [

@@ -174,8 +174,7 @@ test('inbox add signs only with intent; config get/set; events tail; watch --onc
   assert.equal(w.code, 0);
 });
 
-test('worktree prepare with the real delivery modules switches the agent worktree to the task branch and writes a branch lock', async () => {
-  const { home, repo } = await makeHome();
+async function codeRun({ home }) {
   const a = await lib('actions');
   const store = await lib('store');
   const flow = await lib('flow');
@@ -187,14 +186,59 @@ test('worktree prepare with the real delivery modules switches the agent worktre
   assert.ok(await flow.ensureEpicBranch(home, e));
   const t = a.createTask(home, { goal_id: g.id, epic_id: e.id, kind: 'code', role: 'backend-engineer', size: 'S', status: 'ready', title: 'Code it', acceptance_criteria: ['x'], files_owned: ['src/a.js'] });
   const line = await dispatch.dispatch(home, dispatch.candidates(home).find((c) => c.task.id === t.id), { session: 'S1' });
+  return { store, line };
+}
+
+test('worktree prepare makes the CLI worktree on the task branch, writes a branch lock, and is safe to run twice', async () => {
+  const { home, repo } = await makeHome();
+  const { store, line } = await codeRun({ home });
+  const run0 = store.get(home, 'run', line.run_id);
+  const wt = join(home, 'worktrees', line.run_id).replace(/\\/g, '/');
+  assert.equal(run0.worktree_path, wt);
+  assert.equal(run0.isolation, 'worktree');
+  for (let i = 0; i < 2; i++) {
+    const r = runCli(['worktree', 'prepare', '--run', line.run_id], { home, cwd: repo });
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(r.stdout.trim().split(' ').slice(0, 3).join(' '), `PREPARED ${wt} factory/T-0002-code-it`);
+  }
+  assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'factory/T-0002-code-it');
+  assert.ok(existsSync(join(home, 'run', 'branch-locks', 'factory__T-0002-code-it.json')));
+  const run = store.get(home, 'run', line.run_id);
+  assert.equal(run.branch, 'factory/T-0002-code-it');
+  assert.equal(run.worktree_path, wt);
+  assert.match(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8'), /^\.factory-out\/$/m);
+  // collect removes the CLI worktree once the run is applied
+  const rm = await (await lib('collect')).removeRunWorktree(home, run);
+  assert.equal(rm.removed, true);
+  assert.ok(!existsSync(wt));
+});
+
+test('evidence run from the main checkout runs in the run worktree and records its HEAD', async () => {
+  const { home, repo } = await makeHome();
+  const { store, line } = await codeRun({ home });
+  assert.equal(runCli(['worktree', 'prepare', '--run', line.run_id], { home, cwd: repo }).code, 0);
+  const wt = store.get(home, 'run', line.run_id).worktree_path;
+  writeFileSync(join(wt, 'src', 'a.js'), 'export const a = 2;\n');
+  git(wt, 'commit', '-q', '-am', 'work');
+  const head = git(wt, 'rev-parse', 'HEAD');
+  assert.notEqual(head, git(repo, 'rev-parse', 'HEAD'));
+  const r = runCli(['evidence', 'run', '--run', line.run_id, '--label', 'head', '--', 'git rev-parse HEAD'], { home, cwd: repo });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  const ev = readFileSync(join(home, 'runs', line.run_id, 'evidence', 'index.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+  assert.equal(ev.cwd.toLowerCase(), wt.toLowerCase());
+  assert.equal(ev.head_sha, head);
+  assert.ok(readFileSync(ev.log_path, 'utf8').includes(head));
+});
+
+test('worktree prepare still serves a run from before A9 inside its native agent worktree', async () => {
+  const { home, repo } = await makeHome();
+  const { store, line } = await codeRun({ home });
+  store.update(home, 'run', line.run_id, (x) => { x.worktree_path = null; });
   const wt = join(repo, '.claude', 'worktrees', 'agent-x1');
   git(repo, 'worktree', 'add', '-q', '--detach', wt, 'main');
   const r = runCli(['worktree', 'prepare', '--run', line.run_id], { home, cwd: wt });
   assert.equal(r.code, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /^PREPARED .* factory\/T-0002-code-it /);
   assert.equal(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'factory/T-0002-code-it');
-  assert.ok(existsSync(join(home, 'run', 'branch-locks', 'factory__T-0002-code-it.json')));
-  const run = store.get(home, 'run', line.run_id);
-  assert.equal(run.branch, 'factory/T-0002-code-it');
-  assert.ok(run.worktree_path.endsWith('agent-x1'));
+  assert.ok(store.get(home, 'run', line.run_id).worktree_path.endsWith('agent-x1'));
 });

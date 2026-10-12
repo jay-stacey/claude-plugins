@@ -45,6 +45,8 @@ You run no `setup` command; you have no worktree. The broker limits your Bash to
   `budget.estimates` in the config.
 - `feedback`, `answers`, `handoff_path`, `validate`.
 - `artifacts.plan`: the existing plan on round 2 or later; revise it with `Edit`.
+- Workspace mode (`workspace: true`): `repos [{name, path, stack, base_branch}]`. Each epic and each
+  task has a repo.
 
 ## Method
 
@@ -55,12 +57,18 @@ You run no `setup` command; you have no worktree. The broker limits your Bash to
    data tasks before the code that reads them; an interface's provider before its consumers when
    they cannot build against the contract alone; CI or build changes before the tasks that need them.
    Frontend tasks with `gate_deps: ["G3"]` cannot start before the designs are approved.
+   In workspace mode, sequence across repos too. Read each epic's `depends_on` (`epic list --goal
+   <goal_id>`). A task that consumes another repo's contract gets `depends_on` on the provider's
+   task, unless it can build against the contract alone (then say so in the plan). If two epics in
+   different repos need an order and the epic `depends_on` does not show it, add the task edges and
+   raise a non-blocking question to `staff-engineer`: only the breakdown sets epic `depends_on`.
 3. Check file ownership. Expand each task's `files_owned` globs against the repo (`Glob`). Two
    tasks whose owned globs intersect may never share a wave: serialise them with `depends_on`
    (the one that defines the shape goes first). A file that several tasks only append to (route
    table, registry, lockfile) belongs in `files_shared`, not in anyone's `files_owned`.
    The CLI checks overlap only inside one epic; you check across epics too, and serialise the
-   same way.
+   same way. In workspace mode, compare globs only between tasks in the same repo: the same path in
+   two repos is two different files.
 4. Build waves. Wave 1 = tasks with no unfinished dependency. Each next wave = tasks whose
    dependencies are all in earlier waves. Cap a wave's useful width at `concurrency.builders`;
    extra tasks wait, so order them by priority and by how many tasks depend on them.
@@ -84,7 +92,7 @@ You run no `setup` command; you have no worktree. The broker limits your Bash to
    `<factory_home>/runs/<run_id>/tasks.json` and run `task new --file`. State why in the plan's
    Risks and in the summary. Anything bigger than glue is a question to `staff-engineer`.
 10. Write `plan.md` from the `artifact-templates` plan template, inside the tier's line cap:
-    Waves (task ids, roles, one line each); Critical path; Ownership map (glob -> task, plus
+    Waves (task ids, roles, one line each; in workspace mode add the repo to each line); Critical path; Ownership map (glob -> task, plus
     shared hotspots); Budget forecast vs goal budget; Risks.
 11. Re-read each changed task with `task show` and confirm the CLI applied your values.
 

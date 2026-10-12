@@ -2,6 +2,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { tempProject, CC, sleep } from './helpers.mjs';
 
@@ -70,7 +71,26 @@ test('deleting the run file makes the server exit on its own', async () => {
 });
 
 test('no factory gives the setup hint', () => {
-  const r = spawnSync(process.execPath, [CLI, 'status', '--project', path.join(t.project, 'plugin-data')], { encoding: 'utf8', env });
-  assert.equal(r.status, 4);
-  assert.match(r.stdout, /No factory here/);
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'sfcc-empty-'));
+  try {
+    const r = spawnSync(process.execPath, [CLI, 'status', '--project', empty], { encoding: 'utf8', env });
+    assert.equal(r.status, 4);
+    assert.match(r.stdout, /No factory here/);
+  } finally { fs.rmSync(empty, { recursive: true, force: true }); }
+});
+
+// Workspace mode: the project folder is a plain folder (not a git repo) that holds .factory/config.json.
+// Starting from a sub-folder must find that home and serve the folder that owns it.
+test('--project inside a non-git workspace finds the workspace home', async () => {
+  const sub = path.join(t.project, 'plugin-data');
+  const run = (cmd) => spawnSync(process.execPath, [CLI, cmd, '--project', sub, '--no-open', '--port', '0'], { encoding: 'utf8', env, timeout: 20000 });
+  const a = run('start');
+  assert.equal(a.status, 0, a.stdout + a.stderr);
+  assert.match(a.stdout, /Control center running/);
+  const rf = JSON.parse(fs.readFileSync(runFile, 'utf8'));
+  assert.equal(path.resolve(rf.project_dir), path.resolve(t.project), 'serves the folder that holds .factory');
+  assert.match(run('status').stdout, new RegExp(`PID ${rf.pid}`));
+  assert.match(run('stop').stdout, /stopped/);
+  for (let i = 0; i < 30 && alive(rf.pid); i++) await sleep(100);
+  assert.equal(alive(rf.pid), false);
 });

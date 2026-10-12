@@ -29,7 +29,7 @@ Or run `/init` for a guided walkthrough.
 | [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
 | [voice-replies](plugins/voice-replies) | 1.2.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU), with a compact voice and speed panel above the prompt. |
 | [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
-| [software-factory](plugins/software-factory) | 0.1.0 | An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code. You approve at four gates and merge the pull requests. Includes a local control center with a kanban, a live org chart and token budgets. |
+| [software-factory](plugins/software-factory) | 0.2.0 | An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code, in one repo or across a folder of repos. You approve at four gates and merge the pull requests. Includes a local control center with a kanban, a live org chart and token budgets. |
 | [session-brief](plugins/session-brief) | 1.0.0 | Shows a brief above the prompt: how the session started, where it left off, next steps, and what you should know. Renames the session to say what the work is. |
 
 ### executive-assistant

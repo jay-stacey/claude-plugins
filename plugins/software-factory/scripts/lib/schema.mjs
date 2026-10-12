@@ -6,11 +6,11 @@ export const ENUMS = {
   tier: ['S', 'M', 'L'],
   size: ['S', 'M', 'L'],
   goal_status: ['draft', 'planning', 'awaiting_g1', 'active', 'paused', 'budget_blocked', 'done', 'cancelled'],
-  epic_status: ['draft', 'building', 'integrating', 'qa', 'review', 'docs', 'pr_open', 'changes_requested', 'done', 'cancelled'],
+  epic_status: ['draft', 'building', 'integrating', 'qa', 'review', 'docs', 'goal_qa', 'pr_open', 'changes_requested', 'done', 'cancelled'],
   task_status: ['draft', 'backlog', 'ready', 'in_progress', 'checking', 'in_review', 'changes_requested', 'verified',
     'integrated', 'awaiting_approval', 'done', 'blocked', 'paused', 'deferred', 'failed', 'cancelled'],
   task_kind: ['intake', 'prd', 'spec', 'mockup', 'breakdown', 'sequence', 'code', 'docs', 'qa_epic', 'review_epic',
-    'pr_feedback', 'escalation', 'research'],
+    'qa_goal', 'pr_feedback', 'escalation', 'research'],
   run_kind: ['author', 'review', 'qa', 'fixup', 'integrate', 'escalation'],
   run_status: ['dispatching', 'running', 'suspect', 'completed', 'failed', 'deferred', 'orphaned', 'stopped'],
   gate_type: ['G1', 'G2', 'G3', 'G4', 'budget', 'destructive', 'tracker'],
@@ -116,7 +116,7 @@ export function validateEpic(e) {
   const c = new C(e); common(c, 'epic');
   c.str('goal_id', { req: true }).str('title', { req: true, max: 80 }).str('slug', { req: true })
     .str('summary').arr('depends_on', { of: isStr }).oneOf('status', ENUMS.epic_status, { req: true })
-    .str('branch', { req: true }).str('base_branch').obj('pr', { nullable: true }).arr('tasks', { of: isStr });
+    .str('branch', { req: true }).str('base_branch').str('repo', { nullable: true }).obj('pr', { nullable: true }).arr('tasks', { of: isStr });
   return c.result();
 }
 
@@ -134,7 +134,7 @@ function reviewGroup(x) {
 
 export function validateTask(t) {
   const c = new C(t); common(c, 'task');
-  c.str('goal_id', { req: true }).str('epic_id', { nullable: true }).oneOf('kind', ENUMS.task_kind, { req: true })
+  c.str('goal_id', { req: true }).str('epic_id', { nullable: true }).str('repo', { nullable: true }).oneOf('kind', ENUMS.task_kind, { req: true })
     .str('title', { req: true, max: 80 }).str('description', { max: 1200 }).oneOf('role', ROLES, { req: true })
     .oneOf('size', ENUMS.size).oneOf('priority', ENUMS.priority)
     .arr('acceptance_criteria', { of: acItem }).arr('files_owned', { of: isStr }).arr('files_shared', { of: isStr })
@@ -154,7 +154,7 @@ export function validateRun(r) {
   const c = new C(r); common(c, 'run');
   c.str('task_id', { req: true }).str('goal_id', { req: true }).oneOf('kind', ENUMS.run_kind, { req: true })
     .oneOf('role', ROLES, { req: true }).str('subagent_type', { req: true }).str('model', { req: true })
-    .oneOf('status', ENUMS.run_status, { req: true }).oneOf('isolation', ['worktree', 'none'])
+    .oneOf('status', ENUMS.run_status, { req: true }).oneOf('isolation', ['worktree', 'none']).str('repo', { nullable: true })
     .num('estimate_tokens', { min: 0 }).num('round', { min: 1 });
   return c.result();
 }
@@ -242,14 +242,44 @@ export function validateConfig(cfg) {
       }
     }
   }
-  if (cfg.commands) {
-    for (const [k, v] of Object.entries(cfg.commands)) {
-      if (k === 'extra') {
-        if (!(Array.isArray(v) && v.every((x) => typeof x === 'string'))) c.err('commands.extra', 'must be an array of command strings');
-      } else if (v !== null && typeof v !== 'string') c.err(`commands.${k}`, 'must be a string or null');
+  checkCommands(c, 'commands', cfg.commands);
+  if (cfg.repos !== undefined && (typeof cfg.repos !== 'object' || cfg.repos === null || Array.isArray(cfg.repos))) {
+    c.err('repos', 'must be an object of {name: repo}');
+  } else if (cfg.repos) {
+    for (const [name, r] of Object.entries(cfg.repos)) {
+      const at = `repos.${name}`;
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) c.err(at, 'name must be letters, digits, dot, dash or underscore');
+      if (!r || typeof r !== 'object' || Array.isArray(r)) { c.err(at, 'must be an object'); continue; }
+      if (r.path !== undefined && (typeof r.path !== 'string' || !r.path.trim())) c.err(`${at}.path`, 'must be a non-empty string');
+      if (r.stack !== undefined && !Array.isArray(r.stack)) c.err(`${at}.stack`, 'must be an array');
+      checkCommands(c, `${at}.commands`, r.commands);
+      if (r.checks) {
+        for (const k of ['pre_review', 'post_merge']) {
+          if (r.checks[k] !== undefined && !(Array.isArray(r.checks[k]) && r.checks[k].every((x) => typeof x === 'string'))) {
+            c.err(`${at}.checks.${k}`, 'must be an array of command strings');
+          }
+        }
+      }
+      if (r.delivery && r.delivery.mode !== undefined && !['github', 'local'].includes(r.delivery.mode)) c.err(`${at}.delivery.mode`, 'must be github|local');
     }
   }
+  if (cfg.workspace && cfg.workspace.enabled) {
+    const names = Object.keys(cfg.repos || {});
+    if (!names.length) c.err('workspace.enabled', 'workspace mode needs at least one entry in repos');
+    const dr = cfg.workspace.default_repo;
+    if (dr !== undefined && dr !== null && !names.includes(dr)) c.err('workspace.default_repo', `must be one of: ${names.join(', ')}`);
+  }
   return c.result();
+}
+
+function checkCommands(c, at, cmds) {
+  if (!cmds) return;
+  if (typeof cmds !== 'object' || Array.isArray(cmds)) { c.err(at, 'must be an object'); return; }
+  for (const [k, v] of Object.entries(cmds)) {
+    if (k === 'extra') {
+      if (!(Array.isArray(v) && v.every((x) => typeof x === 'string'))) c.err(`${at}.extra`, 'must be an array of command strings');
+    } else if (v !== null && typeof v !== 'string') c.err(`${at}.${k}`, 'must be a string or null');
+  }
 }
 
 // ---- event ----

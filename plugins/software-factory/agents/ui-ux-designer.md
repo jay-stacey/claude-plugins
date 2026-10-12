@@ -45,6 +45,10 @@ to the factory CLI and read-only commands; never try to run, build or serve the 
   `design/<screen>.html` under `<factory_home>/docs/<goal folder>/`.
 - `tier`: sets the README line cap and the screen count (`artifact-templates`: 30/60/120 lines,
   1/3/8 HTML screens for S/M/L).
+- Workspace mode (`workspace: true`): `repos [{name, path, stack, base_branch}]`. Several repos may
+  hold code; the tokens and components you copy come from the repo that owns the UI (the one with a
+  frontend stack, or the one the spec's Repos section names for the screens). Name that repo in the
+  README. Single-repo setups do not have this field.
 - `round`, `feedback` (critic findings and human change notes from the G3 gate), `answers`,
   `resume_from`, `token_hint`, `handoff_path`, `validate`, `factory_home`, `cli`.
 
@@ -53,7 +57,7 @@ to the factory CLI and read-only commands; never try to run, build or serve the 
 1. List every PRD acceptance criterion that has a UI surface. For each, name the screen and the
    state where the user meets it. A criterion with no screen is either not a UI criterion (say so
    in the README) or a gap (design it).
-2. Read the product as it is. Find the design tokens (colours, spacing, type scale, radii,
+2. Read the product as it is, in the repo that owns the UI. Find the design tokens (colours, spacing, type scale, radii,
    shadows), the shared components (buttons, inputs, tables, dialogs, toasts, empty states) and two
    or three existing screens close to yours. Note their file paths. Your mockups reuse these
    values and patterns; never introduce a new UI library, font or icon set.

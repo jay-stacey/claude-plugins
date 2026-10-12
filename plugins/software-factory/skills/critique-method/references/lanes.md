@@ -32,6 +32,9 @@ Checks:
 - Risk flags match the content (auth, secrets, input parsing, file or network I/O, new dependency,
   data deletion, migration). A missing flag is a major because it skips security review.
 - The approach fits existing patterns in the repo, or says why it departs from them.
+- Workspace mode: the Repos section names the owning repo of every component, and each cross-repo
+  contract is stated field by field with provider and consumer. A component with no repo, or a
+  contract stated on one side only, is a major.
 - Nothing in the spec quietly narrows or widens a PRD criterion.
 
 ## Lane `design`
@@ -58,5 +61,8 @@ Checks:
 - Dependencies match the data flow (schema before code that reads it; API before the UI that calls
   it); no cycles; the critical path is stated.
 - Frontend tasks wait for G3 when the goal needs UI; backend tasks do not.
+- Workspace mode: each epic has one repo, work in another repo is a task in that repo's epic, epic
+  `depends_on` matches the provider-before-consumer order, and both sides of a cross-repo contract
+  carry the same wording in their task descriptions.
 - Risk flags carried from the spec to the tasks that touch the risky code.
 - The budget forecast is within the goal budget, or the plan says what to cut.
