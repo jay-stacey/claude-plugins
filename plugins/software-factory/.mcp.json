@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "factory-sync": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/factory-sync/server.mjs"],
+      "env": {
+        "SF_LINEAR_API_KEY": "${user_config.linear_api_key}",
+        "SF_GITHUB_TOKEN": "${user_config.github_token}",
+        "SF_JIRA_SITE": "${user_config.jira_site}",
+        "SF_JIRA_EMAIL": "${user_config.jira_email}",
+        "SF_JIRA_API_TOKEN": "${user_config.jira_api_token}",
+        "SF_SYNC_ENABLED": "${user_config.sync_enabled}"
+      }
+    }
+  }
+}

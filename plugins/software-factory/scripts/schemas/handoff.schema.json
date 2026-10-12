@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/handoff.schema.json",
+  "title": "Handoff",
+  "description": "runs/<id>/handoff.json, written by the agent (contracts 3, 12.5).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/handoff@1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "from_role": {
+      "enum": [
+        "cto",
+        "product-manager",
+        "project-manager",
+        "staff-engineer",
+        "ui-ux-designer",
+        "data-engineer",
+        "backend-engineer",
+        "frontend-engineer",
+        "devops-release",
+        "qa-engineer",
+        "code-reviewer",
+        "security-reviewer",
+        "critic",
+        "tech-writer"
+      ]
+    },
+    "to_role": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "handed_off",
+        "blocked",
+        "partial",
+        "failed"
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "escalate",
+        null
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "description": "<= 10 lines"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^AC-\\d+$"
+          },
+          "met": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "met"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^EV-\\d+$"
+      }
+    },
+    "files_touched": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocker",
+              "major",
+              "minor",
+              "nit"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "text"
+        ]
+      }
+    },
+    "report_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "relative to the factory home"
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "to_role": {
+            "type": "string"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "question": {
+            "type": "string"
+          },
+          "assumed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      }
+    },
+    "follow_ups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "destructive": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "resume_note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "run_id",
+    "task_id",
+    "from_role",
+    "status",
+    "summary"
+  ],
+  "additionalProperties": true
+}

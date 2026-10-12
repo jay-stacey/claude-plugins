@@ -18,6 +18,7 @@ A Claude Code plugin marketplace named `personal-plugins`. The catalog is
 | `session-manager` | Markdown skill + agent | `/manager` |
 | `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice` |
 | `session-brief` | TypeScript hooks mod | `/brief` |
+| `software-factory` | Markdown skills + agents + Node CLI, hooks and local web server | `/setup`, `/start`, `/new-goal`, `/control-center` |
 
 Two plugin kinds exist, and they are built differently:
 
@@ -44,7 +45,7 @@ CI also does a real install smoke test (`claude plugin marketplace add`, then
 `claude plugin install <name>@personal-plugins`), because `validate` only
 checks manifest shape.
 
-Tests exist only for the hooks mods. Run one plugin's tests:
+The hooks mods have engine tests. Run one plugin's tests:
 
 ```bash
 claude plugin test ./plugins/voice-replies
@@ -53,6 +54,12 @@ claude plugin test ./plugins/session-brief
 
 Tests import `expect`, `mock`, `test` from `claude-code/testing` and drive the
 mod through a fake engine.
+
+software-factory has plain Node tests (Node 20 or later, no dependencies):
+
+```bash
+node --test "plugins/software-factory/test/**/*.test.mjs" "plugins/software-factory/control-center/test/**/*.test.mjs"
+```
 
 Notes Desk editor (`plugins/executive-assistant/skills/notes-viewer/editor/`):
 after you change `src/`, rebuild. The build overwrites the committed
@@ -128,3 +135,21 @@ Safety rules for this plugin:
 - Preview note changes and get approval before writing. Use `Edit`, not
   `Write`, on existing note files.
 - Continue the workflow when one source fails.
+
+## software-factory architecture
+
+Read `plugins/software-factory/docs/contracts.md` before you change it. That
+file is the build spec. `docs/design.md` explains the reasons.
+
+- One Node CLI, `scripts/factory.mjs`, owns all state under the target repo's
+  `.factory/`. Skills, agents, hooks and the dashboard change state only
+  through it or through signed inbox files.
+- `/start` turns a session into the dispatcher. `/loop` runs the `tick`
+  skill, and each tick launches background role agents from CLI-written briefs.
+- Role agents never get the `Agent` tool. Each one writes `handoff.json` and
+  ends with one line. The CLI re-runs checks itself before review.
+- `hooks/hooks.json` holds the permission broker, which allows known-safe
+  commands for factory agents only, plus run binding and usage recording.
+- `control-center/` is a local web server with no build step. It writes only
+  signed inbox requests.
+- Keep the stored paths short. Deep Windows paths break git worktrees.

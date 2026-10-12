@@ -1,0 +1,64 @@
+{
+  "name": "software-factory",
+  "displayName": "Software Factory",
+  "version": "0.1.0",
+  "description": "An AI software factory: a CTO agent turns goals into work for 14 role agents that plan, design, build, review and test code, with human approval gates, a local control center and two-way tracker sync.",
+  "author": {
+    "name": "Jay",
+    "email": "jay@dealerpull.com"
+  },
+  "license": "MIT",
+  "keywords": ["orchestration", "multi-agent", "software-factory", "kanban", "code-review", "workflow"],
+  "homepage": "https://github.com/jay-stacey/claude-plugins/tree/main/plugins/software-factory",
+  "repository": "https://github.com/jay-stacey/claude-plugins",
+  "userConfig": {
+    "linear_api_key": {
+      "type": "string",
+      "title": "Linear API key",
+      "description": "Personal or bot API key used by tracker sync for Linear. Leave empty if you do not use Linear.",
+      "sensitive": true
+    },
+    "github_token": {
+      "type": "string",
+      "title": "GitHub token (optional)",
+      "description": "Only needed if the gh CLI is not logged in. Needs repo scope, plus project scope for Projects. Empty means use gh auth.",
+      "sensitive": true
+    },
+    "jira_site": {
+      "type": "string",
+      "title": "Jira site",
+      "description": "Your Atlassian site, for example yourcompany.atlassian.net. Leave empty if you do not use Jira."
+    },
+    "jira_email": {
+      "type": "string",
+      "title": "Jira account email",
+      "description": "Atlassian account email used with the Jira API token."
+    },
+    "jira_api_token": {
+      "type": "string",
+      "title": "Jira API token",
+      "description": "API token from id.atlassian.com. Leave empty if you do not use Jira.",
+      "sensitive": true
+    },
+    "sync_enabled": {
+      "type": "boolean",
+      "title": "Tracker sync on this machine",
+      "description": "Kill switch. Off stops all tracker network calls from this machine.",
+      "default": true
+    },
+    "desktop_notifications": {
+      "type": "boolean",
+      "title": "Desktop notifications",
+      "description": "Show an OS notification when a gate waits for you, a budget reaches 80 percent, or the loop stops.",
+      "default": true
+    },
+    "max_parallel_agents": {
+      "type": "number",
+      "title": "Machine cap on parallel agents",
+      "description": "Upper bound for this machine. The repo setting concurrency.total is clamped to it.",
+      "default": 5,
+      "min": 1,
+      "max": 12
+    }
+  }
+}

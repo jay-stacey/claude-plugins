@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
@@ -29,6 +33,14 @@ jobs:
 
       - name: Check skill structure
         run: python3 scripts/check-skills.py
+
+      # software-factory has plain Node tests (Node 22, set up above, is needed
+      # for glob patterns in `node --test`); they create git commits in temp repos.
+      - name: software-factory tests
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name ci
+          node --test "plugins/software-factory/test/**/*.test.mjs" "plugins/software-factory/control-center/test/**/*.test.mjs"
 
       # `claude plugin validate` only checks manifest shape. It passes on a
       # marketplace whose plugins cannot actually be resolved and installed,

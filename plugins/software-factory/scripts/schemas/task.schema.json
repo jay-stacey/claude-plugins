@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/task.schema.json",
+  "title": "Task",
+  "description": "tasks/T-0001.json (contracts 3). Code tasks: size S|M, 1-5 acceptance criteria.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "factory/task@1"
+    },
+    "id": {
+      "type": "string"
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "goal_id": {
+      "type": "string"
+    },
+    "epic_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "intake",
+        "prd",
+        "spec",
+        "mockup",
+        "breakdown",
+        "sequence",
+        "code",
+        "docs",
+        "qa_epic",
+        "review_epic",
+        "pr_feedback",
+        "escalation",
+        "research"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1200
+    },
+    "role": {
+      "enum": [
+        "cto",
+        "product-manager",
+        "project-manager",
+        "staff-engineer",
+        "ui-ux-designer",
+        "data-engineer",
+        "backend-engineer",
+        "frontend-engineer",
+        "devops-release",
+        "qa-engineer",
+        "code-reviewer",
+        "security-reviewer",
+        "critic",
+        "tech-writer"
+      ]
+    },
+    "size": {
+      "enum": [
+        "S",
+        "M",
+        "L"
+      ]
+    },
+    "priority": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^AC-\\d+$"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ]
+      }
+    },
+    "ac_version": {
+      "type": "integer"
+    },
+    "files_owned": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "files_shared": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "files_read": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "gate_deps": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "G1",
+          "G2",
+          "G3"
+        ]
+      }
+    },
+    "gate": {
+      "enum": [
+        "G1",
+        "G2",
+        "G3",
+        null
+      ]
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reviews_required": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "cto",
+            "product-manager",
+            "project-manager",
+            "staff-engineer",
+            "ui-ux-designer",
+            "data-engineer",
+            "backend-engineer",
+            "frontend-engineer",
+            "devops-release",
+            "qa-engineer",
+            "code-reviewer",
+            "security-reviewer",
+            "critic",
+            "tech-writer"
+          ]
+        },
+        "minItems": 1
+      }
+    },
+    "reviews": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "enum": [
+              "pass",
+              "fail",
+              "escalate"
+            ]
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "round": {
+            "type": "integer"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "backlog",
+        "ready",
+        "in_progress",
+        "checking",
+        "in_review",
+        "changes_requested",
+        "verified",
+        "integrated",
+        "awaiting_approval",
+        "done",
+        "blocked",
+        "paused",
+        "deferred",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "status_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attempts": {
+      "type": "integer"
+    },
+    "max_attempts": {
+      "type": "integer"
+    },
+    "rework_count": {
+      "type": "integer"
+    },
+    "max_rework": {
+      "type": "integer"
+    },
+    "fixups": {
+      "type": "integer"
+    },
+    "estimate_tokens": {
+      "type": "number"
+    },
+    "model_override": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "base_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "current_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocked": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "question_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needs": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "resume_from": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "checkpoint_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "feedback": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "finding": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "rev",
+    "goal_id",
+    "kind",
+    "title",
+    "role",
+    "status"
+  ],
+  "additionalProperties": true
+}

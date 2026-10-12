@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "project": {
+    "name": "dealer-app",
+    "kind": "existing",
+    "default_branch": "main",
+    "remote": {
+      "provider": "github",
+      "owner": "example",
+      "repo": "dealer-app"
+    }
+  },
+  "stack": [
+    "node",
+    "angular"
+  ],
+  "commands": {
+    "install": "npm ci",
+    "build": "npm run build",
+    "test": "npm test",
+    "lint": "npm run lint",
+    "typecheck": null,
+    "run": null,
+    "e2e": null
+  },
+  "roles": {
+    "active": [
+      "cto",
+      "product-manager",
+      "project-manager",
+      "staff-engineer",
+      "ui-ux-designer",
+      "data-engineer",
+      "backend-engineer",
+      "frontend-engineer",
+      "devops-release",
+      "qa-engineer",
+      "code-reviewer",
+      "security-reviewer",
+      "critic",
+      "tech-writer"
+    ]
+  },
+  "gates": {
+    "G1": {
+      "enabled": true,
+      "approvers": [
+        "owner"
+      ]
+    },
+    "G2": {
+      "enabled": true
+    },
+    "G3": {
+      "enabled": true
+    },
+    "G4": {
+      "enabled": true
+    }
+  },
+  "budget": {
+    "tier_defaults": {
+      "S": 5000000,
+      "M": 15000000,
+      "L": 40000000
+    },
+    "warn_pct": 80,
+    "stop_pct": 100,
+    "weights": {
+      "input": 1,
+      "output": 1,
+      "cache_creation": 1.25,
+      "cache_read": 0.1
+    },
+    "estimates": {
+      "intake": 150000,
+      "prd": 300000,
+      "spec": 500000,
+      "mockup": 300000,
+      "breakdown": 300000,
+      "sequence": 150000,
+      "code_S": 250000,
+      "code_M": 600000,
+      "review": 150000,
+      "qa": 300000,
+      "docs": 200000,
+      "escalation": 200000,
+      "fixup": 150000
+    },
+    "hard_kill": false
+  },
+  "concurrency": {
+    "total": 5,
+    "builders": 3,
+    "reviewers": 2,
+    "planners": 2,
+    "per_role": {
+      "qa-engineer": 1,
+      "devops-release": 1
+    },
+    "max_goals_building": 3
+  },
+  "checks": {
+    "pre_review": [
+      "npm run build",
+      "npm run lint",
+      "npm test"
+    ],
+    "post_merge": []
+  },
+  "delivery": {
+    "mode": "github",
+    "base_branch": "main",
+    "remote": "origin"
+  },
+  "reviews": {
+    "profile": "lean"
+  },
+  "recovery": {
+    "orphan_after_s": 1800
+  },
+  "cadence": {
+    "active_s": 270,
+    "waiting_s": [
+      900,
+      1800,
+      3600
+    ],
+    "paused_s": 1800,
+    "inbox_s": 120
+  },
+  "sync": {
+    "min_interval_s": 60,
+    "full_every_ticks": 30
+  },
+  "tracker": {
+    "provider": "none"
+  },
+  "notifications": {
+    "desktop": true
+  },
+  "control_center": {
+    "port": 47610,
+    "open_browser": true,
+    "show_cost": false
+  },
+  "worktree": {
+    "include_files": []
+  }
+}
