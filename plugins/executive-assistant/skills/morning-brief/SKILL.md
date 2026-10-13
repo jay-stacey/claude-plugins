@@ -1,7 +1,7 @@
 ---
 name: morning-brief
-description: Start the user's day. Clears email with their saved rules, reads the calendar for the next five workdays, checks Linear, Slack and Jira for what needs them, then picks one Now task and at most five for today and books focus blocks after one yes. Use when the user says good morning, asks to start, prep or plan their day, asks what is coming up this week, or runs the scheduled 6 AM brief.
-when_to_use: Trigger phrases include "morning brief", "start my day", "prep my day", "plan my day", "what's on today", "what's coming up this week", "catch me up", "I'm back from vacation", "daily prep".
+description: Start the user's day. Clears email with their saved rules, reads the calendar for the next five workdays, checks Linear, Slack and Jira for what needs them, then picks one Now task and at most five for today and books focus blocks after one yes. Use when the user says good morning, asks to start, prep or plan their day, asks to plan their week, or runs the scheduled 6 AM brief. For a quick question about one meeting or the calendar alone, answer from the saved brief instead.
+when_to_use: Trigger phrases include "morning brief", "start my day", "prep my day", "plan my day", "what's on today", "plan my week", "plan today and this week", "catch me up", "I'm back from vacation", "daily prep".
 argument-hint: "[--quick] [--prepare] [--dry-run] [--skip-email] [--skip-calendar] [--skip-elsewhere]"
 effort: high
 allowed-tools: Bash, Read, Write, Edit, Glob, Agent, AskUserQuestion, mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*

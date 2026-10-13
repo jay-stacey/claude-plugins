@@ -1,6 +1,21 @@
 # Executive Assistant 8.0 plan
 
-Status: proposal, waiting for approval. Nothing below is built yet.
+Status: approved on 2026-10-13 and built in 8.0.0. Three changes were made
+while building, each for a reason found on the way:
+
+- **Schedule in the dashboard** comes from the morning brief or a headless
+  refresh, not from a direct call with the Google login. Reading the stored
+  Google token was blocked, and the dashboard should never hold credentials.
+- **The brief, `/timebox` and `/inbox-zero` run in the main chat**, not as
+  forked helper agents, so they can ask a question and wait for the answer.
+  The slow reading still runs in parallel helper agents.
+- **Agents that read Linear, Slack and Jira have no fixed tool list.**
+  claude.ai connectors carry random ids in their tool names, so the old name
+  patterns hid them.
+
+The dashboard chat also gained a fixed shell guard (`dashboard/shell_guard.py`)
+on top of the tool allow-list, so a prompt hidden in an email cannot chain
+commands.
 
 This plan changes the executive-assistant plugin from a morning report into a
 day-long support system: a morning brief that remembers your email rules, a
