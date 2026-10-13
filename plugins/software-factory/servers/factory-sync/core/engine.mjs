@@ -837,8 +837,12 @@ export async function applyPreview({ projectDir, previewId } = {}, deps = {}) {
   const st = readState(c.home);
   if (!st.preview) return { lines: ['NO_PREVIEW run /software-factory:sync --preview first'] };
   if (previewId && previewId !== st.preview.id) return { lines: [`STALE preview ${previewId}; the current preview is ${st.preview.id}`] };
+  // This server keeps the session id it was started with. After /resume the person types in another
+  // session, so a matching intent would be refused. Drop the stale id: the CLI then accepts any fresh
+  // (15-minute) intent, which only the UserPromptSubmit hook writes when a person types the command.
+  const { CLAUDE_CODE_SESSION_ID, ...cliEnv } = deps.env || process.env;
   const run = deps.runCli || ((args) => {
-    const r = spawnSync(process.execPath, [join(pluginRoot(), 'scripts', 'factory.mjs'), ...args], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
+    const r = spawnSync(process.execPath, [join(pluginRoot(), 'scripts', 'factory.mjs'), ...args], { encoding: 'utf8', windowsHide: true, timeout: 30000, env: cliEnv });
     return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
   });
   const r = run(['sync', 'approve-preview', '--preview', st.preview.id, '--home', c.home]);
