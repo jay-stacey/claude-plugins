@@ -85,9 +85,11 @@ test('cycle commit current|next|none and cycle show; inbox cycle.commit; tracker
   await inbox.process(home, { tick: 2 });
   assert.equal(store.get(home, 'task', task.id).cycle, 'core-40');
   // a human moved the issue to the next cycle in the tracker; an unknown cycle maps to null
+  // one request per process call: requests written in the same millisecond have no fixed order
   inbox.write(home, { type: 'tracker.field_update', payload: { task_id: task.id, field: 'cycle', value: 'cyc-b' }, source: 'tracker', actor: { kind: 'tracker' } });
-  inbox.write(home, { type: 'tracker.field_update', payload: { task_id: task.id, field: 'cycle', value: 'cyc-zzz' }, source: 'tracker', actor: { kind: 'tracker' } });
   const res = await inbox.process(home, { tick: 3 });
+  inbox.write(home, { type: 'tracker.field_update', payload: { task_id: task.id, field: 'cycle', value: 'cyc-zzz' }, source: 'tracker', actor: { kind: 'tracker' } });
+  res.push(...await inbox.process(home, { tick: 3 }));
   assert.deepEqual(res.map((x) => x.reason), ['cycle core-41', 'cycle none']);
   store.update(home, 'task', task.id, (x) => { x.cycle = 'core-40'; });
   const show = runCli(['cycle', 'show'], { home });

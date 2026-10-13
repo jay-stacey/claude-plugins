@@ -61,8 +61,9 @@ test('a tracker item is never created twice; inbox item.add and tracker.backlog_
   inbox.write(home, { type: 'tracker.backlog_item', payload: { remote_id: 'iss-1', key: 'SHP-1', team_key: 'SHP', class: 'bug', title: 'dup' }, source: 'tracker', actor: { kind: 'tracker' } });
   inbox.write(home, { type: 'tracker.backlog_item', payload: { remote_id: 'iss-9', key: 'XX-9', team_key: 'XX', class: 'bug', title: 'other team' }, source: 'tracker', actor: { kind: 'tracker' } });
   const res = await inbox.process(home, { tick: 1 });
-  assert.deepEqual(res.map((r) => `${r.type} ${r.status}`), ['item.add applied', 'tracker.backlog_item applied', 'tracker.backlog_item applied', 'tracker.backlog_item applied', 'tracker.backlog_item rejected']);
-  assert.match(res[3].reason, /already linked as T-0001/);
+  // requests written in the same millisecond have no fixed order, so compare without it
+  assert.deepEqual(res.map((r) => `${r.type} ${r.status}`).sort(), ['item.add applied', 'tracker.backlog_item applied', 'tracker.backlog_item applied', 'tracker.backlog_item applied', 'tracker.backlog_item rejected']);
+  assert.equal(res.filter((r) => /already linked as T-0001/.test(r.reason || '')).length, 1, 'the duplicate tracker item is reported once');
   const items = streams.items(home);
   const by = (title) => items.find((t) => t.title === title);
   assert.equal(by('Split module').item.reported_by, 'human');
