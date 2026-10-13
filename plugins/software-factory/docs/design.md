@@ -410,3 +410,36 @@ Decisions (spec: contracts.md section 20):
 - Cross-repo QA: when a goal's epics span repos, each epic is tested and reviewed on its own, then waits.
   When all are ready, one QA run checks out every epic branch side by side, runs the apps together and
   tests the goal's success criteria end to end. Only then are the pull requests opened.
+
+## 20. Teams, streams, baseline, cycles and reports (v0.3)
+
+Why: testing 0.2.0 on a real system showed three gaps. The CTO and the teams did not look at work
+already in flight (open pull requests, branches, in-progress tracker issues), so plans collided with
+it. The factory only built goals, so bugs and tech debt waited forever. Linear sync handled one team
+and no projects, so a goal that spans a product team and several engineering sub-teams did not sync.
+
+Decisions (spec: contracts.md section 21):
+- Teams are config: a team owns repos (and, for planner work, roles), may have a parent team, and maps
+  to one tracker team or sub-team. Every task and epic resolves to a team. A goal lists its teams and a
+  lead team. Setup proposes the map from the Linear team tree and the repo names.
+- A goal that spans teams becomes one Linear project across those teams (`goal_mapping: project`). Each
+  issue is created in the team that does the work. Records that came from the tracker carry a
+  `tracker_ref`, so the sync links them instead of creating duplicates.
+- Bugs and tech debt run in one standing "stream" goal per team. Each item gets a cheap triage run by
+  the staff engineer, which writes a note and creates a small epic with 1-3 code tasks. The normal
+  build, review, QA and PR path follows, without the goal gates or docs. Streams use at most a share of
+  the builder slots (30% by default) while goal work waits, and their budget rolls each cycle.
+- The CTO's standing work (assessments, cycle plans, reports) lives in one "ops" goal with a daily
+  budget, so every task and run still belongs to a goal and the existing budget, brief and dispatch
+  code paths serve it unchanged.
+- Baseline first: the CLI collects a deterministic snapshot of each repo (open pull requests with their
+  files, branches ahead of base, recent commits), the factory (work by team, blocked work, waiting
+  gates) and the tracker (in-progress issues per team). Every agent reads its team's baseline, and code
+  runs see the open pull requests that touch their files. The CTO assesses it at start and daily.
+- Cycles come from Linear (or a local calendar). At a cycle start the CTO commits work for each team;
+  at its end the CTO writes a cycle review. Cycles order work; they only gate stream items.
+- The CTO uses idle ticks: when nothing else runs, or once a day, it writes a report on progress, work
+  in flight, cost and quality, reviews the process, and proposes up to five improvements. Each proposal
+  is a gate. Approving a config proposal applies an allow-listed config change; an overlay note is added
+  to a role's local notes; advice is recorded. The user decides; the CTO never changes its own rules.
+

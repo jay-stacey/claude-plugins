@@ -1,10 +1,14 @@
 // Work chooser (slot classes, file overlap, budget, backoff) and run dispatch (record, reserve, brief).
-import { nowIso, ensureDir } from './fsutil.mjs';
+import { existsSync, readFileSync } from 'node:fs';
+import { nowIso, ensureDir, writeJsonAtomic } from './fsutil.mjs';
 import { join } from 'node:path';
 import * as store from './store.mjs';
 import { emit } from './events.mjs';
 import { load as loadConfig } from './config.mjs';
-import { ROLE_INFO, BRANCH_KINDS, EPIC_CHECK_KINDS, subagentType, estimateFor, GATE_KINDS } from './roles.mjs';
+import { ROLE_INFO, BRANCH_KINDS, EPIC_CHECK_KINDS, OPS_KINDS, subagentType, estimateFor, GATE_KINDS } from './roles.mjs';
+import { goalKind } from './actions.mjs';
+import * as cycles from './cycles.mjs';
+import * as streams from './streams.mjs';
 import { reviewState, reviewRound } from './flow.mjs';
 import { move } from './lifecycle.mjs';
 import { slugify } from './ids.mjs';
@@ -17,14 +21,14 @@ import * as deps from './deps.mjs';
 
 export const ACTIVE_RUN = new Set(['dispatching', 'running', 'suspect']);
 const PRIO = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const PLANNING_OK = new Set(['intake', 'prd', 'escalation', 'research']);
+const PLANNING_OK = new Set(['intake', 'prd', 'escalation', 'research', 'assess', 'report', 'cycle_plan']);
 
 export function activeRuns(home) { return store.list(home, 'run', (r) => ACTIVE_RUN.has(r.status)); }
 
 function authorKind(task) {
   if (task.pending_kind === 'integrate') return 'integrate';
   if (task.pending_kind === 'fixup') return 'fixup';
-  if (task.kind === 'escalation') return 'escalation';
+  if (task.kind === 'escalation' || OPS_KINDS.has(task.kind)) return 'escalation';
   if (task.kind === 'qa_epic' || task.kind === 'qa_goal') return 'qa';
   if (task.kind === 'review_epic') return 'review';
   return 'author';
@@ -74,12 +78,37 @@ export function candidates(home, cfg = loadConfig(home)) {
       }
     }
   }
-  out.sort((a, b) => (PRIO[a.goal.priority] ?? 9) - (PRIO[b.goal.priority] ?? 9)
+  // Standing goals (ops, stream) sort by their task's priority; with cycles on, work committed to its
+  // team's current cycle sorts first within a priority and stage (§21.6.6).
+  const cur = cycles.currentIds(home, cfg);
+  const prio = (c) => PRIO[goalKind(c.goal) === 'goal' ? c.goal.priority : (c.task.priority || c.goal.priority)] ?? 9;
+  const inCycle = (c) => (c.task.cycle && c.task.team && cur[c.task.team] === c.task.cycle ? 0 : 1);
+  out.sort((a, b) => prio(a) - prio(b)
     || a.stage - b.stage
+    || inCycle(a) - inCycle(b)
     || (dependents.get(b.task.id) || 0) - (dependents.get(a.task.id) || 0)
     || String(a.task.created_at).localeCompare(String(b.task.created_at))
     || a.task.id.localeCompare(b.task.id));
   return out;
+}
+
+/**
+ * Cycle gate (contracts §21.4.7, §21.6): with cycles on, the FIRST author dispatch of a stream `triage` or
+ * `code` task waits until it is committed to its team's current cycle (P0 skips the wait). Reviews,
+ * fix-ups, rework, epic checks and escalations in a stream flow freely, and a team with no current cycle
+ * holds nothing. `curCycle` = cycles.currentIds().
+ */
+export function cycleHold(c, curCycle) {
+  if (goalKind(c.goal) !== 'stream' || c.review_role || c.kind !== 'author') return false;
+  if (!['triage', 'code'].includes(c.task.kind) || (c.task.runs || []).length || c.task.priority === 'P0') return false;
+  const cur = curCycle[c.task.team];
+  return !!cur && c.task.cycle !== cur;
+}
+
+/** Candidates choose() could take now (goal allows it, not held by the cycle gate). schedule() uses it. */
+export function dispatchable(home, cfg = loadConfig(home)) {
+  const cur = cycles.enabled(cfg) ? cycles.currentIds(home, cfg) : null;
+  return candidates(home, cfg).filter((c) => !cur || !cycleHold(c, cur));
 }
 
 function filesOf(t) { return [...(t.files_owned || []), ...(t.files_shared || [])]; }
@@ -102,11 +131,18 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
   const perRole = {};
   const buildingGoals = new Set();
   const busyFiles = [];
+  // Goal kinds (§21.1.6): max_goals_building counts only `kind: goal` goals; stream builders share a cap.
+  const kindOf = new Map(store.list(home, 'goal').map((g) => [g.id, goalKind(g)]));
+  const streamCap = streams.capacity(cfg);
+  let streamBuilders = 0;
+  const cycleOn = cycles.enabled(cfg);
+  const curCycle = cycles.currentIds(home, cfg);
   for (const r of active) {
     const slot = (ROLE_INFO[r.role] || {}).slot || 'planners';
     count[slot] += 1;
     perRole[r.role] = (perRole[r.role] || 0) + 1;
-    if (slot === 'builders') buildingGoals.add(r.goal_id);
+    if (slot === 'builders' && kindOf.get(r.goal_id) === 'goal') buildingGoals.add(r.goal_id);
+    if (slot === 'builders' && kindOf.get(r.goal_id) === 'stream') streamBuilders += 1;
     const t = store.get(home, 'task', r.task_id);
     if (t && !r.review_role && (BRANCH_KINDS.has(t.kind) || r.kind === 'integrate')) busyFiles.push({ id: t.id, repo: repoOfTask(home, cfg, t), files: r.kind === 'integrate' ? (t.conflict_files || []) : filesOf(t) });
   }
@@ -124,7 +160,13 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
     if (count.total >= cc.total) { skip('total slots full'); continue; }
     if (count[slot] >= (cc[slot] ?? 99)) { skip(`${slot} slots full`); continue; }
     if (cc.per_role && cc.per_role[c.role] !== undefined && (perRole[c.role] || 0) >= cc.per_role[c.role]) { skip(`${c.role} limit`); continue; }
-    if (slot === 'builders' && !buildingGoals.has(c.goal.id) && buildingGoals.size >= (cc.max_goals_building ?? 99)) { skip('max goals building'); continue; }
+    const gk = goalKind(c.goal);
+    if (cycleOn && cycleHold(c, curCycle)) { skip('not in the current cycle'); continue; }
+    if (slot === 'builders' && gk === 'goal' && !buildingGoals.has(c.goal.id) && buildingGoals.size >= (cc.max_goals_building ?? 99)) { skip('max goals building'); continue; }
+    if (slot === 'builders' && gk === 'stream' && c.task.priority !== 'P0' && streamBuilders >= streamCap
+      && cands.some((x) => goalKind(x.goal) === 'goal' && ((ROLE_INFO[x.role] || {}).slot === 'builders') && !res.chosen.includes(x))) {
+      skip('stream capacity'); continue;
+    }
     if (isBuilderRun(c)) {
       const mine = c.kind === 'integrate' ? (c.task.conflict_files || []) : filesOf(c.task);
       const myRepo = repoOfTask(home, cfg, c.task);
@@ -147,7 +189,8 @@ export function choose(home, { cfg = loadConfig(home), factory = null, notifyFn 
     res.chosen.push(c);
     seenTask.add(key);
     count.total += 1; count[slot] += 1; perRole[c.role] = (perRole[c.role] || 0) + 1;
-    if (slot === 'builders') buildingGoals.add(c.goal.id);
+    if (slot === 'builders' && gk === 'goal') buildingGoals.add(c.goal.id);
+    if (slot === 'builders' && gk === 'stream') streamBuilders += 1;
     if (isBuilderRun(c)) busyFiles.push({ id: c.task.id, repo: repoOfTask(home, cfg, c.task), files: c.kind === 'integrate' ? (c.task.conflict_files || []) : filesOf(c.task) });
   }
   return res;
@@ -239,12 +282,32 @@ export async function dispatch(home, c, { cfg = loadConfig(home), session = null
     task = store.update(home, 'task', task.id, (t) => { t.runs.push(id); });
   }
   budget.ledger(home, { kind: 'reserve', goal_id: task.goal_id, run_id: id, tokens: run.estimate_tokens, by: 'tick' });
+  await opsInputs(home, cfg, run, task);
   render(home, run, { cfg });
   emit(home, {
     type: 'run.dispatched', session_id: session, goal_id: task.goal_id, epic_id: task.epic_id, task_id: task.id, run_id: id,
     actor: { kind: 'system', role: 'cto' }, msg: `${id} ${c.role} ${c.kind} for ${task.id}`, data: { role: c.role, kind: c.kind, model: run.model },
   });
   return dispatchLine(home, run, task);
+}
+
+/**
+ * Run inputs for standing CTO work (§21.5.5, §21.7.3): a report run gets runs/<id>/metrics.json; an
+ * assess run gets a frozen copy of state/baseline.json at runs/<id>/baseline.json. Never fails a dispatch.
+ */
+async function opsInputs(home, cfg, run, task) {
+  try {
+    if (task.kind === 'report') {
+      const metrics = await import('./metrics.mjs');
+      const m = metrics.build(home, { cfg, since: task.report_period ? task.report_period.from : null, team: task.team || null });
+      writeJsonAtomic(join(home, 'runs', run.id, 'metrics.json'), m);
+    } else if (task.kind === 'assess') {
+      const src = join(home, 'state', 'baseline.json');
+      if (existsSync(src)) writeJsonAtomic(join(home, 'runs', run.id, 'baseline.json'), JSON.parse(readFileSync(src, 'utf8')));
+    }
+  } catch (e) {
+    emit(home, { type: 'factory.status', goal_id: task.goal_id, run_id: run.id, task_id: task.id, msg: `${run.id}: ${task.kind} inputs (metrics or baseline copy) not written: ${e.message}`.slice(0, 140), data: { error: String(e.message || e).slice(0, 300) } });
+  }
 }
 
 export function dispatchLine(home, run, task) {

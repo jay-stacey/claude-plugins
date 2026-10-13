@@ -10,10 +10,15 @@ export const ENUMS = {
   task_status: ['draft', 'backlog', 'ready', 'in_progress', 'checking', 'in_review', 'changes_requested', 'verified',
     'integrated', 'awaiting_approval', 'done', 'blocked', 'paused', 'deferred', 'failed', 'cancelled'],
   task_kind: ['intake', 'prd', 'spec', 'mockup', 'breakdown', 'sequence', 'code', 'docs', 'qa_epic', 'review_epic',
-    'qa_goal', 'pr_feedback', 'escalation', 'research'],
+    'qa_goal', 'pr_feedback', 'escalation', 'research', 'assess', 'report', 'cycle_plan', 'triage'],
   run_kind: ['author', 'review', 'qa', 'fixup', 'integrate', 'escalation'],
   run_status: ['dispatching', 'running', 'suspect', 'completed', 'failed', 'deferred', 'orphaned', 'stopped'],
-  gate_type: ['G1', 'G2', 'G3', 'G4', 'budget', 'destructive', 'tracker'],
+  gate_type: ['G1', 'G2', 'G3', 'G4', 'budget', 'destructive', 'tracker', 'improvement'],
+  goal_kind: ['goal', 'stream', 'ops'],
+  team_kind: ['product', 'engineering', 'support', 'other'],
+  item_class: ['bug', 'tech_debt', 'chore'],
+  report_type: ['periodic', 'idle', 'cycle_review', 'requested'],
+  proposal_risk: ['low', 'medium', 'high'],
   gate_status: ['pending', 'approved', 'rejected', 'changes_requested', 'superseded'],
   gate_via: ['cli', 'dashboard', 'tracker', 'github'],
   handoff_status: ['handed_off', 'blocked', 'partial', 'failed'],
@@ -34,7 +39,8 @@ export const EVENT_TYPES = ['tick.started', 'tick.finished', 'lock.acquired', 'l
   'run.started', 'run.ended', 'run.lost', 'run.deferred', 'msg.dispatch', 'msg.handoff', 'msg.question', 'msg.answer',
   'msg.review_request', 'msg.review_result', 'msg.rework', 'msg.escalation', 'msg.approval_request',
   'msg.approval_result', 'evidence.rejected', 'gate.opened', 'gate.decided', 'budget.warned', 'budget.blocked',
-  'budget.overridden', 'pr.opened', 'pr.updated', 'pr.merged', 'sync.completed', 'sync.conflict', 'sync.failing'];
+  'budget.overridden', 'pr.opened', 'pr.updated', 'pr.merged', 'sync.completed', 'sync.conflict', 'sync.failing',
+  'report.published', 'improvement.decided', 'cycle.started', 'cycle.ended', 'baseline.collected', 'item.created'];
 
 // ---- tiny checker ----
 class C {
@@ -104,9 +110,11 @@ export function validateGoal(g) {
     .arr('success_criteria', { req: true, min: 1, max: 7, of: isStr }).arr('constraints', { of: isStr })
     .oneOf('priority', ENUMS.priority, { req: true }).oneOf('tier', ENUMS.tier, { nullable: true })
     .bool('needs_ui', { nullable: true }).oneOf('status', ENUMS.goal_status, { req: true })
-    .obj('budget', { req: true }).obj('gates').obj('docs').obj('pod', { nullable: true }).arr('epics', { of: isStr });
+    .obj('budget', { req: true }).obj('gates').obj('docs').obj('pod', { nullable: true }).arr('epics', { of: isStr })
+    .oneOf('kind', ENUMS.goal_kind).arr('teams', { of: isStr }).str('lead_team', { nullable: true }).str('team', { nullable: true })
+    .obj('tracker_ref', { nullable: true });
   if (g && g.budget) {
-    const b = new C(g.budget); b.num('limit_tokens', { req: true, min: 0 }).num('warn_pct').num('stop_pct');
+    const b = new C(g.budget); b.num('limit_tokens', { req: true, min: 0 }).num('warn_pct').num('stop_pct').str('window_start', { nullable: true });
     b.errors.forEach((e) => c.err('budget', e));
   }
   return c.result();
@@ -116,7 +124,8 @@ export function validateEpic(e) {
   const c = new C(e); common(c, 'epic');
   c.str('goal_id', { req: true }).str('title', { req: true, max: 80 }).str('slug', { req: true })
     .str('summary').arr('depends_on', { of: isStr }).oneOf('status', ENUMS.epic_status, { req: true })
-    .str('branch', { req: true }).str('base_branch').str('repo', { nullable: true }).obj('pr', { nullable: true }).arr('tasks', { of: isStr });
+    .str('branch', { req: true }).str('base_branch').str('repo', { nullable: true }).obj('pr', { nullable: true }).arr('tasks', { of: isStr })
+    .str('team', { nullable: true }).str('item_task_id', { nullable: true });
   return c.result();
 }
 
@@ -142,7 +151,14 @@ export function validateTask(t) {
     .arr('gate_deps', { of: (x) => (['G1', 'G2', 'G3'].includes(x) ? null : 'must be G1|G2|G3') })
     .oneOf('gate', ['G1', 'G2', 'G3'], { nullable: true }).arr('reviews_required', { of: reviewGroup })
     .oneOf('status', ENUMS.task_status, { req: true }).num('attempts', { min: 0 }).num('max_attempts', { min: 1 })
-    .num('rework_count', { min: 0 }).num('max_rework', { min: 0 }).arr('runs', { of: isStr });
+    .num('rework_count', { min: 0 }).num('max_rework', { min: 0 }).arr('runs', { of: isStr })
+    .str('team', { nullable: true }).str('cycle', { nullable: true }).obj('item', { nullable: true }).arr('item_epic_ids', { of: isStr })
+    .oneOf('report_type', ENUMS.report_type, { nullable: true }).obj('report_period', { nullable: true });
+  if (t && t.item) {
+    const it = new C(t.item); it.oneOf('class', ENUMS.item_class, { req: true }).obj('tracker_ref', { nullable: true })
+      .oneOf('reported_by', ['human', 'tracker', 'agent']);
+    it.errors.forEach((e) => c.err('item', e));
+  }
   if (t && t.kind === 'code' && Array.isArray(t.acceptance_criteria)) {
     if (t.acceptance_criteria.length < 1 || t.acceptance_criteria.length > 5) c.err('acceptance_criteria', 'code tasks need 1-5 criteria');
   }
@@ -202,7 +218,7 @@ export function validateHandoffShape(h) {
       of: (x) => (x && typeof x === 'object' && typeof x.question === 'string' && x.question.trim()
         ? null : 'must have a question'),
     })
-    .arr('follow_ups').obj('destructive', { nullable: true }).str('resume_note', { nullable: true });
+    .arr('follow_ups').obj('destructive', { nullable: true }).str('resume_note', { nullable: true }).arr('proposals');
   if (typeof h.summary === 'string' && h.summary.split(/\r?\n/).length > 10) c.err('summary', 'more than 10 lines');
   return c.result();
 }
@@ -269,7 +285,128 @@ export function validateConfig(cfg) {
     const dr = cfg.workspace.default_repo;
     if (dr !== undefined && dr !== null && !names.includes(dr)) c.err('workspace.default_repo', `must be one of: ${names.join(', ')}`);
   }
+  checkTeams(c, cfg);
+  checkOpsConfig(c, cfg);
   return c.result();
+}
+
+const TEAM_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export function validTeamId(id) { return typeof id === 'string' && id.length <= 30 && TEAM_ID.test(id); }
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+/** Teams (contracts §21.2): ids, parents without cycles, each repo and role in at most one team. */
+function checkTeams(c, cfg) {
+  const teams = cfg.teams;
+  if (teams === undefined || teams === null) return;
+  if (typeof teams !== 'object' || Array.isArray(teams)) { c.err('teams', 'must be an object of {id: team}'); return; }
+  const ws = !!(cfg.workspace && cfg.workspace.enabled && cfg.repos && Object.keys(cfg.repos).length);
+  const repoNames = ws ? Object.keys(cfg.repos) : (cfg.project && cfg.project.name ? [cfg.project.name] : null);
+  const repoOwner = new Map(); const roleOwner = new Map();
+  for (const [id, t] of Object.entries(teams)) {
+    const at = `teams.${id}`;
+    if (!validTeamId(id)) c.err(at, 'id must be lowercase kebab-case, at most 30 characters');
+    if (!t || typeof t !== 'object' || Array.isArray(t)) { c.err(at, 'must be an object'); continue; }
+    if (t.name !== undefined && typeof t.name !== 'string') c.err(`${at}.name`, 'must be a string');
+    if (t.kind !== undefined && !ENUMS.team_kind.includes(t.kind)) c.err(`${at}.kind`, `must be one of ${ENUMS.team_kind.join('|')}`);
+    if (t.parent !== undefined && t.parent !== null && !own(teams, t.parent)) c.err(`${at}.parent`, `unknown team ${t.parent}`);
+    if (t.repos !== undefined && !(Array.isArray(t.repos) && t.repos.every((x) => typeof x === 'string'))) c.err(`${at}.repos`, 'must be an array of repo names');
+    for (const r of Array.isArray(t.repos) ? t.repos : []) {
+      if (repoNames && !repoNames.includes(r)) c.err(`${at}.repos`, `unknown repo ${r}`);
+      if (repoOwner.has(r)) c.err(`${at}.repos`, `repo ${r} already belongs to team ${repoOwner.get(r)}`); else repoOwner.set(r, id);
+    }
+    if (t.roles !== undefined && !(Array.isArray(t.roles) && t.roles.every((x) => typeof x === 'string'))) c.err(`${at}.roles`, 'must be an array of role ids');
+    for (const r of Array.isArray(t.roles) ? t.roles : []) {
+      if (!ROLES.includes(r)) c.err(`${at}.roles`, `unknown role ${r}`);
+      if (roleOwner.has(r)) c.err(`${at}.roles`, `role ${r} already belongs to team ${roleOwner.get(r)}`); else roleOwner.set(r, id);
+    }
+    if (t.tracker !== undefined && t.tracker !== null) {
+      if (typeof t.tracker !== 'object' || Array.isArray(t.tracker)) c.err(`${at}.tracker`, 'must be an object');
+      else if (t.tracker.team_key !== undefined && t.tracker.team_key !== null && typeof t.tracker.team_key !== 'string') c.err(`${at}.tracker.team_key`, 'must be a string or null');
+    }
+  }
+  for (const id of Object.keys(teams)) { // parent chains must end
+    const seen = new Set([id]);
+    let cur = teams[id] && teams[id].parent;
+    while (cur && own(teams, cur)) {
+      if (seen.has(cur)) { c.err(`teams.${id}.parent`, 'parent chain has a cycle'); break; }
+      seen.add(cur); cur = teams[cur] && teams[cur].parent;
+    }
+  }
+}
+
+function checkOpsConfig(c, cfg) {
+  const num = (at, v, min = 0, max = Infinity) => {
+    if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max)) c.err(at, max === Infinity ? `must be a number >= ${min}` : `must be a number from ${min} to ${max}`);
+  };
+  const bool = (at, v) => { if (v !== undefined && typeof v !== 'boolean') c.err(at, 'must be true or false'); };
+  const section = (k) => {
+    const v = cfg[k];
+    if (v === undefined || v === null) return null;
+    if (typeof v !== 'object' || Array.isArray(v)) { c.err(k, 'must be an object'); return null; }
+    return v;
+  };
+  const s = section('streams');
+  if (s) {
+    bool('streams.enabled', s.enabled); bool('streams.epic_review', s.epic_review);
+    num('streams.capacity_pct', s.capacity_pct, 0, 100); num('streams.budget_tokens_per_window', s.budget_tokens_per_window, 0);
+    if (s.pull !== undefined && !['intake_label', 'cycle', 'all'].includes(s.pull)) c.err('streams.pull', 'must be intake_label|cycle|all');
+    if (s.teams !== undefined && !(Array.isArray(s.teams) && s.teams.every((x) => typeof x === 'string'))) c.err('streams.teams', 'must be an array of team ids');
+    else if (Array.isArray(s.teams) && cfg.teams && typeof cfg.teams === 'object' && Object.keys(cfg.teams).length) {
+      for (const t of s.teams) if (!own(cfg.teams, t)) c.err('streams.teams', `unknown team ${t}`);
+    }
+    if (s.classes !== undefined && (typeof s.classes !== 'object' || Array.isArray(s.classes) || s.classes === null)) c.err('streams.classes', 'must be an object');
+  }
+  const cy = section('cycles');
+  if (cy) {
+    bool('cycles.enabled', cy.enabled); bool('cycles.plan_at_start', cy.plan_at_start); bool('cycles.review_at_end', cy.review_at_end);
+    if (cy.source !== undefined && cy.source !== null && !['tracker', 'local'].includes(cy.source)) c.err('cycles.source', 'must be tracker|local');
+    num('cycles.length_days', cy.length_days, 1, 365);
+    if (cy.anchor !== undefined && !(typeof cy.anchor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cy.anchor) && !Number.isNaN(Date.parse(`${cy.anchor}T00:00:00Z`)))) c.err('cycles.anchor', 'must be a date YYYY-MM-DD');
+  }
+  const r = section('reports');
+  if (r) {
+    bool('reports.enabled', r.enabled); num('reports.every_h', r.every_h, 0); num('reports.idle_min_h', r.idle_min_h, 0);
+    num('reports.idle_min_events', r.idle_min_events, 0); num('reports.max_proposals', r.max_proposals, 0, 20);
+  }
+  const b = section('baseline');
+  if (b) { bool('baseline.enabled', b.enabled); num('baseline.collect_every_s', b.collect_every_s, 0); num('baseline.assess_every_h', b.assess_every_h, 0); }
+  const o = section('ops');
+  if (o) num('ops.budget_tokens_per_day', o.budget_tokens_per_day, 0);
+  const gm = cfg.tracker && cfg.tracker.goal_mapping;
+  if (gm !== undefined && gm !== null && !['parent_issue', 'project'].includes(gm)) c.err('tracker.goal_mapping', 'must be parent_issue|project');
+}
+
+/** Handoff `proposals[]` (contracts §21.7.4). Returns error strings. */
+export function proposalErrors(list, max = 5) {
+  const e = [];
+  if (!Array.isArray(list)) return ['proposals: must be an array'];
+  if (list.length > max) e.push(`proposals: at most ${max} (reports.max_proposals)`);
+  const ids = new Set();
+  list.forEach((p, i) => {
+    const at = `proposals[${i}]`;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) { e.push(`${at}: must be an object`); return; }
+    if (typeof p.id !== 'string' || !/^P-\d+$/.test(p.id)) e.push(`${at}.id: must look like P-1`);
+    else if (ids.has(p.id)) e.push(`${at}.id: ${p.id} is used twice`); else ids.add(p.id);
+    if (typeof p.title !== 'string' || !p.title.trim() || p.title.length > 80) e.push(`${at}.title: required, at most 80 characters`);
+    if (typeof p.why !== 'string' || !p.why.trim() || p.why.length > 400) e.push(`${at}.why: required, at most 400 characters`);
+    if (p.expected_effect !== undefined && (typeof p.expected_effect !== 'string' || p.expected_effect.length > 200)) e.push(`${at}.expected_effect: at most 200 characters`);
+    if (!ENUMS.proposal_risk.includes(p.risk)) e.push(`${at}.risk: must be low|medium|high`);
+    const ch = p.change;
+    if (!ch || typeof ch !== 'object' || Array.isArray(ch)) { e.push(`${at}.change: must be an object`); return; }
+    if (ch.kind === 'config') {
+      if (!ch.patch || typeof ch.patch !== 'object' || Array.isArray(ch.patch) || !Object.keys(ch.patch).length) e.push(`${at}.change.patch: needs at least one {"dotted.key": value}`);
+      else {
+        for (const k of Object.keys(ch.patch)) {
+          const proto = k.split('.').some((p) => ['__proto__', 'constructor', 'prototype'].includes(p));
+          if (proto || !/^[a-z_][a-z0-9_]*(\.[A-Za-z0-9_-]+)+$/.test(k)) e.push(`${at}.change.patch: bad key ${k}`);
+        }
+      }
+    } else if (ch.kind === 'overlay_note') {
+      if (!ROLES.includes(ch.role)) e.push(`${at}.change.role: unknown role ${ch.role}`);
+      if (typeof ch.note !== 'string' || !ch.note.trim() || ch.note.length > 300) e.push(`${at}.change.note: required, at most 300 characters`);
+    } else if (ch.kind !== 'advice') e.push(`${at}.change.kind: must be config|overlay_note|advice`);
+  });
+  return e;
 }
 
 function checkCommands(c, at, cmds) {

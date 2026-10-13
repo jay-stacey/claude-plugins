@@ -1,6 +1,6 @@
 ---
 name: approve
-description: Reviews and decides pending software-factory gates - PRD (G1), spec (G2), mockups (G3), pull request (G4), budget, destructive and tracker gates - showing the artifacts and recording approve, request changes or reject. Use when the user runs /software-factory:approve or asks to approve, review or decide a gate, PRD, spec, mockup or factory PR.
+description: Reviews and decides pending software-factory gates - PRD (G1), spec (G2), mockups (G3), pull request (G4), budget, destructive, tracker and CTO improvement-proposal gates - showing the artifacts and recording approve, request changes or reject. Use when the user runs /software-factory:approve or asks to approve, review or decide a gate, PRD, spec, mockup, factory PR or CTO proposal.
 argument-hint: "[GATE-0001]"
 disable-model-invocation: true
 allowed-tools: Bash(node:*), AskUserQuestion, Read
@@ -49,6 +49,18 @@ By gate type:
 - destructive: show `request.action` and every `impact` line. Ask in full sentences: "This will <action>.
   It cannot be undone. Do you want to allow it?" Options: "Allow it", "Do not allow it" (reject).
 - tracker: show what the tracker change wants to do. Options: "Accept", "Reject".
+- improvement (a CTO proposal): run `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" gate show <GATE-id> --json` and
+  read `request.proposal`. Before you ask, show its title, why, expected effect, risk, and the
+  change in plain words:
+  - `config`: each key and its new value, next to the current value from
+    `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" config get <key>`.
+  - `overlay_note`: the role and the exact note that goes under "Local notes" in `.factory/roles/<role>.md`.
+  - `advice`: say that approving only records it; nothing changes.
+  Give the report path (`artifact.paths`) so the user can read the reasons. Options: "Approve and
+  apply", "Request changes", "Reject". After the decide command, run `gate show <GATE-id> --json` and
+  read `decision.notes`. Notes that start with `not applied:` mean the change failed and nothing
+  changed; say why. Otherwise an approved `config` or `overlay_note` change was applied, and
+  `advice` shows `advice recorded`.
 
 ## 4. Report
 

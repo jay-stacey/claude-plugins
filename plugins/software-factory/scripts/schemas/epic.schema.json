@@ -139,6 +139,19 @@
       "items": {
         "type": "string"
       }
+    },
+    "team": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "item_task_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Stream epics: the triage task this epic fixes."
     }
   },
   "required": [

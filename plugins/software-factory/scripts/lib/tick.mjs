@@ -11,9 +11,14 @@ import { collect, pendingCollect } from './collect.mjs';
 import { reconcile } from './telemetry.mjs';
 import { recover } from './recovery.mjs';
 import * as budget from './budget.mjs';
-import { choose, dispatch, activeRuns } from './dispatch.mjs';
+import { choose, dispatch, activeRuns, dispatchable } from './dispatch.mjs';
 import { maybePaused } from './control.mjs';
 import { notifier } from './notify.mjs';
+import * as ops from './ops.mjs';
+import * as cyclesLib from './cycles.mjs';
+import * as baselineLib from './baseline.mjs';
+import * as streamsLib from './streams.mjs';
+import { goalKind } from './actions.mjs';
 
 export const DEBOUNCE_S = 20;
 
@@ -56,10 +61,25 @@ export async function begin(home, { session, force = false, now = Date.now() } =
     const r = await collect(home, { cfg });
     if (r.length) lines.push(`collected ${r.length}: ${r.map((x) => `${x.run_id || x.task_id} ${x.outcome}`).slice(0, 4).join(', ')}`);
   } catch (e) { stepErr(home, 'collect', e, lines); }
+  // Contracts §21: budget windows of standing goals and cycle transitions, then the budget check.
+  try {
+    const rolled = await ops.rollWindows(home, cfg, { now });
+    if (rolled.length) lines.push(`budget windows rolled: ${rolled.join(', ')}`);
+  } catch (e) { stepErr(home, 'windows', e, lines); }
+  try {
+    const r = await cyclesLib.roll(home, cfg, { now });
+    lines.push(...r.lines);
+  } catch (e) { stepErr(home, 'cycles', e, lines); }
   try {
     const { warned } = budget.check(home, cfg, notifier(home));
     for (const w of warned.slice(0, 2)) lines.push(`budget: ${w.goal_id} at ${w.pct}%`);
   } catch (e) { stepErr(home, 'budget', e, lines); }
+  try { // the baseline never fails a tick: its errors go into state/baseline.json
+    if (baselineLib.due(home, cfg, readFactory(home), now)) {
+      const bl = await baselineLib.collect(home, { cfg, now });
+      lines.push(`baseline: ${Object.keys(bl.repos).length} repos${bl.error ? ' (error, see state/baseline.json)' : ''}`);
+    }
+  } catch { /* ignore */ }
   try { if (rotate(home)) lines.push('events rotated'); } catch { /* ignore */ }
   const f2 = readFactory(home);
   if (f2.backoff_until && Date.parse(f2.backoff_until) > now) lines.push(`backoff until ${f2.backoff_until}`);
@@ -92,15 +112,29 @@ export async function plan(home, { session } = {}) {
       lines.push(`INBOX ${res.length}: ${applied} applied, ${res.length - applied} other`);
     }
   } catch (e) { lines.push(`inbox error: ${e.message}`.slice(0, 120)); }
+  try { streamsLib.ensureStreams(home, cfg); } catch (e) { lines.push(`streams error: ${e.message}`.slice(0, 120)); }
   try { await flow.advance(home, { cfg }); } catch (e) { lines.push(`flow error: ${e.message}`.slice(0, 120)); }
+  try { ops.planAssess(home, cfg); } catch (e) { lines.push(`assess error: ${e.message}`.slice(0, 120)); }
   f = readFactory(home);
   const dispatches = [];
   if (f.status === 'running') {
+    const runAll = async (res) => {
+      for (const c of res.chosen) {
+        try { dispatches.push(await dispatch(home, c, { cfg, session })); } catch (e) { lines.push(`dispatch error ${c.task.id}: ${e.message}`.slice(0, 120)); }
+      }
+    };
     const res = choose(home, { cfg, factory: f, notifyFn: notifier(home) });
-    for (const c of res.chosen) {
-      try { dispatches.push(await dispatch(home, c, { cfg, session })); } catch (e) { lines.push(`dispatch error ${c.task.id}: ${e.message}`.slice(0, 120)); }
+    await runAll(res);
+    const blockedGoals = [...res.blocked_goals];
+    // CTO reports are created after choose; choose runs again so a new report dispatches this tick (§21.7.2).
+    let made = [];
+    try { made = ops.planReports(home, cfg, { chosen: res.chosen.length, activeRuns: activeRuns(home).length - dispatches.length }); } catch (e) { lines.push(`report error: ${e.message}`.slice(0, 120)); }
+    if (made.length) {
+      const res2 = choose(home, { cfg, factory: f, notifyFn: notifier(home) });
+      await runAll(res2);
+      for (const g of res2.blocked_goals) if (!blockedGoals.includes(g)) blockedGoals.push(g);
     }
-    if (res.blocked_goals.length) lines.push(`BUDGET blocked ${res.blocked_goals.join(', ')}`);
+    if (blockedGoals.length) lines.push(`BUDGET blocked ${blockedGoals.join(', ')}`);
   }
   for (const d of dispatches) lines.push(`DISPATCH ${JSON.stringify(d)}`);
   const due = syncDue(home, cfg, f);
@@ -120,11 +154,21 @@ export function schedule(home, cfg, f, { now = Date.now() } = {}) {
   if (f.backoff_until && Date.parse(f.backoff_until) > now) {
     return { s: Math.max(c.active_s, Math.round((Date.parse(f.backoff_until) - now) / 1000) + 5), why: 'backoff' };
   }
-  const goals = store.list(home, 'goal', (g) => !['done', 'cancelled'].includes(g.status));
-  if (!goals.length) return { s: null, why: 'idle' };
-  const tasks = store.list(home, 'task', (t) => goals.some((g) => g.id === t.goal_id));
-  const workable = tasks.some((t) => ['ready', 'in_review', 'checking', 'backlog', 'changes_requested', 'verified'].includes(t.status));
-  if (workable && tasks.some((t) => ['ready', 'in_review', 'checking', 'changes_requested'].includes(t.status))) return { s: c.active_s, why: 'work queued', reset: true };
+  // Stream and ops goals count as open only while they hold open tasks (§21.1.8).
+  const openTask = (t) => !['done', 'cancelled'].includes(t.status);
+  const allTasks = store.list(home, 'task');
+  const goals = store.list(home, 'goal', (g) => !['done', 'cancelled'].includes(g.status)
+    && (goalKind(g) === 'goal' || allTasks.some((t) => t.goal_id === g.id && openTask(t))));
+  if (!goals.length) {
+    // Nothing open: wake when the next CTO report is due (capped); NONE when no report can come due.
+    const due = ops.nextReportDueS(home, cfg, { now });
+    if (due === null) return { s: null, why: 'idle' };
+    const cap = Math.max(...(c.waiting_s || [3600]));
+    return { s: Math.max(c.active_s, Math.min(due, cap)), why: 'next report' };
+  }
+  const tasks = allTasks.filter((t) => goals.some((g) => g.id === t.goal_id));
+  // Work queued = what choose() could take now (same predicate), or tasks the flow is about to move.
+  if (dispatchable(home, cfg).length || tasks.some((t) => ['checking', 'changes_requested'].includes(t.status))) return { s: c.active_s, why: 'work queued', reset: true };
   const streak = f.tick.waiting_streak || 0;
   const w = c.waiting_s || [900, 1800, 3600];
   return { s: w[Math.min(streak, w.length - 1)], why: 'waiting on you', inc: true };
@@ -144,10 +188,22 @@ export async function end(home, { session, loop = false, now = Date.now() } = {}
   const b = readJson(join(home, 'state', 'budget.json'), { goals: {} }) || { goals: {} };
   const active = activeRuns(home);
   lines.push(`factory ${f.status}; ${active.length} runs active; ${gates.length} gates waiting`);
-  for (const g of goals.slice(0, 5)) {
+  // `kind: goal` goals first; streams and ops get one compact line each (§21.10).
+  for (const g of goals.filter((x) => goalKind(x) === 'goal').slice(0, 5)) {
     const slot = b.goals && b.goals[g.id];
     lines.push(`${g.id} ${g.status} ${g.title.slice(0, 40)}${slot ? ` (${slot.pct}% budget)` : ''}`);
   }
+  try {
+    const sc = streamsLib.counts(home, cfg);
+    if (sc.length) lines.push(`streams: ${streamsLib.countsText(sc.slice(0, 4))}`);
+    const og = goals.find((x) => goalKind(x) === 'ops');
+    if (!og && ops.opsRemoved(home)) lines.push('ops: removed');
+    if (og) {
+      const sm = ops.summary(home, { now });
+      const open = store.list(home, 'task', (t) => t.goal_id === og.id && !['done', 'cancelled'].includes(t.status));
+      lines.push(`ops: ${open.length} open (${open.slice(0, 3).map((t) => t.kind).join(', ') || 'none'}); last report ${sm.report_age}${og.status === 'budget_blocked' ? '; budget blocked' : ''}`);
+    }
+  } catch { /* summary lines are best effort */ }
   if (gates.length) lines.push(`waiting on you: ${gates.slice(0, 4).map((g) => `${g.id} ${g.type}`).join(', ')} (run /software-factory:approve)`);
   const blocked = store.list(home, 'task', (t) => t.status === 'blocked' && t.blocked && t.blocked.needs === 'human');
   if (blocked.length) lines.push(`questions for you: ${blocked.slice(0, 4).map((t) => t.id).join(', ')}`);

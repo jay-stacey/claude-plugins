@@ -10,19 +10,27 @@ worktrees. You approve at four gates and merge the pull requests.
   Designer, Data Engineer, Backend Engineer, Frontend Engineer, DevOps /
   Release, Tech Writer, Critic, Code Review, Security Reviewer, QA Engineer,
   and a Setup Interviewer.
-- **10 commands:** `/setup`, `/start`, `/pause`, `/new-goal`, `/remove-goal`,
-  `/approve`, `/status`, `/sync`, `/control-center`, `/tick`.
+- **12 commands:** `/setup`, `/start`, `/pause`, `/new-goal`, `/new-item`,
+  `/remove-goal`, `/approve`, `/status`, `/report`, `/sync`, `/control-center`,
+  `/tick`.
 - **Gates:**
   - Four human gates: G1 PRD, G2 architecture spec, G3 UI mockups, G4 merge.
   - A budget gate, which opens when a goal reaches its token budget.
   - A destructive-action gate, which opens before any work is discarded.
+  - An improvement gate for each change the CTO proposes in its reports.
 - **Proof, not claims.** The factory re-runs your build, lint and tests itself
   before any review. Only QA can mark work verified.
+- **Teams, streams and cycles.** Work maps to your Linear teams and
+  sub-teams. Bugs and tech debt run next to goals. See
+  [teams, streams, cycles and reports](#teams-streams-cycles-and-reports).
+- **A CTO that reports.** It checks the work already in flight, writes a daily
+  report and proposes improvements you approve.
 - **A local control center** at `http://127.0.0.1:47610`. It has:
   - a kanban board;
   - a live org chart that shows messages moving between agents;
   - token use per goal, role and model;
-  - approvals, goal management and an activity feed.
+  - approvals, goal management and an activity feed;
+  - a Reports view and a team filter.
 
 ## Requirements
 
@@ -47,7 +55,7 @@ worktrees. You approve at four gates and merge the pull requests.
 
    Setup does three things:
    - It scans the repo: stack, commands, CI, CLAUDE.md, ADRs (short architecture decision records) and CODEOWNERS.
-   - It asks about 10 questions.
+   - It asks about 12 questions, and up to 4 more about teams.
    - It writes the `.factory/` folder.
 2. Add a goal: `/software-factory:new-goal Add CSV export to the reports page`.
 3. Open a new session for the factory. Run `/software-factory:start` there.
@@ -93,6 +101,102 @@ and UI work:
 `source/.factory/` is not inside any repo, so it is not committed. To share
 your setup with the team, make `.factory` its own git repo.
 
+## Teams, streams, cycles and reports
+
+### Why
+
+Testing 0.2.0 showed three gaps:
+- The CTO ignored work already in flight: open pull requests, branches and
+  tracker issues in progress. Agents could redo or overwrite a person's work.
+- The factory only built goals. Bugs and tech debt had no place.
+- Linear sync used one team. Work that spans a product team and several
+  engineering sub-teams did not sync.
+
+Each new part is off until you turn it on in setup, except the baseline and
+the CTO reports. Those are on by default. A setup without teams works as before.
+
+### Teams
+
+A team in the factory matches a team or sub-team in Linear. Setup lists your
+Linear teams and proposes a map. You confirm it or change it.
+- Each repo belongs to one team. Its tasks and issues go to that team.
+- Planner roles belong to a team too. The product team owns the Product
+  Manager. The parent engineering team owns the Staff Engineer and the Project
+  Manager.
+- Sub-teams have a parent, for example `neo` under `engineering`.
+
+The map lives in `.factory/config.json` under `teams`.
+
+### Goals that span teams
+
+One goal can need a product team and several engineering sub-teams. It stays
+one goal:
+- The product team writes the PRD.
+- The lead team writes the spec and the breakdown. The CTO picks the lead team
+  at intake.
+- Each epic and its tasks belong to the team of the epic's repo.
+
+With `tracker.goal_mapping` set to `project`, each goal becomes one Linear
+project shared by its teams. Each task becomes an issue in its own team, inside
+that project. With `parent_issue`, the goal is an issue in the lead team, and
+each task is a sub-issue in its own team. Setup recommends `project` when you
+have two or more teams.
+
+### Bug and tech-debt streams
+
+With streams on, each team gets a standing goal called `<team> maintenance`.
+- An item is one bug, tech-debt item or chore. Add one with
+  `/software-factory:new-item`. Linear issues with a bug or tech-debt label
+  can come in too, and agents report bugs they find in passing.
+- The Staff Engineer triages each item. It finds the cause and writes a note.
+  Then it plans a fix of 1 to 3 tasks, or asks you a question.
+- Each fix ships as its own pull request. You approve it at G4.
+- Streams get at most 30% of builder slots while goal work waits (setup offers
+  15% too). P0 items skip that limit.
+
+### Cycles
+
+Cycles are fixed time boxes per team. They come from Linear, or the factory
+makes local 2-week cycles.
+- When a cycle starts, the CTO plans it. It decides what carries over and
+  commits work to the cycle.
+- Bug and tech-debt work starts only when it is in the current cycle, or is P0.
+  Goal work is never held back by cycles.
+- When a cycle ends, the CTO writes a cycle review.
+
+### The baseline
+
+Every hour, and each time you run `/software-factory:start`, the factory
+records the state of your repos and teams:
+- open pull requests and the files they change;
+- branches ahead of the base branch;
+- blocked tasks and gates waiting on you;
+- Linear issues in progress, per team.
+
+The files are in `.factory/docs/baseline/`. Each day the CTO compares it with
+the factory's plans. A person's pull request that does the same work blocks the
+task and asks you. A builder whose files overlap a person's open pull request
+is told about it and names it in its handoff.
+
+### CTO reports and improvement proposals
+
+The CTO writes a report every 24 hours, when the factory goes idle, at the end
+of a cycle, or when you ask. Each report has a headline, progress, work in
+flight and blockers, cost, quality, and a process review.
+
+A report can end with up to 5 proposals. Each one names a metric and one
+change: a config value (for example a better token estimate), a note added to
+one role's overlay, or advice. Each proposal opens an improvement gate.
+Approve it with `/software-factory:approve` and the factory applies the change.
+Reject it and nothing changes. The CTO can only change a short list of safe
+settings this way, never gates, budgets per goal, roles or teams.
+
+### New commands
+
+- `/software-factory:new-item` adds a bug, tech-debt item or chore to a team.
+- `/software-factory:report` shows the latest report and the proposals that
+  wait for you. `--now` asks for a new report. `--baseline` shows the baseline.
+
 ## How it works
 
 ```
@@ -124,9 +228,11 @@ goal -> CTO intake -> PRD -> G1 -> spec (+ Critic) -> G2 -> mockups -> G3
 | `/start` | Makes this session the dispatcher and starts the loop. Also resumes after a pause. |
 | `/pause` | Default: no new work starts, and running agents finish. Flags below. |
 | `/new-goal` | Adds a goal. The CTO sizes it and the Product Manager writes the PRD. |
+| `/new-item` | Adds a bug, tech-debt item or chore to a team's stream. The Staff Engineer triages it. |
 | `/remove-goal` | Shows the impact, asks you to confirm, stops the goal's work. `--discard` also deletes its branches. |
 | `/approve` | Approve, request changes on, or reject an open gate. |
 | `/status` | A short text status. |
+| `/report` | The latest CTO report and pending proposals. `--now` asks for a new one; `--baseline` shows work in flight. |
 | `/sync` | Tracker sync: preview, health, full reconcile. |
 | `/control-center` | `start`, `stop`, `status`, `open` or `restart` the local dashboard. |
 | `/tick` | One loop step. The loop calls this itself. |
@@ -144,7 +250,7 @@ goal -> CTO intake -> PRD -> G1 -> spec (+ Critic) -> G2 -> mockups -> G3
 | `constitution.md` | Your non-negotiable rules | yes |
 | `org.md` | Mission and reporting lines | yes |
 | `roles/<role>.md` | Per-repo notes for each role. Plugin updates never touch them. | yes |
-| `docs/` | PRDs, specs, mockups, reviews, QA reports | your choice |
+| `docs/` | PRDs, specs, mockups, reviews, QA reports, item notes, baselines, cycle plans, CTO reports | your choice |
 | everything else | Working state: goals, tasks, runs, events, usage | no (gitignored) |
 
 The factory never commits in your checkout. Pull request branches never
@@ -170,7 +276,9 @@ Run `/plugin configure software-factory@personal-plugins` to change these settin
 
 Repo settings live in `.factory/config.json`. To trade quality for cost, set
 `models.all` (for example `"haiku"`) or `models.by_role` (for example
-`{"code-reviewer": "opus"}`). Change them with
+`{"code-reviewer": "opus"}`). No setup section writes them. Change them with
+`node "<plugin>/scripts/factory.mjs" config set models.all '"haiku"'`, or by
+approving a CTO proposal. Change other setup answers with
 `/software-factory:setup --section <name>`.
 
 ## Developing

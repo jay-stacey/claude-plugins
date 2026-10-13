@@ -43,7 +43,7 @@
     },
     "type": {
       "type": "string",
-      "description": "gate.decide, goal.add, goal.activate, goal.pause, goal.resume, goal.remove, factory.pause, factory.resume, factory.stop, budget.override, task.note, task.answer, task.retry, task.cancel, task.pause, sync.now, tracker.*, sync.*"
+      "description": "gate.decide, goal.add, goal.activate, goal.pause, goal.resume, goal.remove, factory.pause, factory.resume, factory.stop, budget.override, task.note, task.answer, task.retry, task.cancel, task.pause, sync.now, item.add, report.request, cycle.commit, tracker.*, sync.*"
     },
     "payload": {
       "type": "object"

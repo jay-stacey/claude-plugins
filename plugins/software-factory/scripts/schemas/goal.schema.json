@@ -166,6 +166,14 @@
         },
         "user_set": {
           "type": "boolean"
+        },
+        "window_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "Budget window start; spend counts runs dispatched since (§21.1.7)."
         }
       },
       "required": [
@@ -196,6 +204,41 @@
       "items": {
         "type": "string"
       }
+    },
+    "kind": {
+      "enum": [
+        "goal",
+        "stream",
+        "ops"
+      ],
+      "description": "Contracts §21.1. A missing value means goal."
+    },
+    "teams": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Teams the goal spans (lead team first)."
+    },
+    "lead_team": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "team": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Stream goals: the team."
+    },
+    "tracker_ref": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Linked tracker item {provider, remote_id, key, url, kind: issue|project}."
     }
   },
   "required": [

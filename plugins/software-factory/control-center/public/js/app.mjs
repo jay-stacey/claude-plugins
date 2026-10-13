@@ -6,16 +6,17 @@ import { Icon } from './components.mjs';
 import { ArtifactViewer } from './artifact.mjs';
 import { applyTheme, loadTheme, applyMotion, loadMotion, THEMES } from './lib/a11y.mjs';
 import { nextTickText } from './lib/format.mjs';
-import { workspaceRepos } from './lib/model.mjs';
+import { workspaceRepos, teamList, cycleChips } from './lib/model.mjs';
 import { BoardView } from './views/board.mjs';
 import { TeamView } from './views/team.mjs';
 import { TokensView } from './views/tokens.mjs';
 import { ApprovalsView } from './views/approvals.mjs';
 import { GoalsView } from './views/goals.mjs';
+import { ReportsView } from './views/reports.mjs';
 import { ActivityView } from './views/activity.mjs';
 
-const VIEW_LABEL = { board: 'Board', team: 'Team', tokens: 'Tokens', approvals: 'Approvals', goals: 'Goals', activity: 'Activity' };
-const VIEW_COMPONENT = { board: BoardView, team: TeamView, tokens: TokensView, approvals: ApprovalsView, goals: GoalsView, activity: ActivityView };
+const VIEW_LABEL = { board: 'Board', team: 'Team', tokens: 'Tokens', approvals: 'Approvals', reports: 'Reports', goals: 'Goals', activity: 'Activity' };
+const VIEW_COMPONENT = { board: BoardView, team: TeamView, tokens: TokensView, approvals: ApprovalsView, reports: ReportsView, goals: GoalsView, activity: ActivityView };
 
 const LOOP_ICON = {
   running: ['play', 'ok'], stale: ['warn', 'warn'], stopped: ['stop', 'danger'], paused: ['pause', 'warn'], pausing: ['pause', 'warn'],
@@ -54,7 +55,8 @@ function Header({ s, route }) {
   };
   const toggleMotion = () => { setMotion(!motion); applyMotion(!motion); };
   const keep = {};
-  for (const k of ['goal', 'role', 'q', 'repo']) if (route.params[k]) keep[k] = route.params[k];
+  for (const k of ['goal', 'role', 'q', 'repo', 'team']) if (route.params[k]) keep[k] = route.params[k];
+  const cycles = cycleChips(snap, s.nowMs);
 
   return html`<header class="app-header">
     <div class="header-row">
@@ -76,6 +78,8 @@ function Header({ s, route }) {
       ${loop && html`<span class=${`tag tone-${lt}`}><${Icon} name=${li} />${loop.label || loop.state}</span>`}
       ${loop && (loop.state === 'stale' || loop.state === 'stopped' || loop.label === 'Loop not running') && html`<${CopyHint} text="/software-factory:start" />`}
       ${tickText && html`<span class="muted">${tickText}</span>`}
+      ${cycles.length > 0 && html`<ul class="cycle-chips" aria-label="Current cycles">
+        ${cycles.map((c) => html`<li class="cycle-chip" title=${`${c.name} cycle ${c.text}`}><${Icon} name="clock" />${c.name} ${c.text}</li>`)}</ul>`}
       ${snap && html`<a class="status-link" href=${buildHash('approvals', keep)}>
         <${Icon} name=${pending ? 'hourglass' : 'check'} />${pending ? `${pending} approval${pending === 1 ? '' : 's'} waiting for you` : 'No approvals waiting'}</a>`}
       <span class=${`tag tone-${ct} conn`} role="status" aria-live="polite"><${Icon} name=${ci} />${cw}</span>
@@ -96,6 +100,7 @@ function Filters({ snap, params }) {
   const goals = (snap && snap.goals) || [];
   const roles = ((snap && snap.roles) || []).filter((r) => r.id !== 'user');
   const repos = workspaceRepos(snap);
+  const teams = teamList(snap);
   return html`<form class="filters" role="search" aria-label="Filters" onSubmit=${(e) => e.preventDefault()}>
     <label class="field-inline">Goal
       <select value=${params.goal || ''} onChange=${(e) => setParams({ goal: e.currentTarget.value })}>
@@ -112,9 +117,14 @@ function Filters({ snap, params }) {
         <option value="">All repos</option>
         ${repos.map((r) => html`<option value=${r}>${r}</option>`)}
       </select></label>`}
+    ${teams.length > 0 && html`<label class="field-inline">Team
+      <select value=${params.team || ''} onChange=${(e) => setParams({ team: e.currentTarget.value })}>
+        <option value="">All teams</option>
+        ${teams.map((t) => html`<option value=${t.id}>${t.name}</option>`)}
+      </select></label>`}
     <label class="field-inline field-grow">Search
       <input type="search" value=${q} onInput=${onSearch} placeholder="Task id, title, epic" autocomplete="off" /></label>
-    ${(params.goal || params.role || params.q || params.repo) && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setQ(''); setParams({ goal: '', role: '', q: '', repo: '' }); }}>Clear filters</button>`}
+    ${(params.goal || params.role || params.q || params.repo || params.team) && html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setQ(''); setParams({ goal: '', role: '', q: '', repo: '', team: '' }); }}>Clear filters</button>`}
   </form>`;
 }
 

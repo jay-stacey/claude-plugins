@@ -12,9 +12,12 @@ Pick the smallest decision that fixes the root cause. Record it with `note` and 
 | Spec gap or wrong contract | New `research` or `spec` task for the staff-engineer; stuck task waits on it | `task new --file`, `task replan <T> --file` |
 | qa_epic or review_epic failed | One rework code task per finding cluster, on the owning role | `task new --file` |
 | qa_goal failed (cross-repo QA) | Read the report, find the repo at fault for each finding, one rework code task per finding cluster in that repo's epic (`task new` with that epic id). The epic returns to building; QA re-runs when all epics are back | `task new --file` |
-| Reviewer and author still disagree after 3 rounds, on a major | Decide on the evidence. Agree with the reviewer: new rework task. Agree with the author: waive the major with a logged reason | `task new --file` or `note "WAIVE <T> <F>: <reason>"` |
+| Reviewer and author still disagree after 3 rounds, on a major | Decide on the evidence. Agree with the reviewer: new rework task. Agree with the author: waive the major with a logged reason | `task new --file` or `task waive <T> --finding <F-id> --reason "<text>"` |
 | Disagreement on a blocker, product question, criterion change, budget, destructive step | Block on the user | handoff `status: blocked`, `verdict: escalate`, question to `user` |
 | Task no longer needed | Cancel | `task cancel <T>` |
+| The failure comes from a bug that was already on the base branch, outside the task's scope | Item for the bug (streams on), then make the task wait or narrow it; streams off: new prerequisite task | `item new --class bug`, `task replan <T> --file` or `task new --file` |
+| A builder named a human PR that changes the same files (`wip_conflicts`) | Same work: block on the user. Only overlap: retry after the PR merges, or let review judge it | `task block <T> --needs human --question "..."` or `note` |
+| A stream task (triage or fix) failed | Same decisions, but never block a goal for it; a fix that grows past 3 tasks becomes a new item, split smaller | as above, or `item new` and `task cancel <T>` |
 
 Blocking on the user: the question states the problem in one sentence, option A and option B with
 the cost of each (tokens, time, risk), and your recommendation. Nothing else.

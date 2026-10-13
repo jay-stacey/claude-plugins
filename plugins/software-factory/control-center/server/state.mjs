@@ -25,6 +25,15 @@ const DEFAULT_WEIGHTS = { input: 1, output: 1, cache_creation: 1.25, cache_read:
 const EVENTS_TAIL = 300;
 const STALE_GRACE_S = 300;
 const ACTIVE_RUN = new Set(['dispatching', 'running', 'suspect']);
+// Documents the Reports view lists (contracts 21.10.2). Newest first, capped.
+const REPORT_SOURCES = [
+  { dir: 'docs/reports', kind: 'report', match: /\.md$/i },
+  { dir: 'docs/baseline', kind: 'assessment', match: /^assessment-.*\.md$/i },
+  { dir: 'docs/cycles', kind: 'cycle', match: /\.md$/i },
+  { dir: 'docs/baseline/teams', kind: 'team_baseline', match: /\.md$/i },
+  { dir: 'docs/baseline', kind: 'baseline', match: /^factory\.md$/i },
+];
+export const REPORTS_CAP = 200;
 
 function statSafe(f) {
   try { return fs.statSync(f); } catch { return null; }
@@ -72,6 +81,11 @@ export class FactoryState {
     this.inbox = { pending: [], recent: [] };
     this.slices = {};
     this.lastFactorySlice = '';
+    this.cycles = null; // state/cycles.json as written, or null
+    this.baseline = null; // state/baseline.json, summarised by baselineSummary()
+    this.titleCache = new Map(); // file -> {sig, title}
+    this.reportsList = [];
+    this.baselineSummaryValue = null;
   }
 
   p(...parts) { return path.join(this.home, ...parts); }
@@ -297,6 +311,8 @@ export class FactoryState {
     return {
       status: f.status || 'stopped', status_reason: f.status_reason ?? null, status_changed_at: f.status_changed_at ?? null,
       pause_mode: f.pause_mode ?? null, tick, backoff_until: f.backoff_until ?? null,
+      reports: f.reports && typeof f.reports === 'object' ? f.reports : null,
+      baseline: f.baseline && typeof f.baseline === 'object' ? f.baseline : null,
       loop: { state, label, next_tick_at: tick.next_wakeup_at ?? null, next_tick_in_s: nextIn },
     };
   }
@@ -309,7 +325,21 @@ export class FactoryState {
       inbox_s: c.cadence?.inbox_s ?? 120, active_s: c.cadence?.active_s ?? 270,
       weights: this.weights(),
       workspace: this.workspaceInfo(),
+      teams: this.teamsInfo(),
+      streams: { enabled: c.streams?.enabled === true },
+      cycles: { enabled: c.cycles?.enabled === true },
+      reports: { enabled: c.reports?.enabled !== false }, // on by default (contracts 21.7)
     };
+  }
+
+  // Teams (contracts 21.2). Empty when the config has no `teams`: the implicit single team is not a filter choice.
+  teamsInfo() {
+    const t = this.config?.teams;
+    if (!t || typeof t !== 'object' || Array.isArray(t)) return [];
+    return Object.entries(t).filter(([, v]) => v && typeof v === 'object').map(([id, v]) => ({
+      id, name: typeof v.name === 'string' && v.name ? v.name : id, kind: v.kind ?? null, parent: v.parent ?? null,
+      repos: Array.isArray(v.repos) ? v.repos : [], tracker_key: v.tracker?.team_key ?? null,
+    }));
   }
 
   // Workspace mode (contracts 20.2): on when workspace.enabled and repos is not empty.
@@ -376,6 +406,64 @@ export class FactoryState {
     return pending.concat(rest).slice(0, 200);
   }
 
+  // ---------- reports, cycles, baseline ----------
+  // Stat-only scan of the report folders. Titles are read later, and only when the listing changed.
+  scanReports() {
+    const files = [];
+    for (const src of REPORT_SOURCES) {
+      let names = [];
+      try { names = fs.readdirSync(this.p(...src.dir.split('/'))); } catch { continue; }
+      for (const name of names) {
+        if (!src.match.test(name)) continue;
+        const abs = this.p(...src.dir.split('/'), name);
+        const st = statSafe(abs);
+        if (st && st.isFile()) files.push({ rel: `${src.dir}/${name}`, abs, kind: src.kind, st });
+      }
+    }
+    files.sort((a, b) => b.st.mtimeMs - a.st.mtimeMs || (a.rel < b.rel ? 1 : a.rel > b.rel ? -1 : 0));
+    return { files, sig: files.map((f) => `${f.rel}@${sig(f.st)}`).join('|') };
+  }
+
+  titleOf(f) {
+    const s = sig(f.st);
+    const hit = this.titleCache.get(f.abs);
+    if (hit && hit.sig === s) return hit.title;
+    let title = path.basename(f.abs);
+    try {
+      const fd = fs.openSync(f.abs, 'r');
+      try {
+        const buf = Buffer.alloc(Math.min(f.st.size, 4096));
+        const n = fs.readSync(fd, buf, 0, buf.length, 0);
+        const m = /^#[ \t]+(.+?)[ \t#]*$/m.exec(buf.subarray(0, n).toString('utf8'));
+        if (m && m[1].trim()) title = m[1].trim().slice(0, 200);
+      } finally { fs.closeSync(fd); }
+    } catch { /* keep the file name */ }
+    this.titleCache.set(f.abs, { sig: s, title });
+    return title;
+  }
+
+  reportsSlice(files) {
+    const top = files.slice(0, REPORTS_CAP);
+    const keep = new Set(top.map((f) => f.abs));
+    for (const k of this.titleCache.keys()) if (!keep.has(k)) this.titleCache.delete(k);
+    return top.map((f) => ({ path: f.rel, kind: f.kind, title: this.titleOf(f), mtime: new Date(f.st.mtimeMs).toISOString(), size: f.st.size }));
+  }
+
+  // Per repo: open PRs, PRs that are not the factory's own, and local branches ahead of base.
+  baselineSummary(b) {
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return null;
+    const repos = [];
+    const src = b.repos && typeof b.repos === 'object' && !Array.isArray(b.repos) ? b.repos : {};
+    for (const [repo, r] of Object.entries(src)) {
+      const prs = Array.isArray(r?.open_prs) ? r.open_prs : [];
+      repos.push({
+        repo, team: r?.team ?? null, open_prs: prs.length, non_factory_prs: prs.filter((x) => !x?.factory).length,
+        branches: Array.isArray(r?.branches) ? r.branches.length : 0, pr_error: r?.pr_error ?? null,
+      });
+    }
+    return { at: typeof b.at === 'string' ? b.at : null, repos };
+  }
+
   // ---------- refresh ----------
   // Returns {slices: {name: value}, events: [new event lines]}.
   refresh({ full = false } = {}) {
@@ -419,6 +507,21 @@ export class FactoryState {
     const gateNames = listJson(this.p('gates'));
     const gateSig = gateNames.map((n) => `${n}@${sig(statSafe(this.p('gates', n)))}`).join('|');
     if (this.changed('gates', gateSig) || full) { this.loadDir('gates', 'gates'); changed.add('gates'); }
+    // Reports, cycles, baseline summary.
+    const scan = this.scanReports();
+    if (this.changed('reports', scan.sig) || full) { this.reportsList = this.reportsSlice(scan.files); changed.add('reports'); }
+    const cycSig = sig(statSafe(this.p('state', 'cycles.json')));
+    if (this.changed('cycles', cycSig) || full) {
+      const c = readJsonSafe(this.p('state', 'cycles.json'));
+      if (c !== undefined || cycSig === 'none') this.cycles = c && typeof c === 'object' && !Array.isArray(c) ? c : null;
+      changed.add('cycles');
+    }
+    const baseSig = sig(statSafe(this.p('state', 'baseline.json')));
+    if (this.changed('baseline', baseSig) || full) {
+      const b = readJsonSafe(this.p('state', 'baseline.json'));
+      if (b !== undefined || baseSig === 'none') this.baselineSummaryValue = this.baselineSummary(b);
+      changed.add('baseline_summary');
+    }
     // Inbox: listing only.
     const inboxSig = ['', 'processed', 'rejected'].map((d) => listJson(this.p('inbox', d)).join(',')).join('|');
     if (this.changed('inbox', inboxSig) || full) { this.loadInbox(); changed.add('inbox'); }
@@ -437,6 +540,9 @@ export class FactoryState {
     if (changed.has('gates')) slices.gates = this.gatesSlice();
     if (changed.has('budget')) slices.budget = this.budget;
     if (changed.has('inbox')) slices.inbox = this.inbox;
+    if (changed.has('reports')) slices.reports = this.reportsList;
+    if (changed.has('cycles')) slices.cycles = this.cycles;
+    if (changed.has('baseline_summary')) slices.baseline_summary = this.baselineSummaryValue ?? null;
     const fs1 = this.factorySlice();
     const fsKey = JSON.stringify({ ...fs1, loop: { ...fs1.loop, next_tick_in_s: Math.round((fs1.loop.next_tick_in_s ?? 0) / 60) } });
     if (full || fsKey !== this.lastFactorySlice) { this.lastFactorySlice = fsKey; slices.factory = fs1; }
@@ -454,6 +560,7 @@ export class FactoryState {
       factory: this.factorySlice(), config: this.slices.config ?? this.configSlice(), roles: ROLES,
       goals: this.slices.goals ?? [], epics: this.slices.epics ?? [], tasks: this.slices.tasks ?? [], gates: this.slices.gates ?? [],
       runs: this.slices.runs ?? [], usage: this.slices.usage ?? this.usageSlice(), budget: this.budget ?? { goals: {} },
+      reports: this.slices.reports ?? [], cycles: this.slices.cycles ?? null, baseline_summary: this.slices.baseline_summary ?? null,
       inbox: this.inbox, events_tail: this.events.slice(-EVENTS_TAIL),
       diagnostics: { poll_ms: 1500, bad_lines: this.badLines, last_event_at: this.events.at(-1)?.ts ?? null, ...extra },
     };

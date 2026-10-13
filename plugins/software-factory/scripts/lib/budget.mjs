@@ -35,10 +35,14 @@ export function compute(home, cfg = loadConfig(home)) {
     out.goals[g.id] = { limit: g.budget.limit_tokens, spent: 0, reserved: 0, pct: 0, warned_at: p.warned_at || null, blocked_at: p.blocked_at || null };
   }
   const runAgents = new Set();
+  // Budget windows (contracts §21.1.7): a goal with budget.window_start counts only runs dispatched since.
+  const windows = new Map(goals.filter((g) => g.budget && g.budget.window_start).map((g) => [g.id, g.budget.window_start]));
   for (const r of store.list(home, 'run')) {
     if (r.agent_id) runAgents.add(r.agent_id);
     const slot = out.goals[r.goal_id];
     if (!slot) continue;
+    const ws = windows.get(r.goal_id);
+    if (ws && String(r.dispatched_at || r.created_at || '') < ws) continue;
     const s = runSpend(r, r.agent_id ? snaps.get(r.agent_id) : null, w);
     slot.spent += s.spent; slot.reserved += s.reserved;
   }
@@ -110,6 +114,29 @@ export function block(home, goalId, estimate, { notifyFn = null } = {}) {
       if (notifyFn) notifyFn('Factory budget', `${goalId} is blocked on its token budget. Approve more tokens to continue.`);
     }
     return gate;
+  });
+}
+
+/**
+ * Start a new budget window for a standing goal (contracts §21.1.7): set window_start and the limit,
+ * clear budget_blocked (back to active) and supersede the open budget gate. Returns the goal.
+ */
+export function rollWindow(home, goalId, { windowStart, limit, reason = 'budget window rolled' } = {}) {
+  return withMutex(home, () => {
+    const before = store.mustGet(home, 'goal', goalId);
+    const g = store.update(home, 'goal', goalId, (x) => {
+      x.budget.window_start = windowStart;
+      if (Number.isFinite(limit) && limit > 0) x.budget.limit_tokens = limit;
+      if (x.status === 'budget_blocked') { x.status = 'active'; x.status_reason = reason; delete x.status_before_block; }
+    });
+    if (before.status === 'budget_blocked') emit(home, { type: 'goal.status', goal_id: goalId, msg: `${goalId} budget_blocked -> active: ${reason}`, data: { from: 'budget_blocked', to: 'active', window: true } });
+    for (const gate of store.list(home, 'gate', (x) => x.type === 'budget' && x.goal_id === goalId && x.status === 'pending')) {
+      store.update(home, 'gate', gate.id, (x) => { x.status = 'superseded'; x.decision = { by: 'factory', via: 'cli', at: nowIso(), notes: reason }; });
+      emit(home, { type: 'gate.decided', goal_id: goalId, msg: `${gate.id} superseded: ${reason}`.slice(0, 140), data: { gate_id: gate.id, decision: 'superseded', window: true } });
+    }
+    const bb = compute(home);
+    if (bb.goals[goalId]) { bb.goals[goalId].blocked_at = null; bb.goals[goalId].warned_at = null; writeJsonAtomic(budgetPath(home), bb); }
+    return g;
   });
 }
 

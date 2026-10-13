@@ -44,11 +44,90 @@ export function goalRepos(goalId, snap) {
   return out;
 }
 
+/** Goal kind (contracts 21.1): a missing or unknown kind is a normal goal. */
+export function goalKind(goal) {
+  return goal && (goal.kind === 'stream' || goal.kind === 'ops') ? goal.kind : 'goal';
+}
+
+/** Teams from the config slice (contracts 21.2). Empty when the project has no explicit teams. */
+export function teamList(snap) {
+  return snap && snap.config && Array.isArray(snap.config.teams) ? snap.config.teams : [];
+}
+export function teamName(snap, id) {
+  const t = teamList(snap).find((x) => x.id === id);
+  return t && t.name ? t.name : id;
+}
+
+/** Tasks and epics carry one `team`. */
+export const inTeam = (rec, team) => !team || (!!rec && rec.team === team);
+/** Goals carry `teams[]` (goals that span teams) or `team` (stream goals). */
+export function goalInTeam(goal, team) {
+  if (!team) return true;
+  if (!goal) return false;
+  return goal.team === team || (Array.isArray(goal.teams) && goal.teams.includes(team));
+}
+
+/**
+ * Effective status of a stream item (contracts 21.4.6). A triage task that is not done keeps its own status.
+ * Done with epics: every epic done or cancelled with at least one done = done, all cancelled = cancelled,
+ * any pr_open = in_review, else in_progress.
+ * Done without epics = done. epicsById is a Map (see indexBy). An epic that is not in the snapshot counts as open.
+ */
+export function itemStatus(task, epicsById) {
+  if (!task) return null;
+  if (task.status !== 'done') return task.status;
+  const ids = Array.isArray(task.item_epic_ids) ? task.item_epic_ids : [];
+  if (!ids.length) return 'done';
+  const st = ids.map((id) => {
+    const e = epicsById && typeof epicsById.get === 'function' ? epicsById.get(id) : null;
+    return e ? e.status : 'unknown';
+  });
+  if (st.every((x) => x === 'cancelled')) return 'cancelled';
+  if (st.every((x) => x === 'done' || x === 'cancelled')) return 'done';
+  if (st.some((x) => x === 'pr_open')) return 'in_review';
+  return 'in_progress';
+}
+
+/** Status a card sits under: the item status for triage tasks, the task's own status for everything else. */
+export const effectiveStatus = (task, epicsById) => (task && task.kind === 'triage' ? itemStatus(task, epicsById) : task && task.status);
+
+/** The triage items of a stream goal, most urgent first, each with its effective status. */
+export function streamItems(goalId, snap) {
+  const epics = indexBy(snap.epics);
+  const prio = { P0: 0, P1: 1, P2: 2, P3: 3 };
+  return (snap.tasks || []).filter((t) => t.goal_id === goalId && t.kind === 'triage' && t.status !== 'cancelled')
+    .map((t) => ({ task: t, status: itemStatus(t, epics) }))
+    .sort((a, b) => (prio[a.task.priority] ?? 9) - (prio[b.task.priority] ?? 9) || String(a.task.id).localeCompare(String(b.task.id)));
+}
+
+/**
+ * Current cycle per team (contracts 21.6), only when cycles are on.
+ * [{team, name, number, days_left|null, text}] in config team order, then any other team in the file.
+ */
+export function cycleChips(snap, nowMs = Date.now()) {
+  if (!snap || !snap.config || !snap.config.cycles || !snap.config.cycles.enabled) return [];
+  const teams = snap.cycles && snap.cycles.teams && typeof snap.cycles.teams === 'object' ? snap.cycles.teams : null;
+  if (!teams) return [];
+  const order = teamList(snap).map((t) => t.id).filter((id) => id in teams);
+  for (const id of Object.keys(teams)) if (!order.includes(id)) order.push(id);
+  const out = [];
+  for (const team of order) {
+    const cur = teams[team] && teams[team].current;
+    if (!cur || cur.number == null) continue;
+    const ends = Date.parse(cur.ends_at);
+    const days = Number.isFinite(ends) ? (ends <= nowMs ? 0 : Math.ceil((ends - nowMs) / 86400000)) : null;
+    const left = days === null ? '' : days === 0 ? ', ends today' : `, ${days} day${days === 1 ? '' : 's'} left`;
+    out.push({ team, name: teamName(snap, team), number: cur.number, days_left: days, text: `#${cur.number}${left}` });
+  }
+  return out;
+}
+
 /** Task filter from the global filter bar. */
-export function taskMatches(task, { goal, role, q, repo }) {
+export function taskMatches(task, { goal, role, q, repo, team }) {
   if (goal && task.goal_id !== goal) return false;
   if (role && task.role !== role) return false;
   if (repo && task.repo !== repo) return false;
+  if (team && task.team !== team) return false;
   if (q) {
     const hay = `${task.id} ${task.title || ''} ${task.epic_id || ''} ${task.role || ''} ${task.kind || ''}`.toLowerCase();
     if (!hay.includes(q.toLowerCase())) return false;
@@ -247,4 +326,15 @@ export function goalSpend(goal, snap) {
   const live = Number(snap.usage && snap.usage.by_goal && snap.usage.by_goal[goal.id] && snap.usage.by_goal[goal.id].live) || 0;
   const pct = limit ? (spent / limit) * 100 : 0;
   return { limit, spent, live, pct, reserved: Number(s.reserved) || 0, warned_at: s.warned_at || null, blocked_at: s.blocked_at || null };
+}
+
+/** What approving does, as text lines: config patch as `key = value`, an overlay note, or advice only. */
+export function changeLines(change) {
+  if (!change || typeof change !== 'object') return { kind: 'advice', lines: [] };
+  if (change.kind === 'config') {
+    const patch = change.patch && typeof change.patch === 'object' ? change.patch : {};
+    return { kind: 'config', lines: Object.entries(patch).map(([k, v]) => `${k} = ${JSON.stringify(v)}`) };
+  }
+  if (change.kind === 'overlay_note') return { kind: 'overlay_note', role: change.role || '', lines: [String(change.note || '')] };
+  return { kind: 'advice', lines: [] };
 }
