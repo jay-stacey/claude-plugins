@@ -51,10 +51,11 @@ might match a few thousand notes, three tags match a few dozen.
 
 ## Reusing existing tags
 
-Before inventing a tag, check what the vault already uses:
+Before inventing a tag, check what the vault already uses (`$S` is
+`${CLAUDE_PLUGIN_ROOT}/skills/notes/scripts/notes_index.py`):
 
 ```bash
-python scripts/notes_index.py tags "$VAULT" --limit 50
+python "$S" tags "$VAULT" --limit 50
 ```
 
 Pick the existing tag over a near-synonym. `security` and `sec` and `infosec`
@@ -63,7 +64,7 @@ as three separate tags is the failure mode that makes tagging useless.
 To find what usually accompanies a tag:
 
 ```bash
-python scripts/notes_index.py tags "$VAULT" --cooc auth0
+python "$S" tags "$VAULT" --cooc auth0
 ```
 
 ## Links are not tags

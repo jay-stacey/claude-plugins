@@ -1,41 +1,40 @@
-# Error Handling — jira-reviewer
+# Error Handling - jira-reviewer
 
-### Jira Connection Fails
-1. Check authentication: `atlassianUserInfo`
-2. Verify cloudId is correct for Dealerpull instance
-3. Ask user to re-authenticate: `claude mcp test atlassian`
-4. If still failing, offer to skip Jira review and try again later
+In every case, keep the rest of the review going and say in one line what was
+skipped. A partial Jira review is more useful than none.
 
-### No Tickets Found
-- Report: "No active tickets currently assigned to you"
-- Suggest:
-  - Check recently closed tickets (last 7 days)
-  - Verify Jira project filter is correct
-  - Check if tickets are in "Done" status
-- Ask if user wants to query specific projects or statuses
+### Jira connection fails
+1. Check authentication with `atlassianUserInfo`.
+2. Check the `cloudId` is the Dealerpull instance.
+3. Ask the user to re-authenticate: `claude mcp test atlassian`.
+4. If it still fails, offer to skip Jira for this run.
 
-### JQL Query Fails
-- Try simpler query: `assignee = currentUser() AND resolution = Unresolved`
-- If still failing, inform user and skip Jira review
-- Provide error details for troubleshooting
+### No tickets found
+Say "No active tickets are assigned to you." Then offer one or two ways to
+look wider: tickets closed in the last 7 days, a different project filter, or
+specific statuses. Recommend one.
 
-### Rate Limiting
-- Jira API has rate limits (can be conservative)
-- If rate limited, inform user
-- Suggest: Wait 1-2 minutes before retrying
-- Offer to process tickets in smaller batches
+### JQL query fails
+Try the simpler query:
+```
+assignee = currentUser() AND resolution = Unresolved
+```
+If that also fails, tell the user, include the error text for troubleshooting,
+and skip Jira.
 
-### Mention Query Fails
-- JQL syntax for mentions can be tricky with special characters in accountId
-- If mention query fails:
-  1. Log warning: "Could not retrieve mentioned tickets: [error]"
-  2. Continue with assigned tickets report (don't fail entire review)
-  3. Note in report: "Mention detection encountered an error. Only assigned tickets shown."
-- Common issues:
-  - Invalid accountId format (should be alphanumeric)
-  - Project restrictions (user may not have access to some projects)
-  - API rate limiting (if already hit limits on assigned query)
-- Fallback: Try simpler query without project filter if initial query fails:
-  ```
-  comment ~ "[~accountid:{accountId}]" AND assignee != currentUser()
-  ```
+### Rate limiting
+Jira's limits can be tight. Tell the user, wait 1-2 minutes, then retry in
+smaller batches.
+
+### Mention query fails
+Mention JQL is fragile with special characters in the `accountId`.
+1. Note in the report: "Couldn't check mentions this time, so only assigned
+   tickets are shown."
+2. Carry on with the assigned-ticket report.
+3. Retry once without the project filter:
+   ```
+   comment ~ "[~accountid:{accountId}]" AND assignee != currentUser()
+   ```
+
+Common causes: a malformed `accountId` (it should be alphanumeric), no access
+to some projects, or a rate limit already hit by the assigned query.

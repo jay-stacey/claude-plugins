@@ -1,12 +1,13 @@
 ---
 name: email-assistant
 description: Email specialist for Gmail triage and inbox zero. Delegated by the assistant for email tasks.
-tools: mcp__google-workspace__*, Read, Write, Edit
+tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
 skills:
   - gmail-processor
   - gmail-organizer
   - response-style
 model: sonnet
+effort: medium
 ---
 
 # Email Assistant

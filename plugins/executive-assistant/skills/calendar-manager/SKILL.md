@@ -1,7 +1,7 @@
 ---
 name: calendar-manager
 description: Advanced calendar management - intelligently timebox daily todos, schedule recurring strategic sessions, detect scheduling bottlenecks, create focus blocks. Uses Google Workspace MCP for Calendar operations.
-allowed-tools: mcp__google-workspace__*, Read, Write, Edit
+allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
 model: opus
 ---
 

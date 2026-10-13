@@ -1,7 +1,7 @@
 ---
 name: calendar-reviewer
 description: Access Google Calendar to extract today's meetings, identify free time blocks, and analyze schedule. Uses Google Workspace MCP for Calendar operations.
-allowed-tools: mcp__google-workspace__*, Read, Write, Edit
+allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
 model: haiku
 ---
 

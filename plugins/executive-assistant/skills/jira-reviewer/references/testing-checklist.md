@@ -25,4 +25,4 @@ Developer-facing verification steps for this skill. Not needed at runtime.
 - [ ] Respects config toggles (enabled, includeResolved, maxAgeDays, maxResults)
 - [ ] Report shows assignee name for mentioned tickets
 - [ ] Report shows mentioner name and comment excerpt
-- [ ] Summary stats include mention count
+- [ ] Report states how many mentions need a response

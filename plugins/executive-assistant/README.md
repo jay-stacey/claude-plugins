@@ -317,8 +317,6 @@ executive-assistant/
 │   └── timebox.md               # Calendar optimization
 ├── templates/
 │   └── user-profile.md          # Profile template
-├── hooks/
-│   └── hooks.json               # Session automation
 └── README.md                    # This file
 ```
 

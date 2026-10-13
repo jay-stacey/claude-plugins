@@ -1,12 +1,13 @@
 ---
 name: calendar-assistant
 description: Calendar specialist for schedule review, timeboxing, and focus blocks. Delegated by the assistant for calendar tasks.
-tools: mcp__google-workspace__*, Read, Write, Edit
+tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
 skills:
   - calendar-reviewer
   - calendar-manager
   - response-style
 model: sonnet
+effort: medium
 ---
 
 # Calendar Assistant

@@ -1,7 +1,7 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "7.3.0",
+  "version": "8.0.0",
   "description": "Configurable executive assistant for productivity workflow automation. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear, and markdown notes in a folder you configure.",
   "author": {
     "name": "Jay Stacey"
@@ -63,13 +63,13 @@
       "type": "string",
       "title": "Working hours start",
       "description": "Start of your working day in 24-hour HH:MM, used for timeboxing and free-block detection.",
-      "default": "08:00"
+      "default": "06:30"
     },
     "working_hours_end": {
       "type": "string",
       "title": "Working hours end",
       "description": "End of your working day in 24-hour HH:MM.",
-      "default": "17:00"
+      "default": "15:00"
     },
     "enabled_integrations": {
       "type": "string",

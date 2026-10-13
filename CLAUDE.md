@@ -125,7 +125,12 @@ Commit titles follow `<plugin> <version>: <what changed>` or
   `config/examples/` holds role configs. `config/presets/` holds personalities.
 - Gmail and Calendar use the bundled Google Workspace MCP server (`.mcp.json`,
   run with `uvx`). Slack, Atlassian, and Linear MCP servers are optional.
-- `hooks/hooks.json` runs `scripts/tts-speak.py` when an assistant sub-agent stops.
+- Tasks are markdown files in `{vault}/tasks/`. `scripts/tasks.py` owns every
+  read and write of them; skills and the dashboard call it and never edit task
+  files directly. Its tests: `python -m unittest discover -s plugins/executive-assistant/tests`.
+- Email rules and the user profile live in `{vault}/assistant/` (templates in
+  `templates/`). Speech comes from the voice-replies plugin; this plugin has no
+  TTS hook.
 
 Safety rules for this plugin:
 

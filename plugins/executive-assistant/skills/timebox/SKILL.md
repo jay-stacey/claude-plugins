@@ -4,7 +4,7 @@ description: Optimize the calendar - timebox today's todos into free slots, sche
 argument-hint: "[--dry-run] [--today-only] [--strategic-only] [--analyze-only] [--this-week]"
 context: fork
 agent: calendar-assistant
-allowed-tools: mcp__google-workspace__*, Read, Write, Edit
+allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
 model: opus
 ---
 

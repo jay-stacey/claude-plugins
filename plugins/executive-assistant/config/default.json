@@ -64,8 +64,8 @@
     "role": "",
     "timezone": "America/Toronto",
     "workingHours": {
-      "start": "08:00",
-      "end": "17:00"
+      "start": "06:30",
+      "end": "15:00"
     },
     "accessibilityPreferences": [],
     "vipContacts": []
@@ -525,40 +525,5 @@
     "neverModifyExistingCalendarEvents": true,
     "neverAcceptDeclineMeetings": true,
     "batchApprovalForEmailActions": true
-  },
-  "tts": {
-    "_comment": "Text-to-Speech integration using ElevenLabs. Requires ELEVENLABS_API_KEY environment variable.",
-    "enabled": true,
-    "provider": "elevenlabs",
-    "voice_id": "EXAVITQu4vr4xnSDxMaL",
-    "voice_name": "Bella",
-    "voice_description": "Warm, conversational tone - perfect for a warm personality",
-    "model_id": "eleven_multilingual_v2",
-    "output_format": "mp3_22050_32",
-    "max_length": 3000,
-    "min_length": 10,
-    "skip_code_heavy": true,
-    "available_voices": {
-      "Rachel": {
-        "id": "21m00Tcm4TlvDq8ikWAM",
-        "style": "Calm, professional"
-      },
-      "Adam": {
-        "id": "pNInz6obpgDQGcFmaJgB",
-        "style": "Deep, authoritative"
-      },
-      "Elli": {
-        "id": "MF3mGyEYCl7XYWbV9V6O",
-        "style": "Young, energetic"
-      },
-      "Josh": {
-        "id": "TxGEqnHWrfWFTfGW9XjX",
-        "style": "Casual, friendly"
-      },
-      "Bella": {
-        "id": "EXAVITQu4vr4xnSDxMaL",
-        "style": "Warm, conversational"
-      }
-    }
   }
 }

@@ -8,6 +8,7 @@ skills:
   - linear-reviewer
   - response-style
 model: sonnet
+effort: medium
 ---
 
 # Task Assistant

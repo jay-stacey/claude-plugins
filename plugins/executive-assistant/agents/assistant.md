@@ -1,10 +1,12 @@
 ---
 name: assistant
 description: Your highly configurable executive assistant for daily workflow. Interactive morning planning with email, calendar, Slack, Jira, and Linear integration. Personality and features are fully configurable.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion, mcp__google-workspace__*, mcp__slack__*, mcp__atlassian__*, mcp__linear-server__*
+tools: Read, Write, Edit, Glob, Grep, Bash, Agent, AskUserQuestion, mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, mcp__slack__*, mcp__atlassian__*, mcp__linear-server__*
 skills:
   - response-style
+  - tasks
 model: opus
+effort: high
 memory: user
 ---
 
