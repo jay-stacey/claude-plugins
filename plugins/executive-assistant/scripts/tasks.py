@@ -9,7 +9,7 @@ dashboard and the chat cannot drift apart on the format. Output is JSON.
 
 Commands: init, add, parse, list, show, update, move, done, drop, park,
 resume, archive, log, stats, context, brief-save, brief-get, shutdown-save,
-focus-start, focus-status, focus-end.
+focus-start, focus-status, focus-end, schedule-save.
 Run ``python tasks.py <command> -h`` for flags.
 
 Exit codes: 0 ok, 2 bad input, 3 the file changed since you read it
@@ -772,7 +772,7 @@ def _read_json(path):
         return None
 
 
-def _save_day_json(store, kind, args, now, required=()):
+def _save_day_json(store, kind, args, now, required=(), log=True):
     try:
         data = json.loads(Path(args.file).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -795,6 +795,8 @@ def _save_day_json(store, kind, args, now, required=()):
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=1)
     os.replace(tmp, path)
+    if not log:
+        return {"saved": path.as_posix()}
     # Points and streak count one brief and one shutdown per day, however
     # often the user re-runs them.
     event = {"brief": "brief", "shutdown": "shutdown"}[kind]
@@ -811,6 +813,16 @@ def cmd_brief_save(store, args, now):
 
 def cmd_shutdown_save(store, args, now):
     return _save_day_json(store, "shutdown", args, now, required=("first_step",))
+
+
+def cmd_schedule_save(store, args, now):
+    """A fresh calendar read for the dashboard, without counting as a brief."""
+    out = _save_day_json(store, "schedule", args, now, log=False)
+    data = _read_json(Path(out["saved"]))
+    if not isinstance(data.get("events"), list) and not isinstance(data.get("days"), list):
+        Path(out["saved"]).unlink(missing_ok=True)
+        raise Fail("The schedule file needs an 'events' or 'days' list.")
+    return out
 
 
 def cmd_brief_get(store, args, now):
@@ -956,6 +968,8 @@ def build_parser():
     bg.add_argument("--date")
     ss = sub.add_parser("shutdown-save", help="Save the shutdown JSON and log the shutdown.")
     ss.add_argument("file")
+    sv = sub.add_parser("schedule-save", help="Save a fresh calendar read for the dashboard.")
+    sv.add_argument("file")
     fs = sub.add_parser("focus-start", help="Start a focus timer on a task; it becomes the Now task.")
     fs.add_argument("id")
     fs.add_argument("--minutes", default="25m")
@@ -973,7 +987,8 @@ COMMANDS = {"init": cmd_init, "add": cmd_add, "parse": cmd_parse, "list": cmd_li
             "resume": cmd_resume, "archive": cmd_archive, "log": cmd_log, "stats": cmd_stats,
             "context": cmd_context, "brief-save": cmd_brief_save, "brief-get": cmd_brief_get,
             "shutdown-save": cmd_shutdown_save, "focus-start": cmd_focus_start,
-            "focus-status": cmd_focus_status, "focus-end": cmd_focus_end}
+            "focus-status": cmd_focus_status, "focus-end": cmd_focus_end,
+            "schedule-save": cmd_schedule_save}
 
 
 def run(argv):

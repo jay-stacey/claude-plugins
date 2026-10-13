@@ -270,6 +270,13 @@ class BriefTests(StoreCase):
         self.assertEqual(ctx["now"]["title"], "now thing")
         self.assertTrue(ctx["first_use"])
 
+    def test_schedule_save_needs_events_and_logs_nothing(self):
+        ok = self.run_cli("schedule-save", self.write("sc.json", {"date": "2026-10-13", "events": []}))
+        self.assertTrue(ok["saved"].endswith("schedule/2026-10-13.json"))
+        self.assertEqual(self.run_cli("stats")["points_today"], 0)
+        self.run_cli("schedule-save", self.write("bad.json", {"date": "2026-10-14"}), expect=2)
+        self.assertFalse((self.vault / ".assistant" / "schedule" / "2026-10-14.json").exists())
+
     def test_shutdown_requires_first_step(self):
         err = self.run_cli("shutdown-save", self.write("s.json", {"date": "2026-10-13"}), expect=2)
         self.assertIn("first_step", err["error"])

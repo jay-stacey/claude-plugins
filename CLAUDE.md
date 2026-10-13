@@ -133,6 +133,14 @@ Commit titles follow `<plugin> <version>: <what changed>` or
   TTS hook. Its only hook is an opt-in SessionStart note (`scripts/session_context.py`,
   userConfig `session_context`) that must stay silent and exit 0 on any failure.
 
+- Day Desk, the dashboard, lives in `dashboard/` (contract: `dashboard/API.md`).
+  `server.py` is stdlib Python on 127.0.0.1 with a per-run token, Host and
+  Origin checks. `chat.py` runs `claude -p --agent executive-assistant:assistant`
+  in `dontAsk` mode with a read-only tool allow-list, and `shell_guard.py` is a
+  PreToolUse hook that blocks command chaining. Keep both when you change chat.
+  The dashboard never reads Google credentials; schedule data comes from the
+  brief or a headless refresh.
+
 Safety rules for this plugin:
 
 - External services are read-only by default.
