@@ -198,7 +198,8 @@ async function applyAuthor(home, run, task, h, cfg) {
 }
 
 async function applyReview(home, run, task, h, cfg) {
-  if (task.status !== 'in_review') return 'stale';
+  // A verdict from an earlier round (the task was reworked since dispatch) must not judge the new version.
+  if (task.status !== 'in_review' || (run.round && run.round !== flow.reviewRound(task))) return 'stale';
   let verdict = h.verdict;
   if (h.status !== 'handed_off' || !verdict) verdict = 'escalate';
   await flow.applyReviewVerdict(home, task.id, run.review_role, verdict, { runId: run.id, reportPath: h.report_path || null, findings: h.findings || [], cfg });
