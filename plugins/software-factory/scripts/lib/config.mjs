@@ -20,7 +20,7 @@ export function defaults() {
       estimates: {
         intake: 150000, prd: 300000, spec: 500000, mockup: 300000, breakdown: 300000, sequence: 150000,
         code_S: 250000, code_M: 600000, review: 150000, qa: 300000, docs: 200000, escalation: 200000, fixup: 150000,
-        qa_goal: 400000,
+        qa_goal: 400000, assess: 250000, report: 250000, cycle_plan: 200000, triage: 250000,
       },
       hard_kill: false,
     },
@@ -38,6 +38,17 @@ export function defaults() {
     worktree: { include_files: [] },
     workspace: { enabled: false, default_repo: null },
     repos: {},
+    // Contracts §21: teams, work streams, cycles, CTO reports and the baseline. Only reports and the
+    // baseline are on by default; the rest stays inert until config turns it on.
+    teams: {},
+    streams: {
+      enabled: false, teams: [], capacity_pct: 30, budget_tokens_per_window: 15000000, epic_review: false, pull: 'intake_label',
+      classes: { bug: { labels: ['bug', 'Bug'] }, tech_debt: { labels: ['tech-debt', 'Tech Debt', 'tech debt'] }, chore: { labels: [] } },
+    },
+    cycles: { enabled: false, source: null, length_days: 14, anchor: '2026-01-05', plan_at_start: true, review_at_end: true },
+    reports: { enabled: true, every_h: 24, idle_min_h: 4, idle_min_events: 10, max_proposals: 5 },
+    baseline: { enabled: true, collect_every_s: 3600, assess_every_h: 24 },
+    ops: { budget_tokens_per_day: 2000000 },
   };
 }
 
@@ -48,6 +59,7 @@ export function deepMerge(base, over) {
   if (!isObj(base) || !isObj(over)) return over === undefined ? base : structuredClone(over);
   const out = structuredClone(base);
   for (const [k, v] of Object.entries(over)) {
+    if (FORBIDDEN_KEY_PARTS.has(k)) continue;
     out[k] = isObj(v) && isObj(out[k]) ? deepMerge(out[k], v) : structuredClone(v);
   }
   return out;
@@ -66,6 +78,9 @@ export function load(home) {
   if (!Array.isArray(cfg.checks.pre_review) || cfg.checks.pre_review.length === 0) {
     cfg.checks.pre_review = [cfg.commands.build, cfg.commands.lint, cfg.commands.test].filter((x) => typeof x === 'string' && x.trim());
   }
+  // cycles.source defaults to the tracker when it is Linear, else local cycles (contracts §21.6).
+  if (!cfg.cycles.source) cfg.cycles.source = cfg.tracker && cfg.tracker.provider === 'linear' ? 'tracker' : 'local';
+  if (!cfg.tracker.goal_mapping) cfg.tracker.goal_mapping = 'parent_issue';
   const m = machine(home);
   const opts = m.options || {};
   const cap = Number(opts.max_parallel_agents);
@@ -74,21 +89,32 @@ export function load(home) {
   return cfg;
 }
 
+/** Key segments that could reach Object.prototype; never valid in a config key. */
+export const FORBIDDEN_KEY_PARTS = new Set(['__proto__', 'constructor', 'prototype']);
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+/** True when a dotted key has no empty and no prototype segment. */
+export function safeKey(key) {
+  const parts = String(key || '').split('.');
+  return parts.length > 0 && parts.every((p) => p && !FORBIDDEN_KEY_PARTS.has(p));
+}
+
 export function getKey(obj, key) {
   if (!key) return obj;
   let cur = obj;
   for (const part of key.split('.')) {
-    if (cur == null || typeof cur !== 'object') return undefined;
+    if (cur == null || typeof cur !== 'object' || !own(cur, part)) return undefined;
     cur = cur[part];
   }
   return cur;
 }
 
 export function setKey(obj, key, value) {
+  if (!safeKey(key)) { const e = new Error(`bad config key ${key}`); e.exitCode = 1; throw e; }
   const parts = key.split('.');
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (!isObj(cur[parts[i]])) cur[parts[i]] = {};
+    if (!own(cur, parts[i]) || !isObj(cur[parts[i]])) cur[parts[i]] = {};
     cur = cur[parts[i]];
   }
   cur[parts[parts.length - 1]] = value;
@@ -107,6 +133,15 @@ function saveChecked(home, raw) {
 
 export function set(home, key, value) {
   return withMutex(home, () => saveChecked(home, setKey(readRaw(home) || defaults(), key, value)));
+}
+
+/** Set several dotted keys at once; validates the result and writes nothing when it is invalid. */
+export function setMany(home, patch) {
+  return withMutex(home, () => {
+    const raw = structuredClone(readRaw(home) || defaults());
+    for (const [k, v] of Object.entries(patch || {})) setKey(raw, k, structuredClone(v));
+    return saveChecked(home, raw);
+  });
 }
 
 export function merge(home, obj) {

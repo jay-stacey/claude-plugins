@@ -113,9 +113,17 @@ export function statusWord(s) {
   return w.charAt(0).toUpperCase() + w.slice(1);
 }
 
-/** Task or run kind as shown to people. Only the cross-repo QA kind has its own wording. */
+// Kinds that read badly as raw ids. Every other kind is shown as it is.
+const KIND_WORD = { qa_goal: 'Cross-repo QA', assess: 'Assessment', report: 'CTO report', cycle_plan: 'Cycle plan', triage: 'Triage' };
+
+/** Task or run kind as shown to people. */
 export function kindWord(kind) {
-  return kind === 'qa_goal' ? 'Cross-repo QA' : kind;
+  return KIND_WORD[kind] || kind;
+}
+
+/** Stream item class (contracts 21.4.2) as shown to people. */
+export function itemClassWord(c) {
+  return { bug: 'Bug', tech_debt: 'Tech debt', chore: 'Chore' }[c] || (c ? statusWord(c) : '');
 }
 
 export function clamp(v, lo, hi) {

@@ -3,7 +3,7 @@ import { useEffect, useState } from './html.mjs';
 import { initToken, getToken, getState, setUnauthorizedHandler, ApiError } from './api.mjs';
 
 const EVENTS_CAP = 300;
-const SLICES = ['factory', 'goals', 'epics', 'tasks', 'gates', 'runs', 'usage', 'budget', 'inbox', 'config'];
+const SLICES = ['factory', 'goals', 'epics', 'tasks', 'gates', 'runs', 'usage', 'budget', 'inbox', 'config', 'reports', 'cycles', 'baseline_summary'];
 
 let state = {
   auth: 'ok', // ok | unauthorized

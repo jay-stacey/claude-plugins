@@ -504,6 +504,49 @@ td.actions .queued { white-space: normal; }
 .feed-item:last-child { border-bottom: 0; }
 .feed-text { overflow-wrap: anywhere; }
 
+/* ---------- goal kinds, task kinds, cycles, stream items (contracts 21) ---------- */
+.kind-badge {
+  display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+  padding: 0 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap;
+}
+.kind-badge .icon { width: 11px; height: 11px; }
+.kind-stream { color: var(--info); background: var(--info-bg); }
+.kind-ops { color: var(--idle); background: var(--idle-bg); }
+.kind-tag {
+  display: inline-block; flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 4px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); white-space: nowrap;
+}
+.cycle-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.cycle-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
+  padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface-2); white-space: nowrap;
+}
+.stream-items { margin: 0; }
+tr.stream-items-row td { border-top: 0; padding-top: 0; }
+.stream-items summary { cursor: pointer; font-size: 12px; color: var(--link); }
+.stream-item { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 2px 0; }
+.stream-item-title { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- improvement proposals ---------- */
+.proposal { margin: 8px 0; }
+.proposal-title { margin: 0 0 4px; font-size: 14px; }
+.proposal-kv { grid-template-columns: max-content minmax(0, 1fr); }
+.proposal-change {
+  margin: 4px 0 0; padding: 6px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* ---------- reports ---------- */
+.reports { display: flex; flex-direction: column; gap: 16px; }
+.reports-top > .panel, .reports-lists > .panel { margin-bottom: 0; }
+.reports-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.reports-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.latest-title { font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.doc-list { gap: 6px; }
+.doc-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.doc-row .btn { white-space: normal; text-align: left; border-radius: var(--radius); max-width: 100%; }
+
 /* ---------- motion ---------- */
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
@@ -521,7 +564,7 @@ td.actions .queued { white-space: normal; }
 @media (max-width: 1100px) {
   .team { grid-template-columns: minmax(0, 1fr); overflow: auto; }
   .main.view-team { overflow: auto; }
-  .approvals, .goals, .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .approvals, .goals, .grid-2, .reports-top, .reports-lists { grid-template-columns: minmax(0, 1fr); }
   .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .budget-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }

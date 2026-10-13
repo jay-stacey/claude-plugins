@@ -21,6 +21,9 @@ export function defaultFactory() {
     tick: { count: 0, last_begin_at: null, last_end_at: null, last_error: null, consecutive_errors: 0, cadence_s: null, next_wakeup_at: null, waiting_streak: 0 },
     dispatcher: { session_id: null, since: null }, backoff_until: null,
     versions: { plugin: pluginVersion(), schema: 1 },
+    // CTO reports and the baseline (contracts §21.7.2).
+    reports: { last_at: null, last_attempt_at: null, last_path: null, last_type: null, last_task_id: null, requested_at: null },
+    baseline: { last_collect_at: null, last_assess_at: null, last_assess_attempt_at: null, assess_requested: false },
   };
 }
 
@@ -31,7 +34,8 @@ export function readFactory(home) {
   const f = readJson(factoryPath(home), null);
   if (!f) return null;
   const d = defaultFactory();
-  return { ...d, ...f, tick: { ...d.tick, ...(f.tick || {}) }, dispatcher: { ...d.dispatcher, ...(f.dispatcher || {}) } };
+  return { ...d, ...f, tick: { ...d.tick, ...(f.tick || {}) }, dispatcher: { ...d.dispatcher, ...(f.dispatcher || {}) },
+    reports: { ...d.reports, ...(f.reports || {}) }, baseline: { ...d.baseline, ...(f.baseline || {}) } };
 }
 
 export function updateFactory(home, fn) {

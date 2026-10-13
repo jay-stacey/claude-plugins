@@ -98,7 +98,8 @@ test('tier M goal runs end to end: intake -> prd -> G1 -> spec -> G2 -> breakdow
   const { log, gates } = await drive(home, fake);
   const tags = log.map((x) => x.tag);
   assert.deepEqual(tags, [
-    'intake:cto', 'prd:product-manager', 'spec:staff-engineer', 'spec>critic', 'breakdown:staff-engineer',
+    // reports are on by default: the first periodic CTO report runs once the factory has run a task
+    'intake:cto', 'prd:product-manager', 'report:cto', 'spec:staff-engineer', 'spec>critic', 'breakdown:staff-engineer',
     'sequence:project-manager', 'code:backend-engineer', 'code>code-reviewer', 'code:backend-engineer', 'code>code-reviewer',
     'qa_epic:qa-engineer', 'review_epic:code-reviewer', 'docs:tech-writer',
   ]);
@@ -133,6 +134,7 @@ test('disabled gates auto-approve; tier S opens G1 and G2 together', async () =>
   const store = await lib('store');
   const control = await lib('control');
   const tick = await lib('tick');
+  (await lib('config')).set(home, 'reports.enabled', false); // this test counts goal runs only
   control.start(home, { session: 'S1' });
   const goal = a.newGoal(home, { title: 'Small', outcome: 'o', success_criteria: ['c'] });
   const log = [];
@@ -179,6 +181,7 @@ test('invalid handoff creates a fixup run, then fails after 2 fixups with an esc
   const a = await lib('actions');
   const store = await lib('store');
   const tick = await lib('tick');
+  (await lib('config')).set(home, 'reports.enabled', false); // this test counts goal runs only
   (await lib('control')).start(home, { session: 'S1' });
   a.newGoal(home, { title: 'Bad', outcome: 'o', success_criteria: ['c'] });
   const kinds = [];

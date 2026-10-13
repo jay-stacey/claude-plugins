@@ -207,6 +207,71 @@
       "items": {
         "type": "string"
       }
+    },
+    "proposals": {
+      "type": "array",
+      "description": "Report and assess runs (§21.7.4), at most reports.max_proposals.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "why",
+          "change",
+          "risk"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^P-d+$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "why": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "expected_effect": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "change": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "config",
+                  "overlay_note",
+                  "advice"
+                ]
+              },
+              "patch": {
+                "type": "object",
+                "description": "config: {\"dotted.key\": value}"
+              },
+              "role": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 300
+              }
+            }
+          }
+        }
+      }
     }
   },
   "required": [

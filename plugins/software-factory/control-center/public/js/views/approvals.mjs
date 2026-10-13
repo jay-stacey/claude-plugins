@@ -2,19 +2,45 @@
 import { html, useState } from '../html.mjs';
 import { Icon, Tag, ArtifactButton, roleInfo, goalColorClass, useQueueState, QueuedStatus, FieldError } from '../components.mjs';
 import { submit } from '../api.mjs';
-import { indexBy } from '../lib/model.mjs';
+import { indexBy, changeLines } from '../lib/model.mjs';
 import { timeAgo, fmtDateTime, fmtInt, statusWord } from '../lib/format.mjs';
 
-const TYPE_LABEL = { G1: 'G1 plan', G2: 'G2 spec', G3: 'G3 design', G4: 'G4 merge', budget: 'Budget', destructive: 'Destructive', tracker: 'Tracker' };
+const TYPE_LABEL = { G1: 'G1 plan', G2: 'G2 spec', G3: 'G3 design', G4: 'G4 merge', budget: 'Budget', destructive: 'Destructive', tracker: 'Tracker', improvement: 'Improvement' };
 const DECIDED = {
   approved: ['ok', 'check', 'Approved'], rejected: ['danger', 'cross', 'Rejected'],
   changes_requested: ['warn', 'cross', 'Changes requested'], superseded: ['idle', 'idle', 'Superseded'],
 };
 
 function subjectText(gate, idx) {
+  const prop = proposalOf(gate);
+  if (prop) return `${prop.id ? `${prop.id} ` : ''}${prop.title || ''}`;
   const s = gate.subject || {};
   const rec = s.kind === 'goal' ? idx.goals.get(s.id) : s.kind === 'epic' ? idx.epics.get(s.id) : s.kind === 'task' ? idx.tasks.get(s.id) : null;
   return `${s.id || ''}${rec && rec.title ? ` ${rec.title}` : ''}`;
+}
+
+// Proposal on an improvement gate (contracts 21.7.5): request {action: 'proposal', proposal}.
+const proposalOf = (gate) => (gate.type === 'improvement' && gate.request && gate.request.proposal && typeof gate.request.proposal === 'object' ? gate.request.proposal : null);
+const RISK = { low: ['ok', 'check'], medium: ['warn', 'warn'], high: ['danger', 'blocked'] };
+
+function Proposal({ gate, snap, proposal }) {
+  const c = changeLines(proposal.change);
+  const [tone, icon] = RISK[proposal.risk] || ['neutral', 'dot'];
+  const paths = (gate.artifact && gate.artifact.paths) || [];
+  return html`<div class="proposal">
+    <h4 class="proposal-title">${proposal.id ? html`<span class="mono small">${proposal.id}</span> ` : ''}${proposal.title}</h4>
+    <dl class="kv small proposal-kv">
+      <dt>Why</dt><dd class="prewrap">${proposal.why || '-'}</dd>
+      <dt>Change</dt><dd>
+        ${c.kind === 'config' && html`<span class="muted">Sets in the factory config:</span><pre class="proposal-change mono">${c.lines.join('\n') || '(no keys)'}</pre>`}
+        ${c.kind === 'overlay_note' && html`<span class="muted">Adds a note to the ${roleInfo(snap, c.role).name} role file:</span><pre class="proposal-change prewrap">${c.lines[0]}</pre>`}
+        ${c.kind === 'advice' && html`<span>Advice only. Nothing changes if you approve; the decision is recorded.</span>`}
+      </dd>
+      <dt>Expected effect</dt><dd class="prewrap">${proposal.expected_effect || '-'}</dd>
+      <dt>Risk</dt><dd>${proposal.risk ? html`<${Tag} tone=${tone} icon=${icon}>${statusWord(proposal.risk)}<//>` : '-'}</dd>
+    </dl>
+    ${paths.length > 0 && html`<div class="row wrap"><span class="small muted">Report</span>${paths.map((p) => html`<${ArtifactButton} path=${p} label="Open report" />`)}</div>`}
+  </div>`;
 }
 
 function actorText(snap, a) {
@@ -46,6 +72,7 @@ function GateCard({ gate, snap, idx, nowMs }) {
   const req = gate.request || {};
   const disabled = sending || q.busy;
   const nid = `notes-${gate.id}`;
+  const proposal = proposalOf(gate);
 
   const decide = async (decision) => {
     const er = {};
@@ -73,20 +100,21 @@ function GateCard({ gate, snap, idx, nowMs }) {
   return html`<li class=${`gate-card ${goalColorClass(snap, gate.goal_id)}`}>
     <div class="gate-head">
       <span class="gate-type">${TYPE_LABEL[gate.type] || gate.type}</span>
-      <h3 class="gate-subject">${subjectText(gate, idx)}</h3>
+      <h3 class="gate-subject">${proposal ? 'CTO proposal' : subjectText(gate, idx)}</h3>
       ${gate.auto && html`<${Tag} tone="info" icon="activity">auto<//>`}
     </div>
     <p class="small muted">
       ${goal ? html`<span class="goal-chip">${goal.id} ${goal.title}</span> ` : ''}
       Opened <span title=${fmtDateTime(gate.opened_at)}>${timeAgo(gate.opened_at, nowMs)}</span> by ${actorText(snap, gate.opened_by && gate.opened_by.actor)}
     </p>
-    ${a.summary && html`<p class="gate-summary prewrap">${a.summary}</p>`}
-    ${((a.paths || []).length > 0 || a.pr_url || a.diffstat) && html`<div class="row wrap">
+    ${proposal && html`<${Proposal} gate=${gate} snap=${snap} proposal=${proposal} />`}
+    ${a.summary && !proposal && html`<p class="gate-summary prewrap">${a.summary}</p>`}
+    ${!proposal && ((a.paths || []).length > 0 || a.pr_url || a.diffstat) && html`<div class="row wrap">
       ${(a.paths || []).map((p) => html`<${ArtifactButton} path=${p} />`)}
       ${a.pr_url && html`<a class="pr-link" href=${a.pr_url} rel="noreferrer" target="_blank"><${Icon} name="external" />Open PR<span class="sr-only"> (opens in a new tab)</span></a>`}
       <${Diffstat} d=${a.diffstat} />
     </div>`}
-    ${req.action && html`<p class="small"><strong>Action:</strong> ${req.action}</p>`}
+    ${req.action && !proposal && html`<p class="small"><strong>Action:</strong> ${req.action}</p>`}
     ${(req.impact || []).length > 0 && html`<div class="small"><strong>Impact</strong><ul>${req.impact.map((i) => html`<li>${i}</li>`)}</ul></div>`}
     <div class="gate-form">
       ${gate.type === 'budget' && html`<div class="field">
@@ -102,11 +130,11 @@ function GateCard({ gate, snap, idx, nowMs }) {
         <${FieldError} id=${`${nid}-err`} text=${errs.notes} />
       </div>
       ${confirmReject ? html`<div class="confirm" role="group" aria-label="Confirm reject">
-        <p class="small"><${Icon} name="warn" />Reject ${gate.id}? The work behind this gate stops until it is planned again.</p>
+        <p class="small"><${Icon} name="warn" />${proposal ? `Reject ${gate.id}? Nothing is changed. The proposal is recorded as rejected.` : `Reject ${gate.id}? The work behind this gate stops until it is planned again.`}</p>
         <button type="button" class="btn btn-danger" disabled=${disabled} onClick=${() => decide('reject')} data-autofocus>Yes, reject</button>
         <button type="button" class="btn btn-ghost" onClick=${() => setConfirmReject(false)}>Cancel</button>
       </div>` : html`<div class="row">
-        <button type="button" class="btn btn-primary" disabled=${disabled} onClick=${() => decide('approve')}>${gate.type === 'G4' ? 'Approve merge' : 'Approve'}</button>
+        <button type="button" class="btn btn-primary" disabled=${disabled} onClick=${() => decide('approve')}>${gate.type === 'G4' ? 'Approve merge' : proposal && proposal.change && proposal.change.kind !== 'advice' ? 'Approve and apply' : 'Approve'}</button>
         <button type="button" class="btn" disabled=${disabled} onClick=${() => decide('changes')}>Request changes</button>
         <button type="button" class="btn btn-danger-ghost" disabled=${disabled} onClick=${() => decide('reject')}>Reject...</button>
       </div>`}

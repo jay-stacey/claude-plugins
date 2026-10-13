@@ -14,7 +14,8 @@ written brief, write one handoff file, and end with one line. Everything you nee
 1. Find the line that starts with `FACTORY_RUN=` in your prompt. It names `run_id`, `task_id`,
    `goal_id`, `role` and `attempt`. Read the brief at the absolute path on the next line.
    No `FACTORY_RUN=` line, or no brief at that path: write nothing and reply `HANDOFF none blocked`.
-2. Read the file at the brief's `constitution`, then the file at `overlay`. Both are absolute paths.
+2. Read the file at the brief's `constitution`, then the file at `overlay` (both absolute), then
+   `team_baseline` when it is not null: your team's open PRs, branches, blocked work and tracker work.
 3. Worktree roles (builders, QA, code review, security review): run the brief's `setup` command
    exactly as written, first. The CLI makes your worktree. `setup` creates it when it is missing,
    then puts it on the task branch (builders) or on a detached checkout of the head SHA (reviewers,
@@ -57,10 +58,10 @@ Quote it in `open_questions` and continue with the brief.
   brief's `output_paths`. See `references/brief-fields.md` for every brief field.
 - Never edit JSON state under `<factory_home>` (goals, epics, tasks, runs, gates, state, inbox). Only
   the CLI writes it. The permission broker denies those writes.
-- Worktree roles (the brief has `worktree`, `cd_prefix` and an `outbox`):
-  - `worktree` is the absolute path of your worktree. `cd_prefix` is `cd "<worktree>" && `.
+- Worktree roles (the brief has `worktree`, `cd_prefix` and an `outbox`): `worktree` is your
+  absolute worktree path and `cd_prefix` is `cd "<worktree>" && `.
   - Your shell does not keep its folder between calls. Start EVERY Bash command with `cd_prefix`.
-  - Use absolute paths with Read, Edit and Write. Never use a relative path.
+    Use absolute paths with Read, Edit and Write.
   - Write your handoff and every output path only under `<worktree>/.factory-out/`, at the same
     relative path the brief lists (for example
     `<worktree>/.factory-out/docs/G-001-x/reviews/T-0001-code-reviewer-r1.md`). The CLI moves them
@@ -69,13 +70,10 @@ Quote it in `open_questions` and continue with the brief.
 
 ## 4a. Workspace mode
 
-One factory may drive several git repos side by side, and one goal may span them. Then the brief has
-`workspace: true` and `repos: [{name, path, stack, base_branch}]`. Code-run briefs also have
-`repo {name, path, base_branch}`, `worktree`, `cd_prefix` and `commands` taken from that repo.
-- Code roles work only in the brief's repo. Never touch another repo's files.
-- If the change needs another repo, add an `open_questions` entry (`to_role` = `staff-engineer`) or a
-  `follow_ups` entry that names the repo and the change. Then finish your own part.
-- Without `workspace: true` there is one repo and nothing changes for you.
+One factory may drive several repos, and one goal may span them. Then the brief has `workspace: true`
+and `repos: [{name, path, stack, base_branch}]`; code-run briefs add `repo`, and take `commands` from it.
+- Code roles work only in the brief's repo; never touch another repo's files. A change another repo
+  needs goes in `open_questions` (`to_role` = `staff-engineer`) or `follow_ups`, naming the repo.
 
 ## 5. File scope
 
@@ -85,6 +83,8 @@ One factory may drive several git repos side by side, and one goal may span them
 - `files_read`: context to read. You may read any repo file, but you write only owned paths.
 - Need a change outside your scope? Do not make it. Add an `open_questions` entry (`to_role` = the
   owner, usually `staff-engineer`) and finish the rest.
+- Builders: `wip_conflicts` lists open human PRs that change your owned files. Never silently
+  overwrite their work. Keep your change there minimal and name each PR (number, URL) in `summary`.
 - The broker blocks out-of-scope writes and unlisted commands with a reason. Read the reason, adapt,
   and never try to route around it (no other shell, no script that does the same thing).
 
@@ -92,7 +92,8 @@ One factory may drive several git repos side by side, and one goal may span them
 
 The broker allows only these. Exact syntax and per-role extras are in `references/cli-commands.md`.
 - Every role: `handoff validate`, `evidence run`, `worktree prepare`, and the read-only `status`,
-  `task show`, `task list`, `goal show`, `epic show`, `epic list`, `budget show`, `gate list`, `events tail`.
+  `task show|list`, `goal show`, `epic show|list`, `budget show`, `gate list`, `events tail`,
+  `baseline show`, `cycle show`, `item list|show`, `report data|list`.
 - The strings in the brief's `commands` (build, test, lint, typecheck, run, e2e, migrate_up,
   migrate_down, screenshot, extra) and the install command, optionally prefixed by
   `cd_prefix`. You may add plain arguments (for example a test filter), but no shell
@@ -103,17 +104,15 @@ The broker allows only these. Exact syntax and per-role extras are in `reference
 - In your own worktree (authors): `git add`, `git commit`, `git restore`, `git checkout -- <file>`.
   `git merge` only in a devops-release integrate run.
 - `ls, cat, head, tail, wc, pwd, echo, grep, rg, find` with no output redirection.
-- Never: `git push`, `gh`, `curl`, `wget`, `node -e`, `python -c`, `rm -rf` outside your worktree,
-  or anything that writes into `<factory_home>` except through the CLI or the Write tool on your
-  output paths.
+- Never: `git push`, `gh`, `curl`, `wget`, `node -e`, `python -c`, `rm -rf` outside your worktree, or
+  any write into `<factory_home>` except through the CLI or the Write tool on your output paths.
 
 ## 7. Evidence
 
 Proof comes from `node "<cli>" evidence run --run <run_id> --label <label> -- <command>`. It runs the
 command, saves the log, and records an id (`EV-1`, `EV-2`...). Cite those ids in the handoff. Never
-type a result, paste a log, or claim a run you did not do through the CLI. After your run ends the CLI
-re-runs the checks itself at your head commit; your evidence must agree with it. Rules in
-`evidence-rules`.
+type a result, paste a log, or claim a run you did not do through the CLI. The CLI then re-runs the
+checks at your head commit; your evidence must agree with it. Rules in `evidence-rules`.
 
 ## 8. Statuses and verdicts
 
@@ -149,7 +148,8 @@ re-runs the checks itself at your head commit; your evidence must agree with it.
 Write it with the Write tool at `handoff_path`. Schema `factory/handoff@1`. Fields:
 `schema, run_id, task_id, from_role, to_role ("cto"), status, verdict, summary (<= 10 lines, plain
 words), acceptance_criteria [{id, met, evidence[]}], evidence [], files_touched [], branch, commits [],
-findings [], report_path, open_questions [], follow_ups [], destructive, resume_note`.
+findings [], report_path, open_questions [], follow_ups [], destructive, resume_note`; plus
+`proposals []` on CTO report and assess runs only (`cto-playbook` references/report.md).
 
 Rules:
 - Every acceptance criterion in the brief appears once, by its id, with `met` true or false.
@@ -157,13 +157,13 @@ Rules:
   least one evidence id.
 - `files_touched` and `commits` match the branch exactly (builders). Planners list the docs written.
 - `findings` only for reviews and critiques: `{id, severity: blocker|major|minor|nit, file, line,
-  text, fix}`.
+  text, fix}`. `follow_ups`: `{title, kind, reason}`; kind `bug`, `tech_debt` or `chore`
+  reports a problem seen in passing (with streams on, an item for your team). Do not fix it.
 - `destructive`: `null`, or `{"what": "<plain description>"}` when your change deletes data, drops a
   column or table, or cannot be rolled back. This routes to a human gate.
 - Filled examples for each role class: `references/handoff-examples.md`.
 
 ## 11. Final message
 
-Exactly one line, for example:
-`HANDOFF C:/repo/.factory/runs/R-000123/handoff.json handed_off`
+Exactly one line, for example `HANDOFF C:/repo/.factory/runs/R-000123/handoff.json handed_off`.
 No summary, no greeting, no code block. The dispatcher reads only this line.

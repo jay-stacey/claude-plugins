@@ -7,17 +7,20 @@ import { findHome, pluginRoot } from '../../../scripts/lib/paths.mjs';
 import { isInitialized, leaseLive, readLease } from '../../../scripts/lib/state.mjs';
 import { load as loadConfig } from '../../../scripts/lib/config.mjs';
 import * as store from '../../../scripts/lib/store.mjs';
-import { nowIso, readJson, readLines, writeTextAtomic } from '../../../scripts/lib/fsutil.mjs';
+import { nowIso, readJson, readLines, writeJsonAtomic, writeTextAtomic } from '../../../scripts/lib/fsutil.mjs';
 import { readState, statusLines, updateState } from '../../../scripts/lib/syncstate.mjs';
 import { createAdapter, missingCredentials, syncEnabled } from '../adapters/index.mjs';
 import { allEntries, ensureEntry, entryFor, loadMap, saveMap, byRemote } from './map.mjs';
-import { planPull, planPush, remoteHashes, trackerLabels, bulkCounts, goalBody, taskBody, DEFAULT_PUSH_KINDS } from './planner.mjs';
+import { planPull, planPush, remoteHashes, trackerLabels, bulkCounts, goalBody, taskBody, DEFAULT_PUSH_KINDS, hasRef, pushedGoal, pushedTask } from './planner.mjs';
+import { classLabels, configuredKeys, cyclesFromTracker, entryTeam, factoryCycleFor, goalKeys, isMulti, readCycles, refOf, streamKeys, streamsCfg, taskKey } from './teams.mjs';
+
+export { entryTeam };
 import { proposeStatusMap, MAP_KEYS } from './ownership.mjs';
 import { hashValue, sha, findSfId } from './normalize.mjs';
 import { opId as makeOpId } from './echo.mjs';
 import * as outbox from './outbox.mjs';
 import { Budget } from './ratelimit.mjs';
-import { checkOp } from './redact.mjs';
+import { checkOp, scan } from './redact.mjs';
 import { knownKeys, outcome, raise } from './requests.mjs';
 import { audit } from './log.mjs';
 import { emit } from '../../../scripts/lib/events.mjs';
@@ -41,6 +44,7 @@ export function open(projectDir) {
 
 export function scopeKeyOf(provider, scope, cfg, env) {
   const s = scope || {};
+  if (provider === 'linear' && isMulti({ ...(cfg || {}), tracker: { ...((cfg && cfg.tracker) || {}), provider } })) return 'linear:teams';
   if (provider === 'linear') return `linear:team:${s.team_key || '?'}${s.project_id ? `:project:${s.project_id}` : ''}`;
   if (provider === 'github') { const r = githubRepo(s, cfg); return `github:${r.owner}/${r.repo}`; }
   if (provider === 'jira') return `jira:${String((env && env.SF_JIRA_SITE) || '').replace(/^https?:\/\//, '')}:${s.project_key || '?'}`;
@@ -55,18 +59,37 @@ function githubRepo(scope, cfg) {
 /** Adapter scope with resolved ids from discovery. */
 export function adapterScope(provider, t, st, cfg) {
   const s = { ...(t.scope || {}) };
+  if (provider === 'linear' && cfg && isMulti(cfg)) {
+    const disc = (st.discovery && st.discovery.teams) || {};
+    s.teams = configuredKeys(cfg).filter((k) => disc[k]).map((k) => ({ key: k, id: disc[k].id }));
+    s.team_id = s.teams[0] ? s.teams[0].id : null;
+    return s;
+  }
   if (provider === 'linear' && st.discovery && st.discovery.team) s.team_id = st.discovery.team.id;
   if (provider === 'github') Object.assign(s, githubRepo(s, cfg));
   return s;
 }
 
-export function statusMapFor(t, st) {
-  const base = st.status_map || {};
-  const over = t.status_map || {};
+/**
+ * Effective status map. With a team key (§21.3.3): that team's discovered map, and tracker.status_map either
+ * keyed by team key or flat (a flat map applies to every team).
+ */
+export function statusMapFor(t, st, key = null) {
+  const tk = key ? String(key).toUpperCase() : null;
+  const team = tk && st.discovery && st.discovery.teams ? st.discovery.teams[tk] : null;
+  const base = (tk && st.status_maps && st.status_maps[tk]) || st.status_map || {};
+  let over = t.status_map || {};
+  const keyed = Object.entries(over).some(([x, v]) => !MAP_KEYS.includes(x) && v && typeof v === 'object' && !v.id);
+  if (keyed) over = (tk && (over[tk] || over[key])) || {};
+  const states = (team && team.states) || (st.discovery && st.discovery.states) || [];
   const out = { ...base };
   for (const [k, v] of Object.entries(over)) {
     if (!MAP_KEYS.includes(k)) continue;
-    if (typeof v === 'string') { const s = ((st.discovery && st.discovery.states) || []).find((x) => x.id === v); out[k] = { id: v, name: s ? s.name : v, type: s ? s.type : null }; } else if (v && v.id) out[k] = v;
+    const id = typeof v === 'string' ? v : v && v.id;
+    if (!id) continue;
+    const s = states.find((x) => x.id === id);
+    if (team && !s) continue; // a flat map applied to every team: an id from another team keeps this team's proposed state
+    if (typeof v === 'string') out[k] = { id: v, name: s ? s.name : v, type: s ? s.type : null }; else out[k] = v;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -80,16 +103,82 @@ function guardLines(provider, t, env, deps) {
 }
 
 async function ensureDiscovery(c, st, adapter) {
-  const needTeam = c.provider === 'linear' && !(st.discovery && st.discovery.team);
+  if (c.provider === 'linear' && isMulti(c.cfg)) {
+    const keys = configuredKeys(c.cfg);
+    const disc = st.discovery || {};
+    const have = disc.teams || {};
+    if (st.status_maps && keys.every((k) => have[k] || (disc.missing || []).includes(k))) return;
+    const d = await adapter.discover({ team_keys: keys, partial: true });
+    storeMultiDiscovery(st, c, d, keys);
+    return;
+  }
+  const want = c.t.scope && c.t.scope.team_key ? String(c.t.scope.team_key).toUpperCase() : null;
+  const needTeam = c.provider === 'linear' && (!(st.discovery && st.discovery.team) || (want && String(st.discovery.team.key).toUpperCase() !== want));
   if (st.discovery && st.status_map && !needTeam) return;
   const d = await adapter.discover(c.t.scope || {});
   storeDiscovery(st, c, d);
 }
 
 function storeDiscovery(st, c, d) {
-  st.discovery = { viewer: d.viewer, team: d.team || null, scopes: (d.scopes || []).slice(0, 50), states: d.states || [], labels: (d.labels || []).map((l) => l.name), at: nowIso() };
+  const scopes = (d.scopes || []).slice(0, 50).map((x) => ({ id: x.id, key: x.key, name: x.name }));
+  st.discovery = { viewer: d.viewer, team: d.team || null, scopes, states: d.states || [], labels: (d.labels || []).map((l) => l.name), at: nowIso() };
   st.status_map = d.proposedStatusMap || proposeStatusMap(d.states || []);
   st.provider = c.provider;
+}
+
+/** Per-team discovery (§21.3.3): states, labels, cycles and one status map per tracker key. */
+function storeMultiDiscovery(st, c, d, keys) {
+  const teams = {};
+  for (const t of d.teams || []) {
+    teams[String(t.key).toUpperCase()] = { id: t.id, key: t.key, name: t.name, parent: t.parentKey || null, states: t.states || [],
+      labels: (t.labels || []).map((l) => l.name), cycles: t.cycles || { current: null, next: null } };
+  }
+  st.discovery = { viewer: d.viewer, teams, missing: (d.missing || []).map((k) => String(k).toUpperCase()),
+    scopes: (d.scopes || []).slice(0, 100).map((x) => ({ id: x.id, key: x.key, name: x.name, parent: x.parentKey || null })), at: nowIso() };
+  st.status_maps = Object.fromEntries(Object.entries(teams).map(([k, t]) => [k, proposeStatusMap(t.states)]));
+  const first = (keys || []).map((k) => String(k).toUpperCase()).find((k) => teams[k]) || Object.keys(teams)[0];
+  st.status_map = first ? st.status_maps[first] : null;
+  st.provider = c.provider;
+}
+
+/** Team context for the planners and the scope guard (§21.3). In single-team mode multi is false. */
+function teamCtx(c, st) {
+  const multi = c.provider === 'linear' && isMulti(c.cfg);
+  const disc = (st.discovery && st.discovery.teams) || {};
+  const configured = multi ? configuredKeys(c.cfg) : [];
+  const active = configured.filter((k) => disc[k]);
+  const lower = (xs) => new Set((xs || []).map((x) => String(x).toLowerCase()));
+  return {
+    multi, cfg: c.cfg, configured, keys: new Set(active),
+    statusMapFor: (k) => statusMapFor(c.t, st, k),
+    knownLabelsFor: (k) => { const kk = String(k).toUpperCase(); return lower([...((disc[kk] && disc[kk].labels) || []), ...(((st.labels_known_by_team || {})[kk]) || [])]); },
+    cyclesTracker: cyclesFromTracker(c.cfg), cycles: readCycles(c.home),
+    teamList: multi ? active.map((k) => ({ key: k, id: disc[k].id, name: disc[k].name }))
+      : (c.provider === 'linear' && st.discovery && st.discovery.team ? [{ key: st.discovery.team.key, id: st.discovery.team.id, name: st.discovery.team.name }] : []),
+  };
+}
+
+/** Pull options for streams (§21.4.5) and project intake (§21.3.5). */
+function pullExtras(c, tc) {
+  if (c.provider !== 'linear') return {};
+  const s = streamsCfg(c.cfg);
+  let streams = null;
+  if (s.enabled) {
+    const keys = streamKeys(c.cfg);
+    const ids = tc.teamList.filter((t) => keys.includes(String(t.key).toUpperCase())).map((t) => t.id);
+    streams = { mode: s.pull, labels: classLabels(c.cfg), teamIds: ids };
+  }
+  return { streams, projects: c.t.goal_mapping === 'project' ? { label: trackerLabels(c.t).intake } : null };
+}
+
+function streamCtx(c) {
+  const s = streamsCfg(c.cfg);
+  return s.enabled && c.provider === 'linear' ? { enabled: true, mode: s.pull, keys: new Set(streamKeys(c.cfg)) } : null;
+}
+
+function mappedIds(map) {
+  const live = allEntries(map).filter(([, e]) => e.remoteId && !e.unlinked);
+  return { issues: live.filter(([, e]) => e.kind !== 'project').map(([, e]) => String(e.remoteId)), projects: live.filter(([, e]) => e.kind === 'project').map(([, e]) => String(e.remoteId)) };
 }
 
 function localData(home) {
@@ -161,40 +250,68 @@ function resolveRequests(c, st, map, now) {
     }
     if (p.cls === 'missing' && entry) { if (o === 'approved') entry.unlinked = true; else entry.missing = false; }
     if (p.cls === 'bulk' && o === 'approved') st.bulk_approved = true;
+    if (p.cls === 'cycle' && entry && entry.cycleHold === id) entry.cycleHold = null;
+    if (p.cls === 'backlog' && p.key) {
+      st.backlog_rejected = st.backlog_rejected || {};
+      if (o === 'rejected') { if (st.raised) delete st.raised[p.key]; st.backlog_rejected[p.key] = p.cfg || null; } else delete st.backlog_rejected[p.key];
+    }
     audit(c.home, { tick: st.tick_count, dir: 'pull', op: `request:${p.cls || p.type}`, localId: p.localId || null, result: o, fields: p.field ? [p.field] : [] }, now);
   }
   return extra.map((o) => ({ ...o, opId: makeOpId(o.localId, o.type, o.field, o.valueHash, '') }));
 }
 
-function raiseAll(c, st, map, descriptors, known, modeName) {
+/** Hash of the stream config: a rejected backlog item is raised again when it changes. */
+function streamsHash(c) { return sha(JSON.stringify([streamsCfg(c.cfg), c.cfg.teams || null])).slice(0, 16); }
+
+function raiseAll(c, st, map, descriptors, known, modeName, { full = false } = {}) {
   const ids = [];
-  for (const d of descriptors) {
-    const allowed = modeName === 'two_way' || (modeName === 'intake_only' && d.type === 'tracker.intake');
+  const sh = streamsHash(c);
+  for (const d0 of descriptors) {
+    let d = d0;
+    if (d.type === 'tracker.backlog_item') {
+      // rejected by the CLI (streams off, no stream team): raise again only on a full pull or a new stream config
+      const rej = (st.backlog_rejected || {})[d.key];
+      if (rej && rej === sh && !full) continue;
+      d = { ...d, track: { localId: null, field: 'backlog', cls: 'backlog', key: d.key, cfg: sh } };
+    }
+    const allowed = modeName === 'two_way' || (modeName === 'intake_only' && ['tracker.intake', 'tracker.backlog_item'].includes(d.type))
+      || (d.type === 'tracker.cycles' && modeName !== 'dry_run');
     if (!allowed) { audit(c.home, { tick: st.tick_count, dir: 'pull', op: d.type, localId: d.track ? d.track.localId : null, result: modeName === 'dry_run' ? 'dry_run' : 'skipped_mode', fields: [] }); continue; }
     const id = raise(c.home, st, known, { ...d, provider: c.provider });
     if (!id) continue;
     ids.push(id);
     if (d.track && trackedHold(d.track.cls)) { const e = entryFor(map, d.track.localId); if (e) e.hold = id; }
+    if (d.track && d.track.cls === 'cycle') { const e = entryFor(map, d.track.localId); if (e) e.cycleHold = id; }
   }
   return ids;
 }
 
 function applyResult(c, st, map, op, res, now) {
-  if (op.type === 'ensure_label') { st.labels_known = [...new Set([...(st.labels_known || []), String(op.payload.name).toLowerCase()])]; return; }
+  if (op.type === 'ensure_label') {
+    if (op.payload.team) {
+      const k = String(op.payload.team).toUpperCase();
+      st.labels_known_by_team = st.labels_known_by_team || {};
+      st.labels_known_by_team[k] = [...new Set([...(st.labels_known_by_team[k] || []), String(op.payload.name).toLowerCase()])];
+    } else st.labels_known = [...new Set([...(st.labels_known || []), String(op.payload.name).toLowerCase()])];
+    return;
+  }
   const entry = ensureEntry(map, op.localId);
   const labels = trackerLabels(c.t);
   const ret = res.returned;
   if (op.type === 'create_item') {
     Object.assign(entry, { remoteId: String(res.remoteId), key: ret ? ret.key : null, url: ret ? ret.url : null, pendingCreate: false, scopeKey: st.scope_key, created_at: nowIso(now) });
+    if (op.payload.team) entry.team = String(op.payload.team).toUpperCase();
+    if (op.kind === 'project') { entry.kind = 'project'; entry.teams = (ret && ret.teamKeys) || op.payload.teams || []; entry.teamIds = (ret && ret.teamIds) || []; }
     entry.pushed = ret ? remoteHashes(ret, labels) : {};
     entry.pulled = {}; entry.local = { ...(op.local || {}) };
+    if (op.kind === 'task' && cyclesFromTracker(c.cfg)) { entry.remoteCycle = ret && ret.cycleId !== undefined ? ret.cycleId : op.payload.cycleId || null; entry.factoryCycle = op.payload.cycleId || null; }
     return;
   }
   if (ret) {
     const h = remoteHashes(ret, labels);
     entry.pushed.remoteUpdatedAt = h.remoteUpdatedAt;
     if (op.type === 'update_fields') { entry.pushed.title = h.title; entry.pushed.body = h.body; entry.pulled.title = undefined; entry.pulled.body = undefined; entry.local = { ...entry.local, ...(op.local || {}) }; }
-    if (op.type === 'set_status') { entry.pushed.status = h.status; entry.pulled.status = undefined; entry.driftStatus = null; }
+    if (op.type === 'set_status') { entry.pushed.status = h.status; entry.pulled.status = undefined; entry.driftStatus = null; if (entry.linked) entry.remoteStatusType = ret.statusType || null; }
     if (op.type === 'set_parent') { entry.pushed.parent = h.parent; entry.pulled.parent = undefined; }
   } else {
     if (op.type === 'set_status') { entry.pushed.status = op.payload.statusId; entry.pulled.status = undefined; entry.driftStatus = null; }
@@ -207,18 +324,107 @@ function applyResult(c, st, map, op, res, now) {
     if (op.meta && op.meta.side) entry.local = { ...entry.local, side: op.meta.side };
   }
   if (op.type === 'add_link') entry.linkedPRs = [...new Set([...(entry.linkedPRs || []), op.payload.url])];
+  if (op.type === 'set_teams') { entry.teams = ret && ret.teamKeys ? [...ret.teamKeys] : [...new Set([...(entry.teams || []), ...op.payload.teams])]; if (ret && ret.teamIds) entry.teamIds = [...ret.teamIds]; }
+  if (op.type === 'add_comment' && op.meta && op.meta.note === 'cancelled') entry.local = { ...entry.local, noteCancelled: true };
+  if (op.type === 'set_cycle') {
+    entry.remoteCycle = ret && ret.cycleId !== undefined ? ret.cycleId : op.payload.cycleId || null;
+    entry.local = { ...(entry.local || {}), cycleRef: (op.meta && op.meta.cycleRef) ?? null };
+    entry.factoryCycle = op.payload.cycleId || null;
+  }
 }
 
 function linkFound(c, st, map, localId, found, local, now) {
   const labels = trackerLabels(c.t);
   const entry = ensureEntry(map, localId);
   Object.assign(entry, { remoteId: String(found.remoteId), key: found.key, url: found.url, pendingCreate: false, scopeKey: st.scope_key, created_at: entry.created_at || nowIso(now) });
+  if (st.scope_key === 'linear:teams' && found.teamKey && found.kind !== 'project') entry.team = String(found.teamKey).toUpperCase();
+  if (found.kind === 'project') { entry.kind = 'project'; entry.teams = found.teamKeys || []; }
   entry.pushed = remoteHashes(found, labels); entry.pulled = {};
   entry.local = { ...(local || {}) };
 }
 
-/** Scope guard: updates and comments only to mapped items of the current scope; parents must be mapped too. */
-function scopeViolation(op, map, scopeKey) {
+function localHashes(r) { return { title: hashValue(r.title), body: hashValue(String(r.id).startsWith('G-') ? goalBody(r) : taskBody(r)) }; }
+
+/** Records with a tracker_ref that still need a map entry (§21.3.6), pushed kinds only. */
+function refRecords(c, goals, tasks, map) {
+  const pushKinds = c.t.push_kinds || DEFAULT_PUSH_KINDS;
+  const byId = new Map(goals.map((g) => [g.id, g]));
+  const open = (r) => !['draft', 'cancelled'].includes(r.status) && hasRef(r) && !(entryFor(map, r.id) || {}).remoteId;
+  return [...goals.filter((g) => pushedGoal(g) && open(g)), ...tasks.filter((x) => pushedTask(x, byId.get(x.goal_id), pushKinds) && open(x))];
+}
+
+/** Link records that carry a tracker_ref to their tracker item: a map entry, never a create. Reads only. */
+async function linkRefs(c, st, map, adapter, recs, tc, known, summary, now) {
+  const idx = byRemote(map);
+  let n = 0;
+  for (const r of recs) {
+    const ref = refOf(r);
+    if (ref.provider && ref.provider !== c.provider) continue;
+    const rid = String(ref.remote_id);
+    if (idx.has(rid)) { audit(c.home, { tick: st.tick_count, dir: 'push', op: 'link', localId: r.id, remoteKey: ref.key || null, result: 'skipped', reason: `already linked to ${idx.get(rid)}`, fields: [] }, now()); continue; }
+    if (++n > 20 || typeof adapter.getItem !== 'function') break;
+    let item = null;
+    try { item = await adapter.getItem(rid, ref.kind === 'project' ? 'project' : 'issue'); } catch (e) {
+      if (e.rateLimited || NETWORK_FAIL(e.status)) throw e;
+      audit(c.home, { tick: st.tick_count, dir: 'push', op: 'link', localId: r.id, remoteKey: ref.key || null, result: 'not_found', reason: e.message, fields: [] }, now());
+      continue;
+    }
+    if (!item) continue;
+    const teams = item.kind === 'project' ? item.teamKeys || [] : [item.teamKey];
+    const allowed = new Set(tc.teamList.map((x) => String(x.key).toUpperCase()));
+    if (!teams.some((k) => k && allowed.has(String(k).toUpperCase()))) {
+      const id = raise(c.home, st, known, { type: 'sync.scope_blocked', payload: { local_id: r.id, op: 'link', reason: `${item.key} is in a team that is not configured` }, key: sha(`scope\nlink\n${r.id}\n${rid}`).slice(0, 40), provider: c.provider });
+      if (id) summary.requests.push(id);
+      continue;
+    }
+    linkFound(c, st, map, r.id, item, localHashes(r), now());
+    const e = entryFor(map, r.id);
+    e.linked = true;
+    if (item.kind !== 'project') e.remoteStatusType = item.statusType || null;
+    if (tc.cyclesTracker && String(r.id).startsWith('T-') && item.kind === 'issue') { e.remoteCycle = item.cycleId || null; e.local.cycleRef = r.cycle ? factoryCycleFor(tc.cycles, item.cycleId) : null; } // a set cycle is pushed, a null one never clears the tracker
+    idx.set(rid, r.id);
+    audit(c.home, { tick: st.tick_count, dir: 'push', op: 'link', localId: r.id, remoteKey: item.key, result: 'ok', fields: ['tracker_ref'] }, now());
+  }
+}
+
+/** Tracker cycles (§21.6.2) as the tracker.cycles payload. */
+function cyclesPayload(byKey) {
+  const teams = {};
+  for (const [k, v] of Object.entries(byKey || {})) teams[String(k).toUpperCase()] = { current: v.current || null, next: v.next || null };
+  return { teams };
+}
+
+function cyclesRequest(payload) {
+  return { type: 'tracker.cycles', payload, needs_confirmation: false, auto_apply: true, key: `cycles:${sha(JSON.stringify(payload)).slice(0, 32)}`, track: null };
+}
+
+/** sync/snapshot.json (§21.3.8). Titles that trip the privacy scan are hidden. */
+function writeSnapshot(home, snap, tc, now) {
+  const teams = {};
+  for (const t of tc.teamList) {
+    const s = snap[t.key] || snap[String(t.key).toUpperCase()];
+    if (!s) continue;
+    teams[String(t.key).toUpperCase()] = {
+      name: t.name || t.key, counts: s.counts,
+      in_progress: (s.in_progress || []).slice(0, 20).map((x) => { const hit = scan(x.title); return { ...x, title: hit.length ? `(title hidden: ${hit.join(', ')})` : String(x.title).slice(0, 200) }; }),
+      cycle: s.cycle || null, ...(s.truncated ? { truncated: true } : {}),
+    };
+  }
+  writeJsonAtomic(join(home, 'sync', 'snapshot.json'), { v: 1, at: nowIso(now), teams });
+}
+
+/**
+ * Scope guard: updates and comments only to mapped items of the current scope; parents must be mapped too.
+ * Multi-team (§21.3.4): an op is blocked only when its team (or its entry's team) is not a configured key.
+ */
+function scopeViolation(op, map, scopeKey, tc = null) {
+  const multi = !!(tc && tc.multi);
+  const teamOk = (k) => !k || tc.keys.has(String(k).toUpperCase());
+  if (multi) {
+    if (op.payload && op.payload.team && !teamOk(op.payload.team)) return `team ${op.payload.team} is not a configured tracker team`;
+    const bad = ((op.payload && op.payload.teams) || []).find((k) => !teamOk(k));
+    if (bad) return `team ${bad} is not a configured tracker team`;
+  }
   if (op.type === 'ensure_label') return null;
   const idx = byRemote(map);
   const check = (rid) => {
@@ -226,10 +432,17 @@ function scopeViolation(op, map, scopeKey) {
     const lid = idx.get(String(rid));
     if (!lid) return 'target is not a mapped item';
     const e = entryFor(map, lid);
+    if (multi) {
+      if (e.kind === 'project') return (e.teams || []).length && !(e.teams || []).some(teamOk) ? `target belongs to teams ${e.teams.join(',')}` : null;
+      const team = entryTeam(e);
+      if (team && !teamOk(team)) return `target belongs to team ${team}`;
+      if (!team && e.scopeKey && e.scopeKey !== scopeKey) return `target belongs to ${e.scopeKey}`;
+      return null;
+    }
     if (e.scopeKey && e.scopeKey !== scopeKey) return `target belongs to ${e.scopeKey}`;
     return null;
   };
-  if (op.type === 'create_item') return check(op.payload.parentRemoteId);
+  if (op.type === 'create_item') return check(op.payload.parentRemoteId) || check(op.payload.projectId);
   if (!op.remoteId) return 'no target';
   return check(op.remoteId) || (op.type === 'set_parent' ? check(op.payload.parentRemoteId) : null);
 }
@@ -257,10 +470,20 @@ export async function syncTick({ projectDir, mode = 'delta' } = {}, deps = {}) {
   if (st.backoff_until && Date.parse(st.backoff_until) > now()) return { lines: [`SYNC backoff until ${st.backoff_until}`], summary: null };
   st.tick_count = (st.tick_count || 0) + 1;
   const scopeKey = scopeKeyOf(c.provider, c.t.scope, c.cfg, env);
-  if ((st.scope_key && st.scope_key !== scopeKey) || (st.provider && st.provider !== c.provider)) {
-    st.first_sync_approved = false; st.preview = null; st.cursor = null; st._reset_approval = true; st.discovery = null; st.status_map = null; st.first_push_done = false;
+  // Only this function changes scope_key. Approval stays only while every team it covered is still configured:
+  // single X -> teams keeps it when X is configured; adding a team keeps it; dropping one resets it (§21.3.4).
+  const configuredNow = scopeKey === 'linear:teams' ? configuredKeys(c.cfg) : [];
+  const prevTeam = /^linear:team:([^:]+)$/.exec(st.scope_key || '');
+  let prevTeams = null;
+  if (st.scope_key === 'linear:teams') prevTeams = Array.isArray(st.scope_teams) ? st.scope_teams : ['?'];
+  else if (prevTeam && scopeKey === 'linear:teams') prevTeams = [prevTeam[1].toUpperCase()];
+  const kept = st.scope_key === scopeKey || (scopeKey === 'linear:teams' && prevTeams !== null);
+  const dropped = prevTeams !== null && scopeKey === 'linear:teams' && !prevTeams.every((k) => configuredNow.includes(k));
+  if ((st.scope_key && (!kept || dropped)) || (st.provider && st.provider !== c.provider)) {
+    st.first_sync_approved = false; st.preview = null; st.cursor = null; st._reset_approval = true; st.discovery = null; st.status_map = null; st.status_maps = null; st.first_push_done = false;
   }
   st.scope_key = scopeKey; st.provider = c.provider;
+  if (scopeKey === 'linear:teams') st.scope_teams = configuredNow; else delete st.scope_teams;
   const map = loadMap(home);
   map.tracker = c.provider; map.scopeKey = scopeKey;
   const summary = { pulled: 0, pushed: 0, requests: [], conflicts: 0, health: st.health, planned: 0 };
@@ -278,6 +501,8 @@ export async function syncTick({ projectDir, mode = 'delta' } = {}, deps = {}) {
   const labels = trackerLabels(c.t);
   const known = knownKeys(home, st);
   const { goals, tasks, epics } = localData(home);
+  const tc = teamCtx(c, st);
+  if (tc.multi && st.discovery && (st.discovery.missing || []).length) lines.push(`teams not found in the tracker: ${st.discovery.missing.join(', ')}`);
   let extraOps = [];
 
   // 1. requests resolved since the last tick
@@ -287,28 +512,53 @@ export async function syncTick({ projectDir, mode = 'delta' } = {}, deps = {}) {
   const full = mode === 'full' || !st.cursor || ((st.tick_count - (st.last_full_tick || 0)) >= (c.cfg.sync.full_every_ticks || 30));
   if (!networkFail) {
     try {
-      const mapped = allEntries(map).filter(([, e]) => e.remoteId && !e.unlinked).map(([, e]) => String(e.remoteId));
-      const pulled = await adapter.pull({ cursor: st.first_sync_approved ? st.cursor : null, scope: adapterScope(c.provider, c.t, st, c.cfg), mappedRemoteIds: mapped, full: full || !st.first_sync_approved, intakeLabel: labels.intake });
+      const mapped = mappedIds(map);
+      const pulled = await adapter.pull({ cursor: st.first_sync_approved ? st.cursor : null, scope: adapterScope(c.provider, c.t, st, c.cfg), mappedRemoteIds: mapped.issues, mappedProjectIds: mapped.projects, full: full || !st.first_sync_approved, intakeLabel: labels.intake, ...pullExtras(c, tc) });
       summary.pulled = pulled.items.length;
       if (st.first_sync_approved) {
-        const plan = planPull({ items: pulled.items, comments: pulled.comments, missing: pulled.missing, map, goals, tasks, statusMap, tracker: c.t, provider: c.provider, scopeKey, full });
+        const plan = planPull({ items: pulled.items, comments: pulled.comments, missing: pulled.missing, map, goals, tasks, statusMap, tracker: c.t, provider: c.provider, scopeKey, full,
+          multi: tc.multi, keys: tc.keys, statusMapFor: tc.statusMapFor, cfg: c.cfg, streams: streamCtx(c), projectIntake: c.provider === 'linear' && c.t.goal_mapping === 'project', cyclesTracker: tc.cyclesTracker, cycles: tc.cycles });
         for (const l of plan.logs) audit(home, { tick: st.tick_count, ...l });
         summary.conflicts = plan.requests.filter((r) => r.type === 'tracker.conflict').length;
-        summary.requests = raiseAll(c, st, map, plan.requests, known, modeName);
+        summary.requests = raiseAll(c, st, map, plan.requests, known, modeName, { full });
         st.cursor = pulled.nextCursor;
+        if (pulled.truncated) { lines.push('delta pull hit its page cap; the cursor stays so nothing is skipped'); audit(home, { tick: st.tick_count, dir: 'pull', op: 'delta_truncated', result: 'logged', fields: [] }); }
         if (full) st.last_full_tick = st.tick_count;
       }
       st.last_pull_at = nowIso(now());
     } catch (e) { networkFail = e; }
   }
 
+  // 2b. full pull extras (Linear): tracker cycles (§21.6.2) and the team snapshot (§21.3.8). Best effort: reads only.
+  if (!networkFail && full && modeName !== 'dry_run' && c.provider === 'linear' && tc.teamList.length) {
+    if (tc.cyclesTracker && st.first_sync_approved && typeof adapter.cycles === 'function') {
+      try {
+        const ids = raiseAll(c, st, map, [cyclesRequest(cyclesPayload(await adapter.cycles(tc.teamList.map((x) => x.id))))], known, modeName);
+        summary.requests.push(...ids);
+      } catch (e) { audit(home, { tick: st.tick_count, dir: 'pull', op: 'cycles', result: 'error', reason: e.message, fields: [] }); }
+    }
+    const snapDue = !st.snapshot_at || now() - Date.parse(st.snapshot_at) >= 10 * 60_000 || mode === 'full';
+    if ((c.cfg.baseline || {}).enabled !== false && snapDue && typeof adapter.snapshot === 'function') {
+      try { writeSnapshot(home, await adapter.snapshot(tc.teamList.map((x) => ({ id: x.id, key: x.key }))), tc, now()); st.snapshot_at = nowIso(now()); } catch (e) {
+        audit(home, { tick: st.tick_count, dir: 'pull', op: 'snapshot', result: 'error', reason: e.message, fields: [] });
+      }
+    }
+  }
+
   // 3. push
   const pushModes = ['two_way', 'push_only', 'dry_run'];
   if (!networkFail && st.first_sync_approved && pushModes.includes(modeName)) {
-    let ops = [...extraOps, ...planPush({ tracker: c.t, statusMap, map, goals, tasks, epics, handoffs: handoffsFor(home, tasks, map), knownLabels: new Set([...(st.discovery ? st.discovery.labels || [] : []), ...(st.labels_known || [])].map((x) => String(x).toLowerCase())), provider: c.provider, scopeKey })];
+    const refs = refRecords(c, goals, tasks, map);
+    if (refs.length && modeName !== 'dry_run') {
+      try { await linkRefs(c, st, map, adapter, refs, tc, known, summary, now); } catch (e) { networkFail = e; }
+    }
+  }
+  if (!networkFail && st.first_sync_approved && pushModes.includes(modeName)) {
+    let ops = [...extraOps, ...planPush({ tracker: c.t, statusMap, map, goals, tasks, epics, handoffs: handoffsFor(home, tasks, map), knownLabels: new Set([...(st.discovery ? st.discovery.labels || [] : []), ...(st.labels_known || [])].map((x) => String(x).toLowerCase())), provider: c.provider, scopeKey,
+      multi: tc.multi, keys: tc.keys, cfg: c.cfg, statusMapFor: tc.statusMapFor, knownLabelsFor: tc.knownLabelsFor, cyclesTracker: tc.cyclesTracker, cycles: tc.cycles })];
     // scope guard
     ops = ops.filter((op) => {
-      const why = scopeViolation(op, map, scopeKey);
+      const why = scopeViolation(op, map, scopeKey, tc);
       if (!why) return true;
       audit(home, { tick: st.tick_count, dir: 'push', op: op.type, localId: op.localId, result: 'scope_blocked', reason: why, fields: [] });
       const id = raise(home, st, known, { type: 'sync.scope_blocked', payload: { local_id: op.localId, op: op.type, reason: why }, key: sha(`scope\n${op.opId}`).slice(0, 40), provider: c.provider });
@@ -326,7 +576,7 @@ export async function syncTick({ projectDir, mode = 'delta' } = {}, deps = {}) {
       return false;
     });
     // bulk guard (the approved first-sync preview counts as the bulk approval)
-    const counts = bulkCounts(ops, statusMap);
+    const counts = bulkCounts(ops, statusMap, tc.multi ? [...tc.keys].map((k) => tc.statusMapFor(k)) : []);
     const maxOps = c.t.max_ops_before_confirm ?? 50;
     if (st.first_push_done && !st.bulk_approved && (counts.total > maxOps || counts.closing > 5)) {
       const id = raise(home, st, known, { type: 'sync.bulk_confirm', payload: { ops: counts.total, closing: counts.closing, limit: maxOps }, needs_confirmation: true,
@@ -400,7 +650,7 @@ async function drain(c, st, map, adapter, ops, summary, { now, sleep, deadline }
       if (entry.remoteId) { done.add(e.opId); continue; }
       if (entry.pendingCreate || !st.first_push_done) {
         try {
-          const found = await adapter.findByLocalId(op.localId);
+          const found = await adapter.findByLocalId(op.localId, { kind: op.kind });
           if (found && findSfId(found.body || found.bodyText) === op.localId) {
             linkFound(c, st, map, op.localId, found, op.local, now());
             done.add(e.opId); saveMap(home, map);
@@ -466,12 +716,14 @@ async function rebuildMap(c, st, deps, { now, env }) {
   } catch (e) { return { lines: [`ERROR ${String(e.message || e).slice(0, 150)}`], summary: null }; }
   const { goals, tasks } = localData(c.home);
   const pushKinds = c.t.push_kinds || DEFAULT_PUSH_KINDS;
-  const todo = [...goals.filter((g) => g.status !== 'draft'), ...tasks.filter((x) => pushKinds.includes(x.kind) && x.status !== 'draft')]
+  const byId = new Map(goals.map((g) => [g.id, g]));
+  const projectMode = c.provider === 'linear' && c.t.goal_mapping === 'project';
+  const todo = [...goals.filter((g) => pushedGoal(g) && g.status !== 'draft'), ...tasks.filter((x) => pushedTask(x, byId.get(x.goal_id), pushKinds) && x.status !== 'draft')]
     .filter((r) => !(entryFor(map, r.id) || {}).remoteId).slice(0, 60);
   let linked = 0; let err = null;
   for (const r of todo) {
     try {
-      const found = await adapter.findByLocalId(r.id);
+      const found = await adapter.findByLocalId(r.id, { kind: projectMode && r.id.startsWith('G-') ? 'project' : r.id.startsWith('G-') ? 'goal' : 'task' });
       if (found && findSfId(found.body || found.bodyText) === r.id) {
         linkFound(c, st, map, r.id, found, { title: hashValue(r.title), body: hashValue(r.id.startsWith('G-') ? goalBody(r) : taskBody(r)) }, now());
         linked += 1;
@@ -496,36 +748,69 @@ export async function preview({ projectDir } = {}, deps = {}) {
   st.scope_key = st.scope_key || scopeKey;
   let adapter = createAdapter(c.provider, adapterScope(c.provider, c.t, st, c.cfg), { env, fetch: deps.fetch, ghExec: deps.ghExec, now });
   let pulled = { items: [] };
+  let tc;
   try {
     await ensureDiscovery(c, st, adapter);
     adapter = createAdapter(c.provider, adapterScope(c.provider, c.t, st, c.cfg), { env, fetch: deps.fetch, ghExec: deps.ghExec, now });
-    pulled = await adapter.pull({ cursor: null, scope: adapterScope(c.provider, c.t, st, c.cfg), mappedRemoteIds: [], full: true, intakeLabel: trackerLabels(c.t).intake });
+    tc = teamCtx(c, st);
+    pulled = await adapter.pull({ cursor: null, scope: adapterScope(c.provider, c.t, st, c.cfg), mappedRemoteIds: [], full: true, intakeLabel: trackerLabels(c.t).intake, ...pullExtras(c, tc) });
   } catch (e) { return { lines: [`ERROR ${String(e.message || e).slice(0, 150)}`] }; }
   const map = loadMap(home);
-  const { goals, tasks } = localData(home);
+  const { goals, tasks, epics } = localData(home);
   const labels = trackerLabels(c.t);
   const pushKinds = c.t.push_kinds || DEFAULT_PUSH_KINDS;
+  const goalsById = new Map(goals.map((g) => [g.id, g]));
+  const epicsById = new Map(epics.map((e) => [e.id, e]));
+  const projectMode = c.provider === 'linear' && c.t.goal_mapping === 'project';
+  const unmapped = (r) => !(entryFor(map, r.id) || {}).remoteId;
+  const live = (r) => !['draft', 'cancelled'].includes(r.status);
+  const goalsOut = goals.filter((g) => pushedGoal(g) && live(g) && unmapped(g));
+  const tasksOut = tasks.filter((x) => pushedTask(x, goalsById.get(x.goal_id), pushKinds) && live(x) && unmapped(x));
   const creates = [
-    ...goals.filter((g) => !['draft', 'cancelled'].includes(g.status) && !(entryFor(map, g.id) || {}).remoteId).map((g) => `${g.id} goal: ${g.title}`),
-    ...tasks.filter((x) => pushKinds.includes(x.kind) && !['draft', 'cancelled'].includes(x.status) && !(entryFor(map, x.id) || {}).remoteId).map((x) => `${x.id} ${x.kind}: ${x.title}`),
+    ...goalsOut.filter((g) => !hasRef(g)).map((g) => `${g.id} ${projectMode ? 'project' : 'goal'}: ${g.title}`),
+    ...tasksOut.filter((x) => !hasRef(x)).map((x) => `${x.id} ${x.kind}${tc.multi ? ` (${taskKey(c.cfg, x, { goal: goalsById.get(x.goal_id), epic: epicsById.get(x.epic_id) })})` : ''}: ${x.title}`),
   ];
-  const knownLabels = new Set(((st.discovery && st.discovery.labels) || []).map((x) => String(x).toLowerCase()));
-  const roles = [...new Set(tasks.filter((x) => pushKinds.includes(x.kind) && x.status !== 'draft').map((x) => `${labels.rolePrefix}${x.role}`))];
-  const newLabels = [labels.managed, ...(c.provider === 'github' ? [labels.goal] : []), ...roles].filter((l) => !knownLabels.has(l.toLowerCase()));
+  const links = [...goalsOut, ...tasksOut].filter(hasRef).map((r) => `${r.id} -> ${refOf(r).key || refOf(r).remote_id}`);
+  let newLabels;
+  if (tc.multi) {
+    const need = new Set();
+    if (!projectMode) for (const g of goalsOut.filter((x) => !hasRef(x))) need.add(`${goalKeys(c.cfg, g)[0]}\n${labels.managed}`);
+    for (const x of tasks.filter((t) => pushedTask(t, goalsById.get(t.goal_id), pushKinds) && t.status !== 'draft')) {
+      const k = taskKey(c.cfg, x, { goal: goalsById.get(x.goal_id), epic: epicsById.get(x.epic_id) });
+      need.add(`${k}\n${labels.managed}`); need.add(`${k}\n${labels.rolePrefix}${x.role}`);
+    }
+    newLabels = [...need].map((s) => s.split('\n')).filter(([k, n]) => !tc.knownLabelsFor(k).has(n.toLowerCase())).map(([k, n]) => `${k}: ${n}`);
+  } else {
+    const knownLabels = new Set(((st.discovery && st.discovery.labels) || []).map((x) => String(x).toLowerCase()));
+    const roles = [...new Set(tasks.filter((x) => pushedTask(x, goalsById.get(x.goal_id), pushKinds) && x.status !== 'draft').map((x) => `${labels.rolePrefix}${x.role}`))];
+    newLabels = [labels.managed, ...(c.provider === 'github' ? [labels.goal] : []), ...roles].filter((l) => !knownLabels.has(l.toLowerCase()));
+  }
   const localIds = new Set([...goals, ...tasks].map((r) => r.id));
-  const relinks = []; const intake = [];
+  const relinks = [];
   for (const it of pulled.items) {
     const sf = findSfId(typeof it.body === 'string' ? it.body : it.bodyText);
     if (sf && localIds.has(sf)) relinks.push(`${sf} -> ${it.key}`);
-    else if (!sf && (it.labels || []).some((l) => String(l).toLowerCase() === labels.intake.toLowerCase())) intake.push(`${it.key} ${it.title}`);
   }
-  const sm = statusMapFor(c.t, st) || {};
+  // intake, stream items and project intake: the same rules as a pull (planPull on a copy of the map)
+  const plan = planPull({ items: pulled.items, comments: [], missing: [], map: structuredClone(map), goals, tasks, statusMap: statusMapFor(c.t, st), tracker: c.t, provider: c.provider, scopeKey, full: true,
+    multi: tc.multi, keys: tc.keys, statusMapFor: tc.statusMapFor, cfg: c.cfg, streams: streamCtx(c), projectIntake: projectMode, cyclesTracker: false, cycles: tc.cycles });
+  const intake = plan.requests.filter((r) => r.type === 'tracker.intake' && r.payload.kind !== 'project').map((r) => `${r.payload.key} ${r.payload.title}`);
+  const projectIntake = plan.requests.filter((r) => r.type === 'tracker.intake' && r.payload.kind === 'project').map((r) => `${r.payload.title} (${r.payload.teams.join(', ')})`);
+  const streamItems = plan.requests.filter((r) => r.type === 'tracker.backlog_item').map((r) => `${r.payload.key} [${r.payload.class}] ${r.payload.title}`);
+  const streams = streamCtx(c);
+  const statusLinesFor = (sm) => MAP_KEYS.map((k) => `- ${k} -> ${sm[k] ? `${sm[k].name} (${sm[k].type || 'state'})` : 'not mapped (no status push)'}`);
+  const statusSection = tc.multi
+    ? [...tc.keys].flatMap((k) => [`## Status map ${k}`, ...statusLinesFor(statusMapFor(c.t, st, k) || {}), ''])
+    : ['## Status map', ...statusLinesFor(statusMapFor(c.t, st) || {}), ''];
   const body = [
-    `Tracker: ${c.provider} (${scopeKey}); mode ${c.t.mode || 'two_way'}`, '',
+    `Tracker: ${c.provider} (${scopeKey}); mode ${c.t.mode || 'two_way'}`, ...(tc.multi ? [`Teams: ${[...tc.keys].join(', ')}${projectMode ? '; goals are Linear projects' : ''}`] : []), '',
     `## Items to create (${creates.length})`, ...creates.slice(0, 60).map((x) => `- ${x}`), ...(creates.length > 60 ? [`- ... and ${creates.length - 60} more`] : []), '',
+    ...(links.length ? [`## Records to link, not create (${links.length})`, ...links.slice(0, 40).map((x) => `- ${x}`), ''] : []),
     `## Labels to create (${newLabels.length})`, ...newLabels.map((x) => `- ${x}`), '',
-    '## Status map', ...MAP_KEYS.map((k) => `- ${k} -> ${sm[k] ? `${sm[k].name} (${sm[k].type || 'state'})` : 'not mapped (no status push)'}`), '',
+    ...statusSection,
     `## Intake candidates labelled ${labels.intake} (${intake.length})`, ...intake.slice(0, 20).map((x) => `- ${x}`), '',
+    ...(streams ? [`## Stream items (streams.pull ${streams.mode}) (${streamItems.length})`, ...streamItems.slice(0, 30).map((x) => `- ${x}`), ''] : []),
+    ...(projectMode ? [`## Project intake candidates labelled ${labels.intake} (${projectIntake.length})`, ...projectIntake.slice(0, 20).map((x) => `- ${x}`), ''] : []),
     `## Existing items to re-link by footer (${relinks.length})`, ...relinks.slice(0, 20).map((x) => `- ${x}`), '',
     'Nothing is ever deleted in the tracker. Approve with /software-factory:sync --approve-preview, or approve the tracker gate in the control center.',
   ].join('\n');
@@ -533,6 +818,7 @@ export async function preview({ projectDir } = {}, deps = {}) {
   writeTextAtomic(join(home, 'sync', 'preview.md'), `# Tracker sync preview\n\nPreview id: ${id}\n\n${body}\n`);
   st.preview = { id, at: nowIso(now()), creates: creates.length, labels: newLabels.length };
   const lines = [`PREVIEW ${id} written to .factory/sync/preview.md`, `create ${creates.length} items, ${newLabels.length} labels; ${intake.length} intake candidates; ${relinks.length} re-links`];
+  if (links.length || streams || projectMode) lines.push(`link ${links.length} records; ${streams ? streamItems.length : 0} stream items; ${projectIntake.length} project intake candidates`);
   if (st.first_sync_approved) lines.push('first sync is already approved');
   else {
     const known = knownKeys(home, st);
@@ -560,7 +846,10 @@ export async function applyPreview({ projectDir, previewId } = {}, deps = {}) {
   return { lines: [`APPROVED first sync (preview ${st.preview.id}). The next factory tick creates ${st.preview.creates ?? 0} items.`] };
 }
 
-/** Discovery for setup: credentials check, scope lookup, proposed status map. */
+/**
+ * Discovery for setup: credentials check, scope lookup, proposed status map. Linear also takes
+ * scopeHint.list_teams (every team with its parent) and scopeHint.team_keys (per-team discovery, §21.3.9).
+ */
 export async function discover({ projectDir, tracker, scopeHint } = {}, deps = {}) {
   const env = deps.env || process.env;
   const now = clock(deps);
@@ -571,6 +860,7 @@ export async function discover({ projectDir, tracker, scopeHint } = {}, deps = {
   let hint = scopeHint || t.scope || {};
   if (typeof hint === 'string') hint = provider === 'linear' ? { team_key: hint } : provider === 'jira' ? { project_key: hint } : (() => { const [owner, repo] = hint.split('/'); return { owner, repo }; })();
   try { guardLines(provider, t, env, deps); } catch (e) { if (e instanceof Stop) return { lines: e.lines }; throw e; }
+  if (provider === 'linear' && (hint.list_teams === true || Array.isArray(hint.team_keys))) return discoverTeams({ home, cfg, hint, env, deps, now });
   let d;
   try {
     const scope = provider === 'github' ? { ...githubRepo(hint, cfg) } : hint;
@@ -585,8 +875,7 @@ export async function discover({ projectDir, tracker, scopeHint } = {}, deps = {
   if (home) {
     updateState(home, (st) => {
       storeDiscovery(st, { provider }, d);
-      st.status_map = sm;
-      st.scope_key = scopeKeyOf(provider, hint, cfg, env);
+      st.status_map = sm; // scope_key is set by the next sync tick, which applies the approval rules
     });
   }
   const unmapped = MAP_KEYS.filter((k) => !sm[k]);
@@ -597,6 +886,43 @@ export async function discover({ projectDir, tracker, scopeHint } = {}, deps = {
     `states found: ${(d.states || []).length}; labels found: ${(d.labels || []).length}`,
     'Set tracker.status to "ready". The first sync is preview only: /software-factory:sync --preview',
   ] };
+}
+
+async function discoverTeams({ home, cfg, hint, env, deps, now }) {
+  const adapter = createAdapter('linear', {}, { env, fetch: deps.fetch, now });
+  if (hint.list_teams === true) {
+    let d;
+    try { d = await adapter.discover({ list_teams: true }); } catch (e) { return { lines: [`ERROR ${String(e.message || e).slice(0, 150)}`] }; }
+    const teams = d.scopes || [];
+    const lines = [`TEAMS ${teams.length}`, ...teams.map((s) => `TEAM ${s.key} ${s.name} parent=${s.parentKey || '-'} id=${s.id}`)];
+    return { lines, maxLines: lines.length };
+  }
+  const keys = [...new Set(hint.team_keys.map((k) => String(k || '').trim().toUpperCase()).filter(Boolean))];
+  let d;
+  try { d = await adapter.discover({ team_keys: keys }); } catch (e) { return { lines: [`ERROR ${String(e.message || e).slice(0, 150)}`] }; }
+  const avail = `available: ${(d.scopes || []).slice(0, 30).map((s) => s.key).join(', ') || 'none'}`;
+  if (!keys.length) return { lines: ['SCOPE_NOT_FOUND (none given)', avail] };
+  if ((d.missing || []).length) return { lines: [`SCOPE_NOT_FOUND ${d.missing[0]}`, avail] };
+  const st = home ? readState(home) : null;
+  const scratch = st || {};
+  storeMultiDiscovery(scratch, { provider: 'linear' }, d, keys);
+  const lines = [`READY linear ${d.teams.length} teams (${d.teams.map((x) => x.key).join(', ')})`];
+  for (const x of d.teams) {
+    const sm = scratch.status_maps[String(x.key).toUpperCase()] || {};
+    const unmapped = MAP_KEYS.filter((k) => !sm[k]);
+    const cyc = x.cycles && x.cycles.current ? `cycle ${x.cycles.current.number}` : 'no active cycle';
+    lines.push(`${x.key} ${x.name}: ${x.states.length} states, ${x.labels.length} labels, ${cyc}${unmapped.length ? `; not mapped: ${unmapped.join(', ')}` : ''}`);
+  }
+  lines.push(`signed in as ${d.viewer && d.viewer.handle ? d.viewer.handle : 'unknown'}`);
+  lines.push('Set tracker.status to "ready". The first sync is preview only: /software-factory:sync --preview');
+  if (home) {
+    if (cfg && cyclesFromTracker({ ...cfg, tracker: { ...(cfg.tracker || {}), provider: 'linear' } })) {
+      const payload = cyclesPayload(Object.fromEntries(d.teams.map((x) => [x.key, x.cycles || {}])));
+      raise(home, st, knownKeys(home, st), { ...cyclesRequest(payload), provider: 'linear' });
+    }
+    saveState(home, st);
+  }
+  return { lines, maxLines: lines.length };
 }
 
 /** Health check, no network. */

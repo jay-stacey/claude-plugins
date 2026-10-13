@@ -10,10 +10,10 @@ export function emptyIndex() {
 
 function entry(kind, rec) {
   switch (kind) {
-    case 'goal': return { status: rec.status, title: rec.title, priority: rec.priority };
+    case 'goal': return { status: rec.status, title: rec.title, priority: rec.priority, kind: rec.kind || 'goal' };
     case 'epic': return { goal_id: rec.goal_id, status: rec.status, repo: rec.repo || null };
     case 'task': return {
-      goal_id: rec.goal_id, epic_id: rec.epic_id, repo: rec.repo || null, status: rec.status, role: rec.role, kind: rec.kind,
+      goal_id: rec.goal_id, epic_id: rec.epic_id, repo: rec.repo || null, team: rec.team || null, status: rec.status, role: rec.role, kind: rec.kind,
       priority: rec.priority, depends_on: rec.depends_on, gate_deps: rec.gate_deps, files_owned: rec.files_owned,
       current_run_id: rec.current_run_id, updated_at: rec.updated_at,
     };

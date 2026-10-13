@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { readLines } from './fsutil.mjs';
 import * as store from './store.mjs';
-import { validateHandoffShape } from './schema.mjs';
+import { validateHandoffShape, proposalErrors } from './schema.mjs';
+import { load as loadConfig } from './config.mjs';
 import { BRANCH_KINDS, EPIC_CHECK_KINDS } from './roles.mjs';
 
 export function evidenceIds(home, runId) {
@@ -70,6 +71,11 @@ export function validateHandoff(home, file, { run = null } = {}) {
   }
   if (h.risk_flags !== undefined && !(Array.isArray(h.risk_flags) && h.risk_flags.every((x) => typeof x === 'string'))) {
     errors.push('risk_flags: must be an array of strings');
+  }
+  if (h.proposals !== undefined) { // CTO report and assess proposals (contracts §21.7.4)
+    let max = 5;
+    try { const m = Number(loadConfig(home).reports.max_proposals); if (Number.isFinite(m)) max = m; } catch { /* default */ }
+    errors.push(...proposalErrors(h.proposals, max));
   }
   return { ok: errors.length === 0, errors, handoff: h, run, task };
 }

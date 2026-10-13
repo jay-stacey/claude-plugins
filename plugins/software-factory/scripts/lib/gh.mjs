@@ -88,6 +88,25 @@ export function prView({ cwd, number } = {}) {
   };
 }
 
+/**
+ * Open pull requests (contracts §21.5.3): `gh pr list --state open --limit <n> --json
+ * number,title,url,headRefName,author,isDraft,reviewDecision,updatedAt,files`. Throws on failure.
+ */
+export function prList({ cwd, limit = 30 } = {}) {
+  const r = gh(['pr', 'list', '--state', 'open', '--limit', String(limit), '--json',
+    'number,title,url,headRefName,author,isDraft,reviewDecision,updatedAt,files'], { cwd });
+  if (r.missing) throw fail('gh not found on PATH', r);
+  if (r.code !== 0) throw fail(`gh pr list failed: ${(r.stderr || r.stdout || '').split('\n')[0]}`, r);
+  let data;
+  try { data = JSON.parse(r.stdout || '[]'); } catch { throw fail('gh pr list returned invalid JSON', r); }
+  return (Array.isArray(data) ? data : []).map((p) => ({
+    number: p.number ?? null, title: p.title || '', url: p.url || '', headRefName: p.headRefName || '',
+    author: (p.author && (p.author.login || p.author.name)) || (typeof p.author === 'string' ? p.author : null),
+    isDraft: !!p.isDraft, reviewDecision: p.reviewDecision || null, updatedAt: p.updatedAt || null,
+    files: Array.isArray(p.files) ? p.files.map((f) => (typeof f === 'string' ? f : f && f.path)).filter(Boolean) : [],
+  }));
+}
+
 /** `git push -u <remote> <branch>` (git, not gh). */
 export function push({ cwd, remote = 'origin', branch } = {}) {
   const r = git(['push', '-u', remote, branch], { cwd });

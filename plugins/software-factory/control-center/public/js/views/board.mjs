@@ -1,21 +1,24 @@
 // Board: epic strip + kanban columns + task detail drawer.
 import { html, useMemo, useState } from '../html.mjs';
 import {
-  Avatar, GateBadges, Meter, SideBadge, Tag, Icon, PrLink, Drawer, ArtifactButton, openArtifact, RepoChip,
+  Avatar, GateBadges, Meter, SideBadge, Tag, Icon, PrLink, Drawer, ArtifactButton, openArtifact, RepoChip, KindBadge, TaskKindTag,
   goalColorClass, roleInfo, useQueueState, QueuedStatus, FieldError, Tokens,
 } from '../components.mjs';
 import { submit } from '../api.mjs';
-import { COLUMNS, SIDE_STATES, columnOf, indexBy, taskMatches, taskGateBadges, epicProgress, isWorkspace } from '../lib/model.mjs';
-import { fmtDuration, fmtTokens, statusWord, timeAgo, fmtDateTime, kindWord } from '../lib/format.mjs';
+import {
+  COLUMNS, SIDE_STATES, columnOf, indexBy, taskMatches, taskGateBadges, epicProgress, isWorkspace, goalKind, inTeam, effectiveStatus, itemStatus, teamName,
+} from '../lib/model.mjs';
+import { fmtDuration, fmtTokens, statusWord, timeAgo, fmtDateTime, kindWord, itemClassWord } from '../lib/format.mjs';
 import { buildHash } from '../router.mjs';
 
 const DONE_LIMIT = 20;
 const PRIO = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const byPriority = (a, b) => (PRIO[a.priority] ?? 9) - (PRIO[b.priority] ?? 9) || String(a.id).localeCompare(String(b.id));
 
-function EpicStrip({ snap, epics, gatesById, goalFilter, repoFilter }) {
+function EpicStrip({ snap, epics, gatesById, goalFilter, repoFilter, teamFilter }) {
   const ws = isWorkspace(snap);
-  const list = epics.filter((e) => e.status !== 'cancelled' && (!goalFilter || e.goal_id === goalFilter) && (!repoFilter || e.repo === repoFilter));
+  const goalsById = indexBy(snap.goals);
+  const list = epics.filter((e) => e.status !== 'cancelled' && (!goalFilter || e.goal_id === goalFilter) && (!repoFilter || e.repo === repoFilter) && inTeam(e, teamFilter));
   if (!list.length) return null;
   return html`<section class="epic-strip" aria-label="Epics">
     <h2 class="sr-only">Epics</h2>
@@ -25,6 +28,7 @@ function EpicStrip({ snap, epics, gatesById, goalFilter, repoFilter }) {
         return html`<li class=${`epic-chip ${goalColorClass(snap, e.goal_id)}`}>
           <div class="epic-top">
             <span class="mono small">${e.id}</span>
+            <${KindBadge} kind=${goalKind(goalsById.get(e.goal_id))} />
             <span class="epic-title" title=${e.title}>${e.title}</span>
             ${ws && html`<${RepoChip} repo=${e.repo} />`}
           </div>
@@ -45,7 +49,9 @@ function EpicStrip({ snap, epics, gatesById, goalFilter, repoFilter }) {
 
 function TaskCard({ task, snap, idx, onOpen }) {
   const ws = isWorkspace(snap);
-  const badges = taskGateBadges(task, idx.goals, idx.epics, idx.gates);
+  const gk = goalKind(idx.goals.get(task.goal_id));
+  const badges = gk === 'goal' ? taskGateBadges(task, idx.goals, idx.epics, idx.gates) : []; // stream and ops goals have no G1 to G4
+  const item = task.kind === 'triage' ? itemStatus(task, idx.epics) : null;
   const epic = task.epic_id ? idx.epics.get(task.epic_id) : null;
   const ev = (task.evidence || [])[task.evidence ? task.evidence.length - 1 : 0];
   const r = roleInfo(snap, task.role);
@@ -57,6 +63,8 @@ function TaskCard({ task, snap, idx, onOpen }) {
     <div class="card-top">
       <span class="mono small">${task.id}</span>
       ${ws && html`<${RepoChip} repo=${task.repo} kind=${task.kind} />`}
+      <${TaskKindTag} kind=${task.kind} />
+      ${task.item && task.item.class && html`<span class="kind-tag" title="Item class">${itemClassWord(task.item.class)}</span>`}
       ${task.status === 'draft' && html`<${Tag} tone="idle" icon="dot">Draft<//>`}
       ${task.status === 'changes_requested' && html`<${Tag} tone="warn" icon="cross">Changes requested<//>`}
       <${SideBadge} status=${task.status} />
@@ -66,7 +74,8 @@ function TaskCard({ task, snap, idx, onOpen }) {
     <div class="card-meta">
       <${Avatar} snap=${snap} role=${task.role} live=${!!task.live} size="sm" />
       <span class="small muted card-role">${r.short}</span>
-      <${GateBadges} badges=${badges} />
+      ${badges.length > 0 && html`<${GateBadges} badges=${badges} />`}
+      ${item && item !== task.status && html`<span class="small muted" title="Item status, from the fix epics">${statusWord(item)}</span>`}
     </div>
     ${task.estimate_tokens > 0 && html`<${Meter} value=${task.tokens || 0} max=${task.estimate_tokens}
       label=${`${Math.round(((task.tokens || 0) / task.estimate_tokens) * 100)}% of ${fmtTokens(task.estimate_tokens)}`} />`}
@@ -148,6 +157,10 @@ function TaskDetail({ task, snap, idx, nowMs }) {
     </p>
     <dl class="kv small">
       <dt>Kind</dt><dd>${kindWord(task.kind) || '-'}${task.size ? `, size ${task.size}` : ''}${task.priority ? `, ${task.priority}` : ''}</dd>
+      ${task.team && html`<dt>Team</dt><dd>${teamName(snap, task.team)}${task.cycle ? `, cycle ${task.cycle}` : ''}</dd>`}
+      ${task.kind === 'triage' && html`<dt>Item</dt><dd>${task.item && task.item.class ? itemClassWord(task.item.class) : 'Item'}${task.item && task.item.reported_by ? `, reported by ${task.item.reported_by}` : ''}.
+        Status: ${statusWord(itemStatus(task, idx.epics))}${(task.item_epic_ids || []).length ? `, fix epics ${task.item_epic_ids.join(', ')}` : ''}</dd>`}
+      ${task.item && task.item.tracker_ref && task.item.tracker_ref.url && html`<dt>Tracker</dt><dd><a href=${task.item.tracker_ref.url} rel="noreferrer" target="_blank">${task.item.tracker_ref.key || 'Open in tracker'}<span class="sr-only"> (opens in a new tab)</span></a></dd>`}
       <dt>Tokens</dt><dd><${Tokens} n=${task.tokens} />${task.estimate_tokens ? html` of <${Tokens} n=${task.estimate_tokens} /> estimate` : ''}</dd>
       <dt>Attempts</dt><dd>${task.attempts || 0} of ${task.max_attempts || 3}${task.rework_count ? `, rework ${task.rework_count}` : ''}</dd>
       ${ws && html`<dt>Repo</dt><dd>${task.repo || (task.kind === 'qa_goal' ? 'All repos of the goal' : '-')}</dd>`}
@@ -193,16 +206,16 @@ export function BoardView({ snap, params, nowMs }) {
   const grouped = useMemo(() => {
     const g = Object.fromEntries(COLUMNS.map((c) => [c.id, []]));
     for (const t of snap.tasks || []) {
-      const c = columnOf(t.status);
+      const c = columnOf(effectiveStatus(t, idx.epics)); // triage items sit under their effective status (contracts 21.4.6)
       if (c && taskMatches(t, params)) g[c].push(t);
     }
     return g;
-  }, [snap.tasks, params.goal, params.role, params.q, params.repo]);
+  }, [snap.tasks, idx.epics, params.goal, params.role, params.q, params.repo, params.team]);
   const total = Object.values(grouped).reduce((n, l) => n + l.length, 0);
   const task = openId ? (snap.tasks || []).find((t) => t.id === openId) : null;
 
   return html`<div class="board">
-    <${EpicStrip} snap=${snap} epics=${snap.epics || []} gatesById=${idx.gates} goalFilter=${params.goal} repoFilter=${params.repo} />
+    <${EpicStrip} snap=${snap} epics=${snap.epics || []} gatesById=${idx.gates} goalFilter=${params.goal} repoFilter=${params.repo} teamFilter=${params.team} />
     <p class="sr-only" role="status">${total} tasks shown</p>
     <div class="board-cols" tabindex="0" aria-label="Task columns, scroll sideways for more">
       ${COLUMNS.map((c) => html`<${Column} key=${c.id} col=${c} tasks=${grouped[c.id]} snap=${snap} idx=${idx} onOpen=${setOpenId} />`)}

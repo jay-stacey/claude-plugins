@@ -32,6 +32,17 @@ if (cmd === 'pr create') {
   process.stdout.write('https://github.com/o/r/pull/42\r\n');
   process.exit(0);
 }
+if (cmd === 'pr list') {
+  if (mode === 'fail') {
+    process.stderr.write('GraphQL: something broke\n');
+    process.exit(1);
+  }
+  const prs = process.env.FAKE_GH_PRS ? JSON.parse(process.env.FAKE_GH_PRS) : [
+    { number: 12, title: 'Fix login', url: 'https://github.com/o/r/pull/12', headRefName: 'fix-login', author: { login: 'dana' }, isDraft: false, reviewDecision: 'REVIEW_REQUIRED', updatedAt: '2026-10-12T09:00:00Z', files: [{ path: 'src/login.js', additions: 3, deletions: 1 }] },
+  ];
+  process.stdout.write(JSON.stringify(prs) + '\r\n');
+  process.exit(0);
+}
 if (cmd === 'pr view') {
   process.stdout.write(JSON.stringify({ state: 'MERGED', mergedAt: '2026-10-12T10:00:00Z', reviewDecision: 'APPROVED', mergeable: 'UNKNOWN', headRefOid: 'abc123' }) + '\r\n');
   process.exit(0);

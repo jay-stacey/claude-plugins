@@ -1,9 +1,9 @@
 // Goals: factory card (pause/resume), goals table (pause/resume/remove), add-goal form.
 import { html, useState } from '../html.mjs';
-import { Icon, Tag, GoalStatus, Meter, Modal, RepoChip, goalColorClass, useQueueState, QueuedStatus, FieldError } from '../components.mjs';
+import { Icon, Tag, GoalStatus, Meter, Modal, RepoChip, KindBadge, goalColorClass, useQueueState, QueuedStatus, FieldError } from '../components.mjs';
 import { submit } from '../api.mjs';
-import { goalSpend, goalRepos, isWorkspace } from '../lib/model.mjs';
-import { timeAgo, fmtDateTime, nextTickText, fmtTokens, statusWord } from '../lib/format.mjs';
+import { goalSpend, goalRepos, isWorkspace, goalKind, goalInTeam, streamItems, teamList, teamName } from '../lib/model.mjs';
+import { timeAgo, fmtDateTime, nextTickText, fmtTokens, statusWord, itemClassWord } from '../lib/format.mjs';
 import { nextTickIn } from '../store.mjs';
 
 const FACTORY = {
@@ -83,6 +83,26 @@ function RemoveModal({ goal, onClose }) {
   <//>`;
 }
 
+// Item status -> tag colour. Words always carry the meaning.
+const ITEM_TONE = { done: 'ok', cancelled: 'idle', in_review: 'info', in_progress: 'info', blocked: 'danger', failed: 'danger', paused: 'warn' };
+
+// Items of a stream goal (triage tasks) with their effective status (contracts 21.4.6).
+function StreamItems({ goal, snap }) {
+  const items = streamItems(goal.id, snap);
+  if (!items.length) return html`<p class="small muted">No items yet.</p>`;
+  const open = items.filter((i) => i.status !== 'done' && i.status !== 'cancelled').length;
+  return html`<details class="stream-items">
+    <summary>${items.length} item${items.length === 1 ? '' : 's'}, ${open} open</summary>
+    <ul class="plain">${items.map(({ task, status }) => html`<li class="stream-item">
+      <span class="mono small">${task.id}</span>
+      <span class="small">${task.priority || 'P2'}</span>
+      ${task.item && task.item.class && html`<span class="kind-tag">${itemClassWord(task.item.class)}</span>`}
+      <span class="stream-item-title">${task.title}</span>
+      <${Tag} tone=${ITEM_TONE[status] || 'neutral'} icon=${status === 'done' ? 'check' : status === 'cancelled' ? 'cross' : undefined}>${statusWord(status)}<//>
+    </li>`)}</ul>
+  </details>`;
+}
+
 function GoalRow({ goal, snap, nowMs, onRemove }) {
   const q = useQueueState(`goal:${goal.id}`, snap);
   const qr = useQueueState(`goal.remove:${goal.id}`, snap);
@@ -99,7 +119,8 @@ function GoalRow({ goal, snap, nowMs, onRemove }) {
   return html`<tr>
     <th scope="row" class="mono">${goal.id}</th>
     <td><span class=${`goal-dot ${goalColorClass(snap, goal.id)}`} aria-hidden="true"></span><span class="sr-only">colour ${(goal.color_index ?? 0) + 1}</span></td>
-    <td>${goal.title}${goal.status_reason && html`<div class="small muted">${goal.status_reason}</div>`}
+    <td><span class="goal-title">${goal.title}</span> <${KindBadge} kind=${goalKind(goal)} />${goal.status_reason && html`<div class="small muted">${goal.status_reason}</div>`}
+      ${teamList(snap).length > 0 && (goal.team || (goal.teams || []).length > 0) && html`<div class="small muted">Team${(goal.team ? 1 : goal.teams.length) === 1 ? '' : 's'}: ${(goal.team ? [goal.team] : goal.teams).map((t) => teamName(snap, t)).join(', ')}</div>`}
       ${isWorkspace(snap) && goalRepos(goal.id, snap).length > 0 && html`<div class="repo-chips">${goalRepos(goal.id, snap).map((r) => html`<${RepoChip} repo=${r} />`)}</div>`}</td>
     <td><${GoalStatus} status=${goal.status} /></td>
     <td>${goal.priority || '-'}</td>
@@ -114,7 +135,8 @@ function GoalRow({ goal, snap, nowMs, onRemove }) {
       <${QueuedStatus} rec=${q.rec} res=${q.res} snap=${snap} nowMs=${nowMs} />
       <${QueuedStatus} rec=${qr.rec} res=${qr.res} snap=${snap} nowMs=${nowMs} />
     </td>
-  </tr>`;
+  </tr>
+  ${goalKind(goal) === 'stream' && html`<tr class="stream-items-row"><td></td><td colspan="7"><${StreamItems} goal=${goal} snap=${snap} /></td></tr>`}`;
 }
 
 const EMPTY = { title: '', outcome: '', criteria: [''], priority: 'P2', budget: '', constraints: '', notes: '' };
@@ -209,9 +231,9 @@ function AddGoal({ snap, nowMs }) {
   </section>`;
 }
 
-export function GoalsView({ snap, nowMs }) {
+export function GoalsView({ snap, params = {}, nowMs }) {
   const [removing, setRemoving] = useState(null);
-  const goals = snap.goals || [];
+  const goals = (snap.goals || []).filter((g) => goalInTeam(g, params.team));
   return html`<div class="goals">
     <div class="goals-main">
       <${FactoryCard} snap=${snap} nowMs=${nowMs} />
@@ -221,7 +243,7 @@ export function GoalsView({ snap, nowMs }) {
           <thead><tr><th scope="col">Id</th><th scope="col"><span class="sr-only">Colour</span></th><th scope="col">Title</th><th scope="col">Status</th>
             <th scope="col">Priority</th><th scope="col">Budget</th><th scope="col" class="num">Tasks done</th><th scope="col">Actions</th></tr></thead>
           <tbody>${goals.map((g) => html`<${GoalRow} key=${g.id} goal=${g} snap=${snap} nowMs=${nowMs} onRemove=${setRemoving} />`)}</tbody>
-        </table></div>` : html`<p class="muted">No goals yet. Add one below.</p>`}
+        </table></div>` : html`<p class="muted">${params.team ? 'No goals for this team.' : 'No goals yet. Add one below.'}</p>`}
       </section>
     </div>
     <${AddGoal} snap=${snap} nowMs=${nowMs} />

@@ -6,7 +6,7 @@ import * as store from './store.mjs';
 import { emit } from './events.mjs';
 import { load as loadConfig } from './config.mjs';
 import { move, setGoalStatus, setEpicStatus } from './lifecycle.mjs';
-import { createTask, escalate, goalDocsRel, tasksOf, setGoalPaused, reviewsFor } from './actions.mjs';
+import { createTask, escalate, goalDocsRel, tasksOf, setGoalPaused, reviewsFor, isStanding, goalKind } from './actions.mjs';
 import { GATE_KINDS } from './roles.mjs';
 import * as repos from './repos.mjs';
 import * as deps from './deps.mjs';
@@ -129,6 +129,9 @@ export async function onGateDecided(home, gate, { cfg = loadConfig(home) } = {})
     if (epic && epic.status === 'pr_open') {
       try { await pollPr(home, epic.id, { cfg, force: true }); } catch (e) { emit(home, { type: 'pr.updated', epic_id: epic.id, msg: `merge check failed: ${e.message}`.slice(0, 140) }); }
     }
+  } else if (gate.type === 'improvement') { // a CTO report proposal (§21.7.6)
+    const ops = await import('./ops.mjs');
+    ops.applyImprovement(home, gate);
   } else if (gate.type === 'budget' && status === 'rejected') {
     setGoalPaused(home, gate.goal_id, true, 'budget increase rejected');
   } else if (gate.type === 'destructive' && status === 'approved' && gate.request && gate.request.action === 'discard_goal_branches') {
@@ -249,9 +252,42 @@ function depsSatisfied(home, task, goal) {
   return true;
 }
 
+/** R7: backlog -> ready when dependencies are met; changes_requested -> ready (rework) or escalate. */
+function readyAndRework(home, tasks, goal) {
+  for (const t of tasks) {
+    if (t.status === 'backlog' && depsSatisfied(home, t, goal)) move(home, t.id, 'ready', { reason: 'dependencies met' });
+    else if (t.status === 'changes_requested') {
+      if (t.rework_count > t.max_rework) {
+        const b = move(home, t.id, 'blocked', { reason: 'rework limit reached', data: { blocked: { reason: 'rework limit reached', question_id: null, needs: 'cto', since: nowIso() } } });
+        escalate(home, b, `rework limit (${t.max_rework}) reached`);
+      } else {
+        move(home, t.id, 'ready', { reason: 'rework', data: (x) => { x.pending_kind = x.pending_kind === 'integrate' ? 'integrate' : 'rework'; x.gate_id = null; } });
+      }
+    }
+  }
+}
+
+/**
+ * Standing goals (ops and stream, contracts §21.1.4): no intake, PRD, gates, breakdown or sequence, and
+ * never done. A stream epic starts building (with its branch) once it holds a task; its epics never wait
+ * for cross-repo QA.
+ */
+async function advanceStanding(home, goal, { cfg }) {
+  for (const e of store.list(home, 'epic', (x) => x.goal_id === goal.id && x.status === 'draft')) {
+    if (!epicTasks(home, e.id).length) continue;
+    await ensureEpicBranch(home, e, cfg);
+    setEpicStatus(home, e.id, 'building', 'first task created');
+  }
+  readyAndRework(home, tasksOf(home, goal.id), goal);
+  for (const e of store.list(home, 'epic', (x) => x.goal_id === goal.id && !['done', 'cancelled', 'draft'].includes(x.status))) {
+    await advanceEpic(home, e.id, { cfg });
+  }
+}
+
 export async function advanceGoal(home, goalId, { cfg = loadConfig(home) } = {}) {
   let goal = store.get(home, 'goal', goalId);
   if (!goal || ['done', 'cancelled', 'paused'].includes(goal.status)) return;
+  if (isStanding(goal)) { await advanceStanding(home, goal, { cfg }); return; }
   let tasks = tasksOf(home, goalId);
   const docs = goalDocsRel(goal);
 
@@ -341,17 +377,7 @@ export async function advanceGoal(home, goalId, { cfg = loadConfig(home) } = {})
     tasks = tasksOf(home, goalId);
   }
   // R7 backlog -> ready; changes_requested -> ready (rework) or escalate
-  for (const t of tasks) {
-    if (t.status === 'backlog' && depsSatisfied(home, t, goal)) move(home, t.id, 'ready', { reason: 'dependencies met' });
-    else if (t.status === 'changes_requested') {
-      if (t.rework_count > t.max_rework) {
-        const b = move(home, t.id, 'blocked', { reason: 'rework limit reached', data: { blocked: { reason: 'rework limit reached', question_id: null, needs: 'cto', since: nowIso() } } });
-        escalate(home, b, `rework limit (${t.max_rework}) reached`);
-      } else {
-        move(home, t.id, 'ready', { reason: 'rework', data: (x) => { x.pending_kind = x.pending_kind === 'integrate' ? 'integrate' : 'rework'; x.gate_id = null; } });
-      }
-    }
-  }
+  readyAndRework(home, tasks, goal);
   // epics
   for (const e of store.list(home, 'epic', (x) => x.goal_id === goalId && !['done', 'cancelled'].includes(x.status))) {
     await advanceEpic(home, e.id, { cfg });
@@ -497,7 +523,10 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   const tasks = () => epicTasks(home, epicId);
   const codeTasks = () => tasks().filter((t) => t.kind === 'code');
   const openEsc = () => tasks().some((t) => t.kind === 'escalation' && OPEN(t) && t.status !== 'failed');
-  const multi = goalSpansRepos(home, epic.goal_id, cfg);
+  // Stream epics ship on their own (§21.1.5): integrate -> qa_epic -> review_epic only when
+  // streams.epic_review -> PR (no docs task, never cross-repo QA).
+  const stream = goalKind(goal) === 'stream';
+  const multi = !stream && goalSpansRepos(home, epic.goal_id, cfg);
 
   // §20.6.7: rework code tasks added to an epic that waits in goal_qa send it back to building.
   if (epic.status === 'goal_qa' && codeTasks().some((t) => !['integrated', 'done'].includes(t.status))) {
@@ -522,7 +551,10 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
   }
   if (epic.status === 'qa') {
     const qa = latest(tasks(), 'qa_epic');
-    if (qa && qa.status === 'done' && qa.verdict === 'pass') {
+    if (qa && qa.status === 'done' && qa.verdict === 'pass' && stream && !(cfg.streams && cfg.streams.epic_review)) {
+      await createPr(home, epicId, { cfg });
+      epic = store.get(home, 'epic', epicId);
+    } else if (qa && qa.status === 'done' && qa.verdict === 'pass') {
       setEpicStatus(home, epicId, 'review');
       createTask(home, {
         goal_id: epic.goal_id, epic_id: epicId, kind: 'review_epic', status: 'ready', model_override: 'opus',
@@ -536,7 +568,10 @@ export async function advanceEpic(home, epicId, { cfg = loadConfig(home), forceP
     const rv = latest(tasks(), 'review_epic');
     // Cross-repo rework: keep the docs task that is already integrated (§20.6.7).
     const docsDone = multi && tasks().some((t) => t.kind === 'docs' && ['integrated', 'done'].includes(t.status));
-    if (rv && rv.status === 'done' && rv.verdict === 'pass' && docsDone) {
+    if (rv && rv.status === 'done' && rv.verdict === 'pass' && stream) {
+      await createPr(home, epicId, { cfg });
+      epic = store.get(home, 'epic', epicId);
+    } else if (rv && rv.status === 'done' && rv.verdict === 'pass' && docsDone) {
       epic = setEpicStatus(home, epicId, 'docs', 'docs already written');
     } else if (rv && rv.status === 'done' && rv.verdict === 'pass') {
       setEpicStatus(home, epicId, 'docs');

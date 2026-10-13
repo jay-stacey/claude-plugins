@@ -130,3 +130,43 @@ or the human gate checks it.
 ```
 For a decision only a human can make, the CTO sets `verdict: "escalate"`, `status: "blocked"` and adds
 an `open_questions` entry with `to_role: "user"` and `blocking: true` that states both options.
+
+## CTO report (with improvement proposals)
+
+`report` and `assess` runs may add `proposals[]` (at most `reports.max_proposals`). Each proposal
+opens one `improvement` gate; the user's approval applies it. Rules and allowed config keys:
+`cto-playbook` references/report.md.
+
+```json
+{
+  "schema": "factory/handoff@1",
+  "run_id": "R-000512", "task_id": "T-0140", "from_role": "cto", "to_role": "cto",
+  "status": "handed_off",
+  "verdict": "pass",
+  "summary": "Periodic report for 2026-10-12 09:00 to 2026-10-13 09:00 written.
+Headline: G-002 is 9 of 14 tasks done; two tasks blocked on gate G2 for 31 h.
+Two proposals: raise the code_S estimate, add a lint note to the frontend overlay.",
+  "acceptance_criteria": [],
+  "evidence": [],
+  "files_touched": ["docs/reports/2026-10-13-0900-periodic.md"],
+  "branch": null, "commits": [],
+  "findings": [],
+  "report_path": "docs/reports/2026-10-13-0900-periodic.md",
+  "open_questions": [],
+  "follow_ups": [],
+  "destructive": null,
+  "resume_note": "",
+  "proposals": [
+    {"id": "P-1", "title": "Raise the code_S estimate to match real runs",
+     "why": "code_S runs used 2.1x their estimate (median 520k vs 250k tokens, 9 runs), so intake budget checks run low.",
+     "change": {"kind": "config", "patch": {"budget.estimates.code_S": 500000}},
+     "expected_effect": "Budget forecasts match real spend within 20%.", "risk": "low"},
+    {"id": "P-2", "title": "Frontend engineer runs lint before every handoff",
+     "why": "First-pass review rate for frontend-engineer is 40% (4 of 10); 5 of the 6 failed reviews had lint findings.",
+     "change": {"kind": "overlay_note", "role": "frontend-engineer", "note": "Run the lint command through evidence run before you write the handoff; fix every finding first."},
+     "expected_effect": "First-pass review rate for frontend tasks above 70%.", "risk": "low"}
+  ]
+}
+```
+An `assess` handoff has the same shape, with `report_path` set to the assessment and usually no
+proposals. A `cycle_plan` handoff lists every `cycle commit` it ran in `summary` and has no proposals.

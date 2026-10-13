@@ -7,6 +7,11 @@ import { ACTIVE_RUN } from './dispatch.mjs';
 import { pending as inboxPending } from './inbox.mjs';
 import { load as loadConfig } from './config.mjs';
 import { isWorkspace } from './repos.mjs';
+import { goalKind } from './actions.mjs';
+import * as teams from './teams.mjs';
+import * as cycles from './cycles.mjs';
+import * as streams from './streams.mjs';
+import * as ops from './ops.mjs';
 
 function fmtTokens(n) {
   if (!n) return '0';
@@ -23,10 +28,19 @@ export function lines(home, { goal = null } = {}) {
   out.push(`factory ${f.status}${f.status_reason ? ` (${f.status_reason})` : ''}; tick ${f.tick.count}; dispatcher ${lease && leaseLive(lease) ? lease.session_id.slice(0, 8) : 'none'}`);
   if (f.tick.next_wakeup_at) out.push(`next tick ${f.tick.next_wakeup_at}`);
   if (f.backoff_until && Date.parse(f.backoff_until) > Date.now()) out.push(`backoff until ${f.backoff_until}`);
-  let ws = false;
-  try { ws = isWorkspace(loadConfig(home)); } catch { ws = false; }
-  const goals = store.list(home, 'goal', (g) => (goal ? g.id === goal : !['done', 'cancelled'].includes(g.status)));
-  for (const g of goals.slice(0, goal ? 1 : 6)) {
+  let ws = false; let cfg = null;
+  try { cfg = loadConfig(home); ws = isWorkspace(cfg); } catch { ws = false; }
+  // §21.10.1: a teams line (current cycle and days left) when cycles are on.
+  if (cfg && cycles.enabled(cfg) && !goal) {
+    try {
+      const st = cycles.readState(home);
+      const parts = teams.ids(home, cfg).slice(0, 6).map((id) => { const s = cycles.summary(home, cfg, id, { st }); return s.current ? `${id} ${s.current.number} (${s.days_left}d left)` : `${id} -`; });
+      out.push(`teams: ${parts.join('; ')}`);
+    } catch { /* best effort */ }
+  }
+  // Goal rows only for `kind: goal` goals; streams and ops get one line each.
+  const goals = store.list(home, 'goal', (g) => (goal ? g.id === goal : !['done', 'cancelled'].includes(g.status) && goalKind(g) === 'goal'));
+  for (const g of goals.slice(0, goal ? 1 : 5)) {
     const slot = b.goals && b.goals[g.id];
     const tasks = store.list(home, 'task', (t) => t.goal_id === g.id);
     const counts = {};
@@ -38,6 +52,18 @@ export function lines(home, { goal = null } = {}) {
       const ep = store.list(home, 'epic', (e) => e.goal_id === g.id && e.status !== 'cancelled');
       if (ep.length) out.push(`  epics: ${ep.slice(0, 6).map((e) => `${e.id} ${e.repo || '?'} ${e.status}`).join('; ')}`);
     }
+  }
+  if (cfg && !goal) {
+    try {
+      if (cfg.streams && cfg.streams.enabled) {
+        const sc = streams.counts(home, cfg);
+        out.push(`streams: ${sc.length ? streams.countsText(sc.slice(0, 5)) : 'none yet'}`);
+      }
+      if ((cfg.reports && cfg.reports.enabled !== false) || (cfg.baseline && cfg.baseline.enabled !== false)) {
+        const sm = ops.summary(home);
+        out.push(sm.removed ? 'ops: removed (no reports, assessments or cycle plans)' : `ops: last report ${sm.report_age}${sm.last_report_path ? ` ${sm.last_report_path}` : ''}; last assess ${sm.assess_age}`);
+      }
+    } catch { /* best effort */ }
   }
   const runs = store.list(home, 'run', (r) => ACTIVE_RUN.has(r.status) && (!goal || r.goal_id === goal));
   if (runs.length) out.push(`running: ${runs.slice(0, 6).map((r) => `${r.id} ${r.role} ${r.task_id}${r.status !== 'running' ? ` (${r.status})` : ''}`).join('; ')}`);
