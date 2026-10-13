@@ -362,6 +362,34 @@ test('sync_apply_preview needs the human intent from /software-factory:sync --ap
   assert.match(st.stdout, /first sync approved/);
 });
 
+test('sync_apply_preview accepts the intent from a resumed session, not the stale session the server started in', async () => {
+  const h = await syncHome({ provider: 'linear' });
+  await seed(h.home);
+  const clock = makeClock();
+  const fake = fakeLinear({ clock });
+  const e = await engine();
+  await e.preview({ projectDir: h.repo }, deps(fake, clock));
+  const id = readSync(h.home, 'state.json').preview.id;
+  // The server was started in session A; the person resumed session B and typed the command there.
+  (await lib('intent')).writeIntent(h.home, 'session-b-resumed', 'sync-approve');
+  const r = await e.applyPreview({ projectDir: h.repo, previewId: id }, { env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'session-a-at-startup' } });
+  assert.match(r.lines[0], /^APPROVED first sync/);
+  assert.equal(readSync(h.home, 'state.json').first_sync_approved, true);
+});
+
+test('sync_apply_preview still refuses without a fresh human intent when the server has a session id', async () => {
+  const h = await syncHome({ provider: 'linear' });
+  await seed(h.home);
+  const clock = makeClock();
+  const fake = fakeLinear({ clock });
+  const e = await engine();
+  await e.preview({ projectDir: h.repo }, deps(fake, clock));
+  const id = readSync(h.home, 'state.json').preview.id;
+  const r = await e.applyPreview({ projectDir: h.repo, previewId: id }, { env: { ...process.env, CLAUDE_CODE_SESSION_ID: 'session-a-at-startup' } });
+  assert.match(r.lines[0], /^NOT_APPROVED .*sync --approve-preview/);
+  assert.equal(readSync(h.home, 'state.json').first_sync_approved, false);
+});
+
 test('tick plan prints SYNC due only for a ready tracker after min_interval_s', async () => {
   const h = await syncHome({ provider: 'linear' });
   const tick = await lib('tick');
