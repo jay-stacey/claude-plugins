@@ -1,9 +1,11 @@
 # Setup questionnaire
 
-Question wording, options, branching and the config each answer writes. Six AskUserQuestion calls
-at most for one repo. A typical existing repo answers 12 questions. Workspace mode (a folder that holds
-several repos) replaces call 1 with the "Workspace branch" below and adds one question per 2-4 repos
-(about 13 plus the repo count divided by 3). Sample values come from `scan.json` (workspace mode:
+Question wording, options, branching and the config each answer writes. Seven AskUserQuestion calls
+at most for one repo, eight in workspace mode; count your planned calls before the first one. A
+typical existing repo answers 12 questions, plus up to 4 in the Teams call (call 7). Workspace mode
+(a folder that holds several repos) replaces call 1 with the "Workspace branch" below and adds one
+question per 2-4 repos (about 13 plus the repo count divided by 3). If the plan goes over the cap,
+fold more repos into each command question of call 1b first. Sample values come from `scan.json` (workspace mode:
 `scan-<name>.json`); replace them with the real proposals and their sources.
 
 Option rules: recommended option first with "(Recommended)"; on a re-run the saved value first with
@@ -58,7 +60,7 @@ repo: scaffold, CI and test harness" in call 2 as the recommended option.
 
 ## Workspace branch (replaces call 1 when Phase 0 chose workspace mode)
 
-Skip the "Call 1" and "New-project path" sections. Calls 2-6 stay, with the notes marked "Workspace" in
+Skip the "Call 1" and "New-project path" sections. Calls 2-7 stay, with the notes marked "Workspace" in
 each. Sources always carry the repo name, for example `dealerpull-api: .github/workflows/ci.yml:31`.
 
 Before the first call, show at most 12 lines: one line per repo (name, path, stack, default branch,
@@ -207,7 +209,8 @@ Config: `budget.tier_defaults {S, M, L}` in tokens; `concurrency.builders` = ans
 Skip the call when the tracker is None and there is no CLAUDE.md or AGENTS.md (workspace: skip when the
 tracker is None).
 
-15. [Scope] Only when a tracker was picked.
+15. [Scope] Only when a tracker was picked. Linear: skip it when the `list_teams` call below
+    printed `TEAMS`; the Teams call (call 7) picks the keys instead.
     - Linear: team key options ranked by scan hits (for example "NEO (Recommended): 41 commits").
     - Jira: project key options ranked by scan hits.
     - GitHub: "This repo: <owner>/<repo> (Recommended)". Workspace: the default repo's owner and repo.
@@ -222,9 +225,14 @@ tracker is None).
     - Add the line (Recommended)
     - Skip
 
-Tracker status, decided after the call. Call `mcp__plugin_software-factory_factory-sync__tracker_discover`
-with `{projectDir, tracker, scopeHint}` (scopeHint: Linear `{team_key}`, Jira `{project_key}`, GitHub
-`{owner, repo}`). Its first line decides:
+Linear, before this call: call `mcp__plugin_software-factory_factory-sync__tracker_discover` with
+`{projectDir, tracker: "linear", scopeHint: {list_teams: true}}`. It prints `TEAMS <n>`, then one line
+per team: `TEAM <key> <name> parent=<key|-> id=<id>`. Keep the lines for call 7. Any other first
+line is handled as in the list below, and call 7 then proposes keys from scan hits only.
+
+Tracker status, decided after the call (Linear with `TEAMS`: decided in call 7 instead). Call
+`mcp__plugin_software-factory_factory-sync__tracker_discover` with `{projectDir, tracker, scopeHint}`
+(scopeHint: Linear `{team_key}`, Jira `{project_key}`, GitHub `{owner, repo}`). Its first line decides:
 - `READY ...`: `tracker.status = "ready"`. Show its status-map line. Summary line: "The first sync is
   preview only: run /software-factory:sync --preview."
 - `PENDING_CREDENTIALS missing: <keys>`: `tracker.status = "pending_credentials"`. Summary lines: "Add
@@ -238,12 +246,72 @@ Keys per tracker: Linear `linear_api_key`; GitHub none if gh is logged in, else 
 Jira `jira_site`, `jira_email`, `jira_api_token`.
 
 Config: `tracker = {provider, status, mode: two_way | push_only | intake_only | dry_run,
-scope: {team_key} | {project_key} | {owner, repo}, goal_mapping: parent_issue (Linear, GitHub) |
-epic (Jira), labels: {managed: "software-factory", role_prefix: "role:", intake: "factory-intake"}}`.
-Not asked (defaults): `push_kinds` (prd, spec, mockup, code, docs), `create_in: "mapped"`,
+scope: {team_key} | {project_key} | {owner, repo}, goal_mapping: parent_issue (default; Linear with 2+ teams may choose
+project), labels: {managed: "software-factory", role_prefix: "role:", intake: "factory-intake"}}`.
+Not asked (defaults): `push_kinds` (prd, spec, mockup, code, docs, triage), `create_in: "mapped"`,
 `trusted_editors: []` (tracker comments become task feedback only for these user ids),
 `max_writes_per_tick: 20`, `max_ops_before_confirm: 50`. The status map lives in `.factory/sync/state.json`;
 `tracker.status_map {key: stateId}` overrides it.
+
+## Call 7: Teams (conditional; section `teams`)
+
+Ask it when the tracker is Linear, or in workspace mode. Skip it for a classic repo with no tracker,
+GitHub Issues or Jira; that setup keeps one implicit team (`core`) and writes no `teams`.
+
+Before the call, build the team map and show it in at most 12 lines, one line per team:
+`<id>  <name>  parent <id|->  tracker <KEY|none>  repos <names|->  roles <ids|->`, each with where it came
+from ("TEAM line", "41 NEO commits in project-neo", "repo name").
+
+How to propose the map (first match wins for each repo and role):
+- Product team: the `TEAM` whose name or key says product (`Product`, `PRO`, `PROD`). Kind `product`,
+  no repos, roles `product-manager` and `ui-ux-designer` (only the active ones).
+- Parent engineering team: a top-level `TEAM` (`parent=-`) named Engineering or Development, or the
+  parent of most matched sub-teams. Kind `engineering`, no repos, roles `staff-engineer` and
+  `project-manager`.
+- One sub-team per repo: the `TEAM` whose key has the most hits in that repo's scan
+  (`proposed.tracker.team_key` and its `evidence`); else the `TEAM` whose name matches the repo name
+  once both are lowercased and `project-`, `-api`, `-ui`, `-web` are dropped ("NEO" and `project-neo`);
+  else no match. Kind `engineering`, `parent` = the mapped id of that team's `parent=` key.
+- A repo with no match joins the parent engineering team. With no `TEAM` lines at all (no Linear,
+  or discovery failed), propose one team per repo named after the repo, tracker key from scan hits or
+  none, under one `engineering` parent.
+- Ids are lowercase kebab, at most 30 characters, from the key or name (`neo`, `api`, `product`).
+- Leave out `TEAM`s that get no repo and no role (support, sales). The user can add them.
+- Each repo and each role belongs to at most one team. Never write `tracker.team_id`.
+
+Questions (skip any whose answer cannot change anything):
+18. [Teams] "Use this team map? Each repo's tasks and tracker issues go to its team."
+    - Use this map (Recommended)
+    - One team for everything (no `teams`; the factory uses one team)
+    The user types changes in "Other", one line each, for example `api: tracker OPS` or
+    `inventory-feeds -> neo`. Apply them, check the rules above, and show the map once more only if
+    a rule broke.
+19. [Goal map] Only when Linear and 2 or more teams have a tracker key. "How should a goal appear
+    in Linear?"
+    - A Linear project per goal, shared by its teams (Recommended)
+    - A parent issue per goal, with sub-issues in each team
+20. [Streams] "Run bugs and tech debt as standing work for each team, next to goals?"
+    - On, up to 30% of builder capacity (Recommended)
+    - On, up to 15% of builder capacity
+    - Off
+21. [Cycles] "Plan work in cycles?"
+    - Linear: "Sync cycles from Linear (Recommended)", "Local 2-week cycles", "Off".
+    - Not Linear: "Off (Recommended)", "Local 2-week cycles".
+
+Tracker status for Linear, after the call: call `tracker_discover` with
+`{projectDir, tracker: "linear", scopeHint: {team_keys: [<every key in the map>]}}`.
+- `READY linear <n> teams (<keys>)`: `tracker.status = "ready"`. Same summary line as call 6.
+- `SCOPE_NOT_FOUND <key>` and `available: ...`: ask one question for that team, with the available
+  keys as options (it may use the one call left), fix the map, and call `tracker_discover` again.
+- Any other line: handle it as in call 6.
+
+Config: `teams = {<id>: {name, kind: product|engineering|support|other, parent: <id>|null, repos: [],
+roles: [], tracker: {team_key: "<KEY>"|null}}}` (left out for "One team for everything");
+`tracker.goal_mapping` = `project` or `parent_issue`; `tracker.scope.team_key` = the parent
+engineering team's key, else the first key in the map; `streams = {enabled: true, capacity_pct: 30}`,
+`{enabled: true, capacity_pct: 15}` or `{enabled: false}`; `cycles = {enabled: true, source:
+"tracker"}`, `{enabled: true, source: "local", length_days: 14}` or `{enabled: false}`. Other
+`streams` and `cycles` keys keep their defaults.
 
 ## Not asked (defaults, said once in the summary)
 
@@ -251,12 +319,17 @@ Not asked (defaults): `push_kinds` (prd, spec, mockup, code, docs), `create_in: 
 - Notifications: `notifications.desktop = true`; the per-machine switch is the
   `desktop_notifications` plugin option.
 - Permissions: no settings allow rules are written; the broker approves factory-agent commands.
+- CTO reports (`reports.enabled`, every 24 hours, at most 5 improvement proposals each) and the
+  baseline (`baseline.enabled`, collected every hour, assessed every 24 hours) are on. Say: "The CTO
+  writes a report every day; read it with /software-factory:report and approve its proposals with
+  /software-factory:approve."
 
 ## Config mapping (the only keys setup writes)
 
 `project`, `stack`, `commands` (all keys, `extra` as an array), `roles.active`, `gates.G1-G4`
 (`enabled`, `G1.approvers`), `budget.tier_defaults`, `concurrency.builders`, `concurrency.total`,
-`delivery`, `tracker`, `worktree.include_files`. Workspace mode writes `workspace` and `repos`
+`delivery`, `tracker` (with `goal_mapping`), `worktree.include_files`, and from call 7 `teams`,
+`streams` and `cycles`. Workspace mode writes `workspace` and `repos`
 (see "Workspace config mapping") instead of `stack`, `commands`, `delivery` and
 `worktree.include_files`, and the other keys stay the same. Leave every other key alone; `config merge` keeps it.
 Commands values must be strings or null. Sources go in the answers files and overlays, never in config.

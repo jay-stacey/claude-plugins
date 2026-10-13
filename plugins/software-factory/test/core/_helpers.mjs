@@ -58,7 +58,11 @@ export function fakeDelivery() {
   let n = 0;
   const d = {
     git: {
-      git: (args) => { if (args[0] === 'branch' && args[1]) state.shas[args[1]] = state.shas[args[2]] || 'base000'; return { code: 0, stdout: '', stderr: '' }; },
+      git: (args) => {
+        if (args[0] === 'branch' && args[1]) state.shas[args[1]] = state.shas[args[2]] || 'base000';
+        if (args[0] === 'remote' && args[1] === 'get-url') return state.remoteUrl ? { code: 0, stdout: state.remoteUrl, stderr: '' } : { code: 2, stdout: '', stderr: 'no such remote' };
+        return { code: 0, stdout: '', stderr: '' };
+      },
       headSha: (_cwd, ref = 'HEAD') => state.shas[ref] || null,
       branchExists: (_cwd, b) => !!state.shas[b],
       isAncestor: () => state.prState === 'MERGED',
@@ -87,6 +91,8 @@ export function fakeDelivery() {
       available: () => ({ ok: true, user: 'x' }),
       push: (o) => { state.pushes.push(o.branch); return { ok: true, stderr: '' }; },
       prCreate: () => ({ number: 7, url: 'https://github.com/o/r/pull/7' }),
+      // state.prs: [{number, title, url, headRefName, author, isDraft, reviewDecision, updatedAt, files[]}] (gh.prList shape)
+      prList: () => { if (state.prListError) throw new Error(state.prListError); return state.prs || []; },
       prView: () => ({ state: state.prState, mergedAt: state.prState === 'MERGED' ? new Date().toISOString() : null, reviewDecision: null, mergeable: 'MERGEABLE', headRefOid: 'h1' }),
     },
   };

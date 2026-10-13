@@ -205,7 +205,8 @@
           "type": "object",
           "additionalProperties": {
             "type": "number"
-          }
+          },
+          "description": "Includes assess, report, cycle_plan and triage (§21.8)."
         },
         "hard_kill": {
           "type": "boolean"
@@ -329,6 +330,13 @@
       "properties": {
         "provider": {
           "type": "string"
+        },
+        "goal_mapping": {
+          "enum": [
+            "parent_issue",
+            "project"
+          ],
+          "description": "Linear: a goal is a parent issue (default) or a project (§21.3.2)."
         }
       }
     },
@@ -531,6 +539,192 @@
           }
         },
         "additionalProperties": true
+      }
+    },
+    "teams": {
+      "type": "object",
+      "description": "Teams by id (§21.2). Empty: one implicit team core with every repo.",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+        "maxLength": 30
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "product",
+              "engineering",
+              "support",
+              "other"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tracker": {
+            "type": "object",
+            "properties": {
+              "team_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "team_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "streams": {
+      "type": "object",
+      "description": "Bug and tech-debt work streams (§21.4). Off by default.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Empty: every team with repos."
+        },
+        "capacity_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "budget_tokens_per_window": {
+          "type": "number"
+        },
+        "epic_review": {
+          "type": "boolean",
+          "description": "Run review_epic on stream epics (default false)."
+        },
+        "pull": {
+          "enum": [
+            "intake_label",
+            "cycle",
+            "all"
+          ]
+        },
+        "classes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cycles": {
+      "type": "object",
+      "description": "Cycles (§21.6). Off by default.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": [
+            "tracker",
+            "local",
+            null
+          ],
+          "description": "Default: tracker when the provider is linear, else local."
+        },
+        "length_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchor": {
+          "type": "string",
+          "format": "date"
+        },
+        "plan_at_start": {
+          "type": "boolean"
+        },
+        "review_at_end": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reports": {
+      "type": "object",
+      "description": "CTO reports (§21.7). On by default.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "every_h": {
+          "type": "number"
+        },
+        "idle_min_h": {
+          "type": "number"
+        },
+        "idle_min_events": {
+          "type": "number"
+        },
+        "max_proposals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "description": "Baseline of repos and work in flight (§21.5). On by default.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "collect_every_s": {
+          "type": "number"
+        },
+        "assess_every_h": {
+          "type": "number"
+        }
+      }
+    },
+    "ops": {
+      "type": "object",
+      "description": "The ops goal (§21.1.2).",
+      "properties": {
+        "budget_tokens_per_day": {
+          "type": "number"
+        }
       }
     }
   },

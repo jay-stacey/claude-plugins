@@ -6,7 +6,7 @@ scan_rev: {{scan_rev}}
 updated: {{date}}
 ---
 
-<!-- Template for .factory/org.md. Keep the result under about 60 lines. Remove this comment. -->
+<!-- Template for .factory/org.md. Keep the result under about 60 lines (75 with the Teams table). Remove this comment. -->
 
 # {{project.name}} factory
 
@@ -29,7 +29,8 @@ updated: {{date}}
 ## Reporting chain
 
 - User (owner): approves gates, merges pull requests.
-- CTO: sizes goals, forms pods, handles escalations and replans.
+- CTO: sizes goals, forms pods, handles escalations and replans, assesses work in flight, plans
+  cycles, and writes a report with improvement proposals every {{reports.every_h}} hours.
 - Product line: Product Manager{{#if ui}} > UI/UX Designer{{/if}}.
 - Delivery line: Project Manager.
 - Engineering line: Staff Engineer > {{active_builders}}, DevOps/Release, Tech Writer.
@@ -37,6 +38,20 @@ updated: {{date}}
 
 Active roles: {{roles.active}}.
 
+{{#if teams}}## Teams
+
+<!-- Only when config has `teams`. One row per team, parents before their sub-teams. Write `-` for
+     an empty cell. Remove this comment. -->
+
+Each repo belongs to one team. A goal that spans teams runs as one goal: the product team owns the
+PRD, the lead team owns the spec and breakdown, and each epic belongs to the team of its repo.
+
+| Team | Parent | Tracker key | Repos | Roles |
+|---|---|---|---|---|
+{{#each teams}}| {{id}} ({{name}}) | {{parent}} | {{tracker.team_key}} | {{repos}} | {{roles}} |
+{{/each}}
+Goals in the tracker: {{tracker.goal_mapping}}. Bug and tech-debt streams: {{streams}}. Cycles: {{cycles}}.
+{{/if}}
 ## Approvals
 
 | Gate | What | Approver | Where |

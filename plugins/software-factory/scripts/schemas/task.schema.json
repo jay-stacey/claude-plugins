@@ -54,7 +54,11 @@
         "qa_goal",
         "pr_feedback",
         "escalation",
-        "research"
+        "research",
+        "assess",
+        "report",
+        "cycle_plan",
+        "triage"
       ]
     },
     "title": {
@@ -398,6 +402,91 @@
           }
         }
       }
+    },
+    "team": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Team id (contracts §21.2), set at creation: task.team > epic.team > repo team > role team > goal.lead_team > goal.team > goal.teams[0] > default repo team > first team."
+    },
+    "cycle": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Cycle id <team>-<number> the task is committed to (§21.6), or null."
+    },
+    "item": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Triage tasks only (§21.4.2).",
+      "properties": {
+        "class": {
+          "enum": [
+            "bug",
+            "tech_debt",
+            "chore"
+          ]
+        },
+        "tracker_ref": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "reported_by": {
+          "enum": [
+            "human",
+            "tracker",
+            "agent"
+          ]
+        }
+      }
+    },
+    "item_epic_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Triage tasks: epics created to fix the item."
+    },
+    "item_task_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Code tasks fixing a stream item: the triage task id (inherits its cycle and priority)."
+    },
+    "report_type": {
+      "enum": [
+        "periodic",
+        "idle",
+        "cycle_review",
+        "requested",
+        null
+      ],
+      "description": "Report tasks (§21.7.1)."
+    },
+    "report_period": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      }
+    },
+    "output_rel": {
+      "type": "string",
+      "description": "Report, assess and cycle_plan tasks: the output path relative to the factory home, fixed at creation."
     }
   },
   "required": [

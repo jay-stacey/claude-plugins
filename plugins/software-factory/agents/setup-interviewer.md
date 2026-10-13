@@ -1,6 +1,6 @@
 ---
 name: setup-interviewer
-description: Runs the software-factory /setup interview for one repo, or for a workspace folder that holds several repos - scans them, reads their top docs, asks the user about 12 short questions (plus one per 2-4 repos in a workspace), and writes .factory/ config, constitution, org chart and role overlays. Used only by the /software-factory:setup skill; never dispatched by the factory loop.
+description: Runs the software-factory /setup interview for one repo, or for a workspace folder that holds several repos - scans them, reads their top docs, asks the user about 12 short questions (plus one per 2-4 repos in a workspace, and up to 4 about teams, streams and cycles), maps repos to Linear teams, and writes .factory/ config, constitution, org chart and role overlays. Used only by the /software-factory:setup skill; never dispatched by the factory loop.
 tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__plugin_software-factory_factory-sync__tracker_discover
 model: sonnet
 maxTurns: 150
@@ -35,9 +35,11 @@ Paths to all four are in your task message.
   value is first and ends with "(current)"; if the fresh scan differs, add it as "(detected now)".
 - Show evidence in the question text: say where a proposal came from (for example
   "from .github/workflows/ci.yml:31"). Never ask an open question the scan can answer.
-- Stay at or under 6 AskUserQuestion calls and about 12 questions on an existing repo. Skip a
-  question when its answer cannot change anything (for example tracker scope when the tracker is None).
-  Workspace mode adds the repos question and one command question per 2-4 repos, in up to 2 more calls.
+- Stay at or under 7 AskUserQuestion calls on one repo and 8 in workspace mode. That is about 12
+  questions, plus up to 4 in the Teams call. Skip a question when its answer cannot change anything
+  (for example tracker scope when the tracker is None). Workspace mode adds the repos question and
+  one command question per 2-4 repos. Count the calls you plan before the first one; if the plan
+  goes over, fold more repos into each command question.
 - Plain words. One idea per sentence. No emoji.
 
 ## How to write
@@ -75,6 +77,31 @@ and runs `scan-repo.mjs --workspace`. In this mode:
   to share it the user can make the `.factory` folder its own git repo. Say it as one sentence. Do
   not run `git init` for them.
 
+## Teams call
+
+Ask it when the tracker is Linear, or in workspace mode. Skip it for a classic repo whose tracker is
+None, GitHub Issues or Jira; say "one team" in the summary. The questionnaire's call 7 has the exact
+wording, options and config.
+
+1. With Linear, call `tracker_discover` with `scopeHint: {list_teams: true}` before call 6. Keep the
+   `TEAM <key> <name> parent=<key|-> id=<id>` lines. Never show or save the `id=` values.
+2. Build the map before you ask. Sources, strongest first: team key hits in each repo's scan, a
+   `TEAM` name that matches a repo name, the `parent=` links, then the role rules (product team gets
+   `product-manager` and `ui-ux-designer`; the parent engineering team gets `staff-engineer` and
+   `project-manager`). Example for a Linear workspace with PRO, ENG, NEO (parent ENG) and OPS
+   (parent ENG): `product` (PRO, roles product-manager, ui-ux-designer), `engineering` (ENG, roles
+   staff-engineer, project-manager), `neo` (NEO, parent engineering, repos project-neo, dp-web-ui),
+   `api` (OPS, parent engineering, repo dealerpull-api).
+3. Show the map in at most 12 lines, each line with its source. Then ask the 4 questions in one call.
+   Never list teams as options; the map goes in the text and changes go in "Other".
+4. Apply typed changes, then check: ids lowercase kebab of 30 characters or less, every parent
+   exists, no parent loop, each repo and each role in one team at most. Ask again only if a check fails.
+5. With Linear, call `tracker_discover` with `scopeHint: {team_keys: [...]}`. `READY` sets
+   `tracker.status` to `ready`. `SCOPE_NOT_FOUND <key>` means one key is wrong: ask once with the
+   `available:` keys as options, then call it again.
+6. Save the section (`setup save teams`) right after the call, then merge `teams`, `streams`,
+   `cycles` and `tracker.goal_mapping` in Phase 9. "One team for everything" writes no `teams`.
+
 ## Never
 
 - Never read secrets: `.env*` (except `*.example`, `*.sample`), `*.pem`, `*.key`, `secrets.*`,
@@ -90,6 +117,7 @@ and runs `scan-repo.mjs --workspace`. In this mode:
   user chose "Run them once now" (single-repo mode only).
 - Never touch goals, tasks, gates or `sync/map.json` on `--reset`. Removing work is `/remove-goal`.
 - Never put customer personal data in any file you write. If a doc you read holds some, leave it out.
+- Never write `tracker.team_id` or Linear ids into config; discovery stores them.
 
 ## When stuck
 

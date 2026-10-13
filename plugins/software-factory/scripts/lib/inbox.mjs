@@ -11,7 +11,7 @@ export const HUMAN_TYPES = ['gate.decide', 'goal.remove', 'factory.stop', 'budge
 
 export const TYPES = ['gate.decide', 'goal.add', 'goal.activate', 'goal.pause', 'goal.resume', 'goal.remove',
   'factory.pause', 'factory.resume', 'factory.stop', 'budget.override', 'task.note', 'task.answer', 'task.retry',
-  'task.cancel', 'task.pause', 'sync.now'];
+  'task.cancel', 'task.pause', 'sync.now', 'item.add', 'report.request', 'cycle.commit'];
 
 export function knownType(t) { return TYPES.includes(t) || /^(tracker|sync)\.[a-z_]+$/.test(t || ''); }
 
@@ -34,6 +34,24 @@ function payloadErrors(type, p) {
     case 'task.note': str('task_id'); str('text'); break;
     case 'task.answer': str('task_id'); str('text'); break;
     case 'task.retry': case 'task.cancel': case 'task.pause': str('task_id'); break;
+    case 'item.add':
+      str('team'); str('title');
+      if (!['bug', 'tech_debt', 'chore'].includes(p.class)) e.push('payload.class must be bug|tech_debt|chore');
+      if (p.priority && !ENUMS.priority.includes(p.priority)) e.push('payload.priority must be P0..P3');
+      if (p.tracker_ref !== undefined && p.tracker_ref !== null) {
+        const r = p.tracker_ref;
+        if (!isObj(r)) e.push('payload.tracker_ref must be an object');
+        else {
+          if (typeof r.remote_id !== 'string' || !r.remote_id.trim()) e.push('payload.tracker_ref.remote_id required');
+          for (const k of Object.keys(r)) if (!['provider', 'remote_id', 'key', 'url', 'kind'].includes(k)) e.push(`payload.tracker_ref.${k} is not allowed`);
+          for (const k of ['provider', 'key', 'url']) if (r[k] !== undefined && r[k] !== null && typeof r[k] !== 'string') e.push(`payload.tracker_ref.${k} must be a string`);
+          if (r.kind !== undefined && !['issue', 'project'].includes(r.kind)) e.push('payload.tracker_ref.kind must be issue|project');
+          if (typeof r.url === 'string' && r.url && !/^https?:\/\//i.test(r.url)) e.push('payload.tracker_ref.url must be http(s)');
+        }
+      }
+      if (p.cycle !== undefined && p.cycle !== null && !(typeof p.cycle === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*-\d+$/.test(p.cycle))) e.push('payload.cycle must be a cycle id like core-12 or null');
+      break;
+    case 'cycle.commit': str('task_id'); str('cycle'); break;
     default: break;
   }
   return e;
@@ -122,6 +140,22 @@ export async function applyRequest(home, req, { via = 'dashboard', session = nul
     case 'task.retry': actions.retryTask(home, p.task_id); break;
     case 'task.cancel': actions.cancelTask(home, p.task_id, 'cancelled from inbox'); break;
     case 'task.pause': actions.pauseTask(home, p.task_id); break;
+    case 'item.add': { // contracts §21.4.3
+      const streams = await import('./streams.mjs');
+      const r = streams.newItem(home, { ...p, reported_by: req.actor && req.actor.kind === 'tracker' ? 'tracker' : 'human' });
+      return { status: 'applied', reason: r.created ? `created ${r.task.id}` : r.reason };
+    }
+    case 'report.request': {
+      const ops = await import('./ops.mjs');
+      ops.requestReport(home);
+      return { status: 'applied', reason: 'report requested for the next tick' };
+    }
+    case 'cycle.commit': {
+      const cycles = await import('./cycles.mjs');
+      const { load } = await import('./config.mjs');
+      const t = cycles.commit(home, load(home), p.task_id, p.cycle, { by });
+      return { status: 'applied', reason: `${t.id} cycle ${t.cycle || 'none'}` };
+    }
     case 'sync.now': {
       const { updateFactory } = await import('./state.mjs');
       updateFactory(home, (s) => { s.sync_requested_at = nowIso(); });

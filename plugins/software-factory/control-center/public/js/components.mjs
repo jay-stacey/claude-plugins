@@ -3,7 +3,7 @@ import { html, useEffect, useState } from './html.mjs';
 import { useFocusTrap } from './lib/a11y.mjs';
 import { useQueued } from './api.mjs';
 import { resolveInbox, GATE_STATE_WORD } from './lib/model.mjs';
-import { nextTickMinutes, fmtTokens, statusWord } from './lib/format.mjs';
+import { nextTickMinutes, fmtTokens, statusWord, kindWord } from './lib/format.mjs';
 import { nextTickIn } from './store.mjs';
 
 // ---------- icons (16x16, currentColor, decorative) ----------
@@ -95,6 +95,22 @@ const GOAL_STATUS = {
 export function GoalStatus({ status }) {
   const [tone, icon] = GOAL_STATUS[status] || ['neutral', 'dot'];
   return html`<${Tag} tone=${tone} icon=${icon}>${statusWord(status || 'unknown')}<//>`;
+}
+
+// Goal kind badge (contracts 21.1). Normal goals get none. Text plus icon, never colour alone.
+const GOAL_KIND = {
+  stream: { icon: 'activity', word: 'Stream', title: 'Standing stream of bugs and tech debt for one team' },
+  ops: { icon: 'idle', word: 'Ops', title: 'Factory operations: baseline, cycle plans and CTO reports' },
+};
+export function KindBadge({ kind }) {
+  const k = GOAL_KIND[kind];
+  return k ? html`<span class=${`kind-badge kind-${kind}`} title=${k.title}><${Icon} name=${k.icon} />${k.word}</span>` : null;
+}
+
+// Kinds that are not code work: shown on cards so a report or triage task is not mistaken for a build task.
+const SPECIAL_KINDS = ['assess', 'report', 'cycle_plan', 'triage'];
+export function TaskKindTag({ kind }) {
+  return SPECIAL_KINDS.includes(kind) ? html`<span class="kind-tag" title=${`Task kind: ${kindWord(kind)}`}>${kindWord(kind)}</span>` : null;
 }
 
 // ---------- repo chip (workspace mode only; callers check isWorkspace first) ----------

@@ -21,7 +21,11 @@ export const KIND_ROLE = {
   intake: 'cto', prd: 'product-manager', spec: 'staff-engineer', mockup: 'ui-ux-designer', breakdown: 'staff-engineer',
   sequence: 'project-manager', code: 'backend-engineer', docs: 'tech-writer', qa_epic: 'qa-engineer',
   review_epic: 'code-reviewer', qa_goal: 'qa-engineer', pr_feedback: 'staff-engineer', escalation: 'cto', research: 'staff-engineer',
+  assess: 'cto', report: 'cto', cycle_plan: 'cto', triage: 'staff-engineer',
 };
+
+/** Standing CTO work in the ops goal (contracts §21.1): dispatched as run kind escalation. */
+export const OPS_KINDS = new Set(['assess', 'report', 'cycle_plan']);
 
 export const CODE_ROLES = ['backend-engineer', 'frontend-engineer', 'data-engineer', 'devops-release'];
 

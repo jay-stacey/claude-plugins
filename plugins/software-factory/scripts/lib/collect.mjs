@@ -16,6 +16,8 @@ import { repoRoot, cliPath, fwd } from './paths.mjs';
 import * as repos from './repos.mjs';
 import * as deps from './deps.mjs';
 import { importOutbox } from './outbox.mjs';
+import * as streams from './streams.mjs';
+import * as ops from './ops.mjs';
 
 export const MAX_FIXUPS = 2;
 const CHECK_STALE_MS = 30 * 60 * 1000;
@@ -239,6 +241,16 @@ export async function collectRun(home, run, { cfg = loadConfig(home) } = {}) {
     outcome = await invalidHandoff(home, run, store.get(home, 'task', task.id), outcome.invalid, cfg);
     markCollected(home, run.id, { status: 'invalid', errors: [] });
   } else {
+    // Follow-ups with kind bug|tech_debt|chore become stream items (§21.4.3); a report or assessment is
+    // recorded and its proposals become improvement gates (§21.7.5).
+    try { streams.itemsFromFollowUps(home, cfg, store.get(home, 'task', task.id), h); } catch (e) {
+      emit(home, { type: 'factory.status', goal_id: task.goal_id, task_id: task.id, run_id: run.id, msg: `${run.id}: follow-ups not turned into items: ${e.message}`.slice(0, 140), data: { error: String(e.message || e).slice(0, 300) } });
+    }
+    if (!run.review_role && h.status === 'handed_off' && ['report', 'assess'].includes(task.kind)) {
+      try { ops.onOpsHandoff(home, cfg, run, store.get(home, 'task', task.id), h); } catch (e) {
+        emit(home, { type: 'factory.status', goal_id: task.goal_id, run_id: run.id, task_id: task.id, msg: `${run.id}: ${task.kind} bookkeeping failed (record, proposals): ${e.message}`.slice(0, 140), data: { error: String(e.message || e).slice(0, 300) } });
+      }
+    }
     markCollected(home, run.id, { status: 'valid', handoff_status: h.status, verdict: h.verdict || null, outcome });
   }
   return { run_id: run.id, task_id: task.id, outcome };

@@ -40,7 +40,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         projectDir, tracker: { type: 'string', enum: ['linear', 'github', 'jira'] },
-        scopeHint: { description: 'Linear {team_key}, Jira {project_key}, GitHub {owner, repo}; or a plain key string.', anyOf: [{ type: 'object' }, { type: 'string' }] },
+        scopeHint: { description: 'Linear {team_key}, Jira {project_key}, GitHub {owner, repo}; or a plain key string. Linear also takes {list_teams: true} (prints a TEAMS line, then one TEAM <key> <name> parent=<key|-> id=<id> line per team; no scope check) and {team_keys: [...]} (checks every key, stores per-team states, labels, cycles and status maps, prints READY linear <n> teams (<keys>), or SCOPE_NOT_FOUND <key> for the first missing one).', anyOf: [{ type: 'object' }, { type: 'string' }] },
       },
       required: ['projectDir', 'tracker'],
     },
@@ -79,7 +79,8 @@ export async function handle(msg, deps = {}) {
         const r = await tool.run(args, deps);
         const lines = (r && r.lines) || [];
         const bad = /^(ERROR|REFUSED|NOT_INITIALIZED|NOT_APPROVED)/.test(lines[0] || '');
-        return reply(msg.id, { content: [{ type: 'text', text: lines.slice(0, 15).join('\n') }], ...(bad ? { isError: true } : {}) });
+        const max = Number.isInteger(r && r.maxLines) && r.maxLines > 15 ? Math.min(r.maxLines, 120) : 15; // tracker_discover team lists
+        return reply(msg.id, { content: [{ type: 'text', text: lines.slice(0, max).join('\n') }], ...(bad ? { isError: true } : {}) });
       } catch (e) {
         process.stderr.write(`factory-sync ${p.name} failed: ${e && e.stack ? e.stack : e}\n`);
         return reply(msg.id, { content: [{ type: 'text', text: `ERROR ${String((e && e.message) || e).slice(0, 200)}` }], isError: true });

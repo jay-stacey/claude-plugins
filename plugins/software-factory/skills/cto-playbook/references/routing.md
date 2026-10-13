@@ -18,6 +18,10 @@ The engine creates most tasks itself. Use this table when you create tasks in an
 | pr_feedback | staff-engineer | rework tasks | PR gets changes requested |
 | escalation | cto | decision via CLI | failures, stalemates, replans |
 | research | any planner | a document | optional, to answer a question |
+| triage | staff-engineer | item note, then one epic and 1-3 code tasks, or a question | each bug, tech-debt or chore item in a stream goal |
+| assess | cto | `docs/baseline/assessment-<date>.md` | ops goal; a baseline exists and the last assess is older than `baseline.assess_every_h`, or `start` asked for one |
+| report | cto | `docs/reports/<date>-<HHmm>-<type>.md` and `proposals[]` | ops goal; periodic, idle, cycle_review or requested |
+| cycle_plan | cto | `docs/cycles/<team>-<number>-plan.md` and `cycle commit` calls | ops goal; a team's cycle starts (cycles on) |
 
 Choosing the builder role for a new code task:
 - Touches migrations, schema or data access only: `data-engineer`.
@@ -26,6 +30,11 @@ Choosing the builder role for a new code task:
 - Touches CI, build scripts, infrastructure or release config: `devops-release`.
 - Work in two repos is always two tasks, one in each repo's epic, with `depends_on` when one needs the other.
 - Mixed: split it into one task per role with `depends_on` between them.
+
+Team of a new task: leave `team` out. The CLI takes it from the epic's repo, else the role's team,
+else the goal's lead team. Set it only for planner work you want in a specific team.
+Stream work: a bug or debt you find goes in with `item new --team <T> --class bug|tech_debt|chore`,
+never as a code task in a goal epic. Triage turns the item into code tasks.
 
 Review groups (lean profile) are set by the engine: code review per code task, plus security review
 in the same group when `risk_flags` is not empty, plus task QA only for frontend tasks. Do not add

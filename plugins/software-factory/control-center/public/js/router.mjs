@@ -2,7 +2,7 @@
 // Filters live in the hash only, never in the query string.
 import { useEffect, useState } from './html.mjs';
 
-export const VIEWS = ['board', 'team', 'tokens', 'approvals', 'goals', 'activity'];
+export const VIEWS = ['board', 'team', 'tokens', 'approvals', 'reports', 'goals', 'activity'];
 const listeners = new Set();
 
 export function parseHash(hash = location.hash) {

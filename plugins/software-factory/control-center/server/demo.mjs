@@ -28,6 +28,144 @@ function walk(dir, out = []) {
   return out;
 }
 
+// Shows the A10 features (contracts 21): teams, an ops goal and a stream goal with items, cycles, a baseline,
+// CTO reports and an improvement gate. Runs on the copy, after the clock shift, so every time is relative to `now`.
+export function addDemoExtras(home, now = Date.now()) {
+  const P = (...p) => path.join(home, ...p);
+  const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+  const write = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o, null, 2) + '\n'); };
+  const iso = (offsetMs) => new Date(now + offsetMs).toISOString();
+  const H = 3600 * 1000;
+  const D = 24 * H;
+  const day = iso(0).slice(0, 10);
+
+  // Config: two teams, streams and cycles on. Existing demo work belongs to the Web team.
+  const cfg = read(P('config.json'));
+  cfg.teams = {
+    web: { name: 'Web', kind: 'engineering', parent: null, repos: [], roles: [], tracker: { team_key: 'WEB' } },
+    platform: { name: 'Platform', kind: 'engineering', parent: null, repos: [], roles: [], tracker: { team_key: 'PLT' } },
+  };
+  cfg.streams = { enabled: true, teams: [], capacity_pct: 30 };
+  cfg.cycles = { enabled: true, source: 'local', length_days: 14, anchor: '2026-01-05', plan_at_start: true, review_at_end: true };
+  cfg.reports = { enabled: true, every_h: 24, idle_min_h: 4, idle_min_events: 10, max_proposals: 5 };
+  write(P('config.json'), cfg);
+  const tag = { tasks: () => ({ team: 'web' }), epics: () => ({ team: 'web' }), goals: () => ({ teams: ['web'], lead_team: 'web' }) };
+  for (const [dir, patch] of Object.entries(tag)) {
+    for (const n of fs.readdirSync(P(dir)).filter((x) => x.endsWith('.json'))) write(P(dir, n), { ...read(P(dir, n)), ...patch() });
+  }
+
+  // Documents the Reports view lists. Ages are set through the file times.
+  const doc = (rel, text, ageMs) => {
+    fs.mkdirSync(path.dirname(P(rel)), { recursive: true });
+    fs.writeFileSync(P(rel), text);
+    const t = new Date(now - ageMs);
+    fs.utimesSync(P(rel), t, t);
+  };
+  const reportPath = `docs/reports/${day}-0700-periodic.md`;
+  const yesterday = iso(-D).slice(0, 10);
+  doc(reportPath, [
+    `# CTO report, ${day}, periodic`, '',
+    '## Headline', '',
+    '- 11 tasks done, 3 in review, 1 blocked in the last 24 hours.',
+    '- The VIN decoder is on track. The CSV export is over budget and waiting for you.',
+    '- Reviews took 3 rounds on average for the intake form. That is where time went.', '',
+    '## Process review', '',
+    'Code review found the same lint failure in 4 of 7 tasks. A lint check before review would catch it earlier.', '',
+    '## Proposals', '',
+    '- P-1: Run the build and lint checks before every review, so reviewers see only real findings.', ''].join('\n'), 2 * H);
+  doc(`docs/reports/${yesterday}-0700-periodic.md`, `# CTO report, ${yesterday}, periodic\n\nEight tasks done. No blockers. One proposal was approved.\n`, 26 * H);
+  doc(`docs/baseline/assessment-${day}.md`, `# Assessment, ${day}\n\nTwo open pull requests are not from the factory. One of them touches files that task T-0016 owns. T-0016 was told to name it in its handoff.\n`, 3 * H);
+  doc('docs/cycles/web-3-plan.md', '# Web cycle 3 plan\n\nCommitted: 2 goal tasks and 3 stream items (1 P1 bug, 2 tech debt). Carryover: none.\n', 5 * D);
+  doc('docs/baseline/teams/web.md', '# Web team baseline\n\nRepo dealer-app: 2 open pull requests, 1 not from the factory. 14 commits in the last 7 days.\n', 20 * 60 * 1000);
+  doc('docs/baseline/factory.md', `# Factory baseline\n\nCollected ${day}. Goals: 1 active, 1 awaiting G1, 1 budget blocked. Streams: Web maintenance.\n`, 20 * 60 * 1000);
+
+  // State: baseline, cycles and the new factory.json sections.
+  const pr = (number, title, head, author, draft, factory, ageMs) => ({ number, title, url: `https://example.invalid/pull/${number}`, head, author, draft,
+    review_decision: null, updated_at: iso(-ageMs), files: [], factory });
+  write(P('state', 'baseline.json'), {
+    v: 1, at: iso(-20 * 60 * 1000),
+    repos: {
+      'dealer-app': {
+        team: 'web', base_branch: 'main', head_sha: '3f9c2ab', recent_commits_7d: 14, pr_error: null, factory_branches: 2,
+        open_prs: [pr(41, 'Fix tax rounding on the deal sheet', 'ops/tax-rounding', 'dev1', false, false, 6 * H), pr(44, 'VIN decode service', 'factory/E-0001', 'factory', false, true, 2 * H)],
+        branches: [{ name: 'ops/spike-search', ahead: 3, behind: 0, last_commit_at: iso(-3 * D) }],
+      },
+      'dealer-api': {
+        team: 'platform', base_branch: 'main', head_sha: '9d41e07', recent_commits_7d: 5, pr_error: null, factory_branches: 0,
+        open_prs: [pr(12, 'Upgrade the job runner', 'dev2/runner', 'dev2', true, false, 30 * H)], branches: [],
+      },
+    },
+    factory: {}, tracker: null,
+  });
+  const cyc = (team, n, startDays) => ({ id: `${team}-${n}`, team, number: n, name: null, starts_at: iso(startDays * D), ends_at: iso((startDays + 14) * D), source: 'local', tracker_id: null });
+  write(P('state', 'cycles.json'), {
+    v: 1, updated_at: iso(-H),
+    teams: Object.fromEntries(['web', 'platform'].map((t) => [t, { previous: cyc(t, 2, -19), current: cyc(t, 3, -5), next: cyc(t, 4, 9) }])),
+  });
+  const fac = read(P('state', 'factory.json'));
+  fac.reports = { last_at: iso(-2 * H), last_path: reportPath, last_type: 'periodic', last_task_id: 'T-0101' };
+  fac.baseline = { last_collect_at: iso(-20 * 60 * 1000), last_assess_at: iso(-3 * H), assess_requested: false };
+  write(P('state', 'factory.json'), fac);
+
+  // Records: an ops goal, a stream goal with four items, one fix epic with its task, one improvement gate.
+  const baseTask = read(P('tasks', 'T-0007.json'));
+  const task = (id, patch) => ({
+    ...baseTask, id, rev: 1, created_at: iso(-30 * H), updated_at: iso(-2 * H), epic_id: null, kind: 'triage', role: 'staff-engineer', size: 'S', priority: 'P2',
+    acceptance_criteria: [], ac_version: 1, files_owned: [], files_shared: [], files_read: [], depends_on: [], gate_deps: [], reviews_required: [], reviews: {},
+    status_reason: null, attempts: 1, rework_count: 0, fixups: 0, estimate_tokens: 250000, branch: null, base_ref: null, current_run_id: null, runs: [], blocked: null,
+    feedback: [], answers: [], team: 'web', ...patch,
+  });
+  const goal = (id, patch) => ({
+    ...read(P('goals', 'G-003.json')), id, rev: 1, created_at: iso(-3 * D), updated_at: iso(-H), priority: 'P2', needs_ui: false, gates: { G1: null, G2: null, G3: null },
+    docs: { prd: null, spec: null, plan: null, design: null }, epics: [], status: 'active', status_reason: null, ...patch,
+  });
+  const ops = goal('G-004', { title: 'Factory operations', slug: 'ops', kind: 'ops', outcome: 'The team gets a baseline, plans and reports on time.',
+    success_criteria: ['The team gets a baseline, plans and reports on time'], constraints: [], teams: [], budget: { limit_tokens: 2000000, warn_pct: 80, stop_pct: 100, window_start: iso(-8 * H) } });
+  const stream = goal('G-005', { title: 'Web maintenance', slug: 'web-maintenance', kind: 'stream', team: 'web', teams: [], outcome: 'Bugs and tech debt for the Web team get fixed.',
+    success_criteria: ['Bugs and tech debt for the Web team get fixed'], constraints: [], budget: { limit_tokens: 15000000, warn_pct: 80, stop_pct: 100, window_start: iso(-5 * D) } });
+  write(P('goals', 'G-004.json'), ops);
+  write(P('goals', 'G-005.json'), stream);
+  write(P('epics', 'E-0003.json'), {
+    schema: 'factory/epic@1', id: 'E-0003', rev: 1, created_at: iso(-20 * H), updated_at: iso(-2 * H), goal_id: 'G-005', title: 'Fix deal sheet tax rounding',
+    slug: 'tax-rounding', summary: 'Round tax per line, not per deal.', depends_on: [], status: 'pr_open', branch: 'factory/E-0003-tax-rounding', base_branch: 'main',
+    pr: { number: 45, url: 'https://example.invalid/pull/45' }, gates: { G4: null }, tasks: ['T-0106'], team: 'web', item_task_id: 'T-0103',
+  });
+  const item = (cls, by) => ({ class: cls, tracker_ref: null, reported_by: by });
+  const records = [
+    task('T-0101', { goal_id: 'G-004', kind: 'report', role: 'cto', title: `CTO report ${day} periodic`, status: 'done', report_type: 'periodic', team: null }),
+    task('T-0102', { goal_id: 'G-005', title: 'Intermittent 500 when a deal has no trade-in', status: 'ready', priority: 'P1', item: item('bug', 'human'), item_epic_ids: [], cycle: 'web-3' }),
+    task('T-0103', { goal_id: 'G-005', title: 'Tax rounds per deal instead of per line', status: 'done', priority: 'P1', item: item('bug', 'tracker'), item_epic_ids: ['E-0003'], cycle: 'web-3' }),
+    task('T-0104', { goal_id: 'G-005', title: 'Remove the unused export helpers', status: 'done', priority: 'P3', item: item('tech_debt', 'agent'), item_epic_ids: [] }),
+    task('T-0105', { goal_id: 'G-005', title: 'Slow inventory list on large dealers', status: 'blocked', item: item('tech_debt', 'human'), item_epic_ids: [],
+      blocked: { reason: 'Needs a sample of the slow query from the dealer.', needs: 'human', since: iso(-9 * H), question_id: null } }),
+    task('T-0106', { goal_id: 'G-005', epic_id: 'E-0003', kind: 'code', role: 'backend-engineer', title: 'Round tax per line', status: 'integrated', priority: 'P1', cycle: 'web-3' }),
+  ];
+  for (const t of records) write(P('tasks', `${t.id}.json`), t);
+  write(P('gates', 'GATE-0008.json'), {
+    schema: 'factory/gate@1', id: 'GATE-0008', rev: 1, created_at: iso(-2 * H), updated_at: iso(-2 * H), type: 'improvement', subject: { kind: 'task', id: 'T-0101' },
+    goal_id: 'G-004', status: 'pending', opened_at: iso(-2 * H), opened_by: { run_id: null, actor: 'cto' },
+    artifact: { paths: [reportPath], summary: 'P-1 Run checks before review: 4 of 7 tasks failed review on lint.' },
+    request: { action: 'proposal', proposal: {
+      id: 'P-1', title: 'Run the build and lint checks before every review',
+      why: 'Code review found the same lint failure in 4 of 7 tasks this week. Each one cost a rework round of about 150k tokens.',
+      change: { kind: 'config', patch: { 'reviews.profile': 'strict', 'concurrency.reviewers': 3 } },
+      expected_effect: 'About 4 fewer rework rounds a week, around 600k tokens saved.', risk: 'low' } },
+    decision: null, auto: false,
+  });
+
+  // Index: bumps its revision so a running poller reloads the records.
+  const idx = read(P('state', 'index.json'));
+  idx.rev = (idx.rev || 0) + 1;
+  idx.goals['G-004'] = { status: 'active', title: ops.title, priority: ops.priority };
+  idx.goals['G-005'] = { status: 'active', title: stream.title, priority: stream.priority };
+  idx.epics['E-0003'] = { goal_id: 'G-005', status: 'pr_open' };
+  for (const t of records) {
+    idx.tasks[t.id] = { goal_id: t.goal_id, epic_id: t.epic_id, status: t.status, role: t.role, kind: t.kind, priority: t.priority, depends_on: [], gate_deps: [],
+      files_owned: [], current_run_id: null, updated_at: t.updated_at };
+  }
+  write(P('state', 'index.json'), idx);
+}
+
 // Returns the temp project dir (holding .factory).
 export function prepareDemo() {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-cc-demo-'));
@@ -45,6 +183,7 @@ export function prepareDemo() {
       fs.writeFileSync(f, out.join('\n') + '\n');
     }
   }
+  addDemoExtras(home);
   fs.mkdirSync(path.join(project, '.git'), { recursive: true }); // looks like a repo root; never read
   // The demo gets its own plugin data dir, so signing uses a throwaway HMAC key, never the real one.
   const data = path.join(project, 'plugin-data');

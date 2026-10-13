@@ -1,8 +1,8 @@
 {
   "name": "software-factory",
   "displayName": "Software Factory",
-  "version": "0.2.0",
-  "description": "An AI software factory: a CTO agent turns goals into work for 14 role agents that plan, design, build, review and test code in one repo or across a folder of repos, with human approval gates, a local control center and two-way tracker sync.",
+  "version": "0.3.0",
+  "description": "An AI software factory: a CTO agent turns goals into work for 14 role agents that plan, design, build, review and test code in one repo or across a folder of repos, with teams mapped to tracker teams, bug and tech-debt streams, cycles, CTO baselines and reports, human approval gates, a local control center and two-way tracker sync.",
   "author": {
     "name": "Jay",
     "email": "jay@dealerpull.com"

@@ -18,10 +18,12 @@ const deny = (reason) => ({ decision: 'deny', reason });
 
 // Contracts §8 + §12.2 (read-only subcommands for every role).
 const CLI_COMMON = ['handoff validate', 'evidence run', 'worktree prepare', 'status', 'task show', 'task list',
-  'goal show', 'epic show', 'epic list', 'budget show', 'gate list', 'events tail'];
+  'goal show', 'epic show', 'epic list', 'budget show', 'gate list', 'events tail',
+  // Contracts §21.8: read-only baseline, cycles, items and reports for every role.
+  'baseline show', 'cycle show', 'item list', 'item show', 'report data', 'report list'];
 const CLI_EXTRA = {
-  cto: ['goal set', 'task new', 'task replan', 'task retry', 'task cancel', 'task waive', 'task block', 'epic new', 'note'],
-  'staff-engineer': ['epic new', 'task new'],
+  cto: ['goal set', 'task new', 'task replan', 'task retry', 'task cancel', 'task waive', 'task block', 'epic new', 'note', 'item new', 'cycle commit'],
+  'staff-engineer': ['epic new', 'task new', 'item new'],
   'project-manager': ['task new', 'task replan'],
 };
 const CLI_SINGLE = new Set(['status', 'note']);
@@ -645,6 +647,10 @@ function checkCli(args, st, cwd, depth) {
   const allowed = cliSubcommandsFor(st.role);
   if (!allowed.has(sub)) return deny(`factory CLI \`${sub}\` is not allowed for ${st.role}; ask in open_questions`);
 
+  // `report data --out` writes a file; agents read metrics from stdout or their brief's metrics_path.
+  // Only people link tracker issues (`item new --tracker`); agents file plain items.
+  if (sub === 'item new' && flags.tracker) return deny('item new --tracker links a tracker issue; only a person may do that. File the item without --tracker');
+  if (sub === 'report data' && flags.out) return deny('report data --out writes a file; read the output directly or use metrics_path from your brief');
   if (sub === 'worktree prepare' || sub === 'evidence run') {
     const runFlag = flags.run?.value;
     if (!st.run?.id || runFlag !== st.run.id) return deny(`use --run ${st.run?.id || '<your run id>'} (your own run)`);

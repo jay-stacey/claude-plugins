@@ -16,20 +16,25 @@ updated: {{date}}
 The rules every factory agent follows in this repo. Precedence: a role's Never rules and the factory
 protocol, then this file, then the brief, then the role overlay.
 
-{{#if workspace}}## Repos
+{{#if workspace_or_teams}}## Repos
 
-<!-- Workspace mode only. One row per repo in config `repos` (the repos the factory may change).
-     Fill from `repos.<name>`: path, stack summary (language and frameworks), build, test, lint.
-     Write `none` for a null command. In classic mode drop this whole section, this comment
-     included, and keep C-Q2 as written below. -->
+<!-- Workspace mode, or any setup whose config has `teams`. The table is for workspace mode only:
+     one row per repo in config `repos` (the repos the factory may change), filled from
+     `repos.<name>`: path, its team (`teams.<id>.repos`, or `core`), stack summary (language and
+     frameworks), build, test, lint. Write `none` for a null command. The Teams list is for
+     configs with `teams` only. With neither, drop this whole section, this comment included,
+     and keep C-Q2 as written below. -->
 
-This workspace holds several repos. Each task and epic belongs to one repo; work only inside it.
+{{#if workspace}}This workspace holds several repos. Each task and epic belongs to one repo; work only inside it.
 Default repo: {{workspace.default_repo}}.
 
-| Repo | Path | Stack | Build | Test | Lint |
-|---|---|---|---|---|---|
-{{#each repos}}| {{name}} | `{{path}}` | {{stack}} | `{{commands.build}}` | `{{commands.test}}` | `{{commands.lint}}` |
+| Repo | Path | Team | Stack | Build | Test | Lint |
+|---|---|---|---|---|---|---|
+{{#each repos}}| {{name}} | `{{path}}` | {{team}} | {{stack}} | `{{commands.build}}` | `{{commands.test}}` | `{{commands.lint}}` |
 {{/each}}
+{{/if}}{{#if teams}}Teams. Each repo belongs to one team; its tasks, items and tracker issues go to that team.
+{{#each teams}}- {{id}} ({{name}}){{#if parent}}, part of {{parent}}{{/if}}: tracker {{tracker.team_key}}, repos {{repos}}, roles {{roles}}.
+{{/each}}{{/if}}
 {{/if}}
 ## Quality bars (C-Q)
 

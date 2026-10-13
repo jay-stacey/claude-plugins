@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
 
-const BOOL = new Set(['json', 'quick', 'reindex', 'takeover', 'now', 'stop', 'loop', 'discard', 'force', 'once', 'all-done', 'all', 'help', 'workspace']);
+const BOOL = new Set(['json', 'quick', 'reindex', 'takeover', 'now', 'stop', 'loop', 'discard', 'force', 'once', 'all-done', 'all', 'help', 'workspace', 'quiet']);
 const MULTI = new Set(['criteria', 'constraint', 'depends']);
 
 export function parseArgs(argv) {
@@ -134,7 +134,17 @@ const COMMANDS = {
   async start(ctx) {
     if (!ctx.session) throw usage('--session is required');
     const c = await lib('control');
-    out(ctx, c.start(ctx.home, { session: ctx.session, takeover: !!ctx.flags.takeover }));
+    const lines = c.start(ctx.home, { session: ctx.session, takeover: !!ctx.flags.takeover });
+    // `start` collects the baseline every time and asks for an assessment (contracts §21.5.1).
+    const cfg = (await lib('config')).load(ctx.home);
+    if (cfg.baseline && cfg.baseline.enabled !== false) {
+      try {
+        const bl = await (await lib('baseline')).collect(ctx.home, { cfg });
+        (await lib('state')).updateFactory(ctx.home, (s) => { s.baseline.assess_requested = true; });
+        lines.splice(lines.length - 1, 0, `baseline collected (${Object.keys(bl.repos).length} repos); assessment requested`);
+      } catch { /* the baseline never blocks start */ }
+    }
+    out(ctx, lines);
   },
 
   async pause(ctx) {
@@ -221,15 +231,22 @@ const COMMANDS = {
         out(ctx, lines, r); return 0;
       }
       case 'set': {
-        const runs = store.list(ctx.home, 'run', (r) => r.goal_id === id && r.role === 'cto' && ['dispatching', 'running', 'suspect'].includes(r.status));
+        // --tier/--needs-ui/--pod: the CTO run of this goal. --teams/--lead-team: any active CTO run (an
+        // assessment in the ops goal reconciles teams across goals, contracts §21.5.5).
+        const ctoRuns = store.list(ctx.home, 'run', (r) => r.role === 'cto' && ['dispatching', 'running', 'suspect'].includes(r.status));
+        const goalOnly = f.tier !== undefined || f['needs-ui'] !== undefined || f.pod !== undefined;
+        const runs = goalOnly ? ctoRuns.filter((r) => r.goal_id === id) : ctoRuns;
         const human = (await intentOk(ctx.home, ctx, 'approve')) || (await intentOk(ctx.home, ctx, 'pause'));
-        if (!runs.length && !human) throw fail(`goal set is for the CTO run of ${id}; no active cto run`);
+        if (!runs.length && !human) throw fail(goalOnly ? `goal set --tier/--needs-ui/--pod is for the CTO run of ${id}; no active cto run` : 'goal set --teams/--lead-team needs an active CTO run');
         const patch = {};
         if (f.tier !== undefined) patch.tier = f.tier;
         if (f['needs-ui'] !== undefined) patch.needs_ui = String(f['needs-ui']) === 'true';
         if (f.pod !== undefined) patch.pod = parseValue(f.pod);
+        if (f.teams !== undefined) patch.teams = String(f.teams).split(',').map((s) => s.trim()).filter(Boolean);
+        if (f['lead-team'] !== undefined) patch.lead_team = String(f['lead-team']).trim() || null;
         const g = a.setGoal(ctx.home, id, patch);
-        out(ctx, [`SET ${id} tier ${g.tier} needs_ui ${g.needs_ui} budget ${g.budget.limit_tokens}`], g); return 0;
+        const teamsTxt = patch.teams !== undefined || patch.lead_team !== undefined ? ` teams ${(g.teams || []).join(',') || '-'} lead ${g.lead_team || '-'}` : '';
+        out(ctx, [`SET ${id} tier ${g.tier} needs_ui ${g.needs_ui} budget ${g.budget.limit_tokens}${teamsTxt}`], g); return 0;
       }
       default: throw usage('goal new|show|list|impact|activate|pause|resume|remove|set');
     }
@@ -240,7 +257,7 @@ const COMMANDS = {
     const a = await lib('actions');
     const [sub, id] = ctx.pos;
     if (sub === 'new') {
-      const e = a.newEpic(ctx.home, { goal_id: ctx.flags.goal, title: ctx.flags.title, summary: ctx.flags.summary || '', depends_on: ctx.flags.depends || [], repo: ctx.flags.repo || null });
+      const e = a.newEpic(ctx.home, { goal_id: ctx.flags.goal, title: ctx.flags.title, summary: ctx.flags.summary || '', depends_on: ctx.flags.depends || [], repo: ctx.flags.repo || null, team: ctx.flags.team || null, item: ctx.flags.item || null });
       out(ctx, [e.id], e); return 0;
     }
     if (sub === 'show') { const e = store.mustGet(ctx.home, 'epic', id); out(ctx, [JSON.stringify(e, null, 2)], e); return 0; }
@@ -559,6 +576,103 @@ const COMMANDS = {
     const { collect } = await lib('collect');
     const r = await collect(ctx.home);
     out(ctx, r.length ? r.map((x) => `${x.run_id || x.task_id} ${x.outcome}`) : ['nothing to collect'], r);
+  },
+
+  // ---------------------------------------------------------------- contracts §21
+  async baseline(ctx) {
+    const bl = await lib('baseline');
+    const cfg = (await lib('config')).load(ctx.home);
+    const sub = ctx.pos[0];
+    if (sub === 'collect') {
+      const b = await bl.collect(ctx.home, { cfg });
+      const prs = Object.values(b.repos).reduce((n, r) => n + r.open_prs.filter((p) => !p.factory).length, 0);
+      const lines = ctx.flags.quiet ? [] : [`BASELINE ${Object.keys(b.repos).length} repos; ${prs} open human PRs${b.error ? `; error: ${b.error}` : ''}`,
+        `files: state/baseline.json, ${bl.factoryDocRel()}, ${(await lib('teams')).ids(ctx.home, cfg).map((t) => bl.teamDocRel(t)).join(', ')}`];
+      out(ctx, lines, b); return 0;
+    }
+    if (sub === 'show') {
+      if (ctx.json) { out(ctx, [], bl.read(ctx.home)); return 0; }
+      out(ctx, bl.showLines(ctx.home, cfg, { team: ctx.flags.team || null })); return 0;
+    }
+    throw usage('baseline collect [--quiet] | baseline show [--team T]');
+  },
+
+  async item(ctx) {
+    const streams = await lib('streams');
+    const store = await lib('store');
+    const cfg = (await lib('config')).load(ctx.home);
+    const [sub, id] = ctx.pos;
+    const f = ctx.flags;
+    const row = (t) => `${t.id} ${streams.itemStatus(ctx.home, t)} ${(t.item && t.item.class) || '?'} ${t.priority} ${t.team || '-'}${t.cycle ? ` ${t.cycle}` : ''} ${t.title}`;
+    if (sub === 'new') {
+      const tracker = f.tracker !== undefined ? parseValue(f.tracker) : null;
+      if (tracker !== null && (typeof tracker !== 'object' || Array.isArray(tracker))) throw usage('--tracker must be a JSON object {provider, remote_id, key, url, kind}');
+      const r = streams.newItem(ctx.home, { team: f.team, class: f.class, title: f.title, description: f.description || '', priority: f.priority, repo: f.repo || null, tracker_ref: tracker, reported_by: ctx.agentRole ? 'agent' : 'human' }, { cfg });
+      out(ctx, [r.created ? `ITEM ${r.task.id} ${r.task.team} ${r.task.item.class} ${r.task.priority}` : `EXISTS ${r.task.id} (${r.reason})`], r.task); return 0;
+    }
+    if (sub === 'list') {
+      if (f.class && !['bug', 'tech_debt', 'chore'].includes(f.class)) throw usage('--class must be bug|tech_debt|chore');
+      const l = streams.items(ctx.home, { team: f.team || null, cls: f.class || null });
+      out(ctx, l.length ? l.map(row) : ['no items'], l.map((t) => ({ ...t, effective_status: streams.itemStatus(ctx.home, t) }))); return 0;
+    }
+    if (sub === 'show') {
+      const t = store.mustGet(ctx.home, 'task', id);
+      if (t.kind !== 'triage') throw fail(`${id} is a ${t.kind} task, not an item`);
+      const eff = streams.itemStatus(ctx.home, t);
+      const epics = (t.item_epic_ids || []).map((e) => store.get(ctx.home, 'epic', e)).filter(Boolean);
+      const ref = t.item && t.item.tracker_ref;
+      out(ctx, [row(t), `status ${t.status}; effective ${eff}; reported by ${(t.item && t.item.reported_by) || '?'}${t.repo ? `; repo ${t.repo}` : ''}`,
+        `tracker: ${ref ? `${ref.key || ref.remote_id} ${ref.url || ''}`.trim() : 'none'}`,
+        `epics: ${epics.map((e) => `${e.id} ${e.status}${e.pr && e.pr.url ? ` ${e.pr.url}` : ''}`).join('; ') || 'none'}`,
+        `note: docs/streams/${t.team || 'core'}/items/${t.id}.md`, ...(t.description ? [`description: ${t.description.split('\n')[0].slice(0, 200)}`] : [])],
+      { ...t, effective_status: eff }); return 0;
+    }
+    throw usage('item new --team T --class bug|tech_debt|chore --title <t> --description <d> [--priority P1] [--repo R] [--tracker <json>] | item list [--team T] [--class C] | item show <T>');
+  },
+
+  async cycle(ctx) {
+    const cycles = await lib('cycles');
+    const cfg = (await lib('config')).load(ctx.home);
+    const [sub, id] = ctx.pos;
+    if (sub === 'show') {
+      if (ctx.json) { out(ctx, [], cycles.readState(ctx.home)); return 0; }
+      out(ctx, cycles.showLines(ctx.home, cfg, { team: ctx.flags.team || null })); return 0;
+    }
+    if (sub === 'roll') {
+      if (!cycles.enabled(cfg)) { out(ctx, ['cycles off (set cycles.enabled true)']); return 0; }
+      const r = await cycles.roll(ctx.home, cfg);
+      out(ctx, r.lines.length ? r.lines : [r.first ? 'cycles recorded (first roll)' : 'no cycle change'], r); return 0;
+    }
+    if (sub === 'commit') {
+      if (!id || ctx.flags.cycle === undefined) throw usage('cycle commit <T> --cycle current|next|none|<cycle id>');
+      const t = cycles.commit(ctx.home, cfg, id, String(ctx.flags.cycle), { by: ctx.agentRole || 'human' });
+      out(ctx, [`COMMITTED ${t.id} ${t.cycle || 'none'}`], t); return 0;
+    }
+    throw usage('cycle show [--team T] | cycle roll | cycle commit <T> --cycle current|next|none|<id>');
+  },
+
+  async report(ctx) {
+    const ops = await lib('ops');
+    const sub = ctx.pos[0];
+    if (sub === 'data') {
+      const metrics = await lib('metrics');
+      const cfg = (await lib('config')).load(ctx.home);
+      if (ctx.flags.team) (await lib('teams')).get(ctx.home, cfg, ctx.flags.team);
+      if (ctx.flags.since && Number.isNaN(Date.parse(ctx.flags.since))) throw usage('--since must be an ISO date');
+      const m = metrics.build(ctx.home, { cfg, since: ctx.flags.since ? new Date(ctx.flags.since).toISOString() : null, team: ctx.flags.team || null });
+      if (ctx.flags.out) {
+        const { writeJsonAtomic } = await lib('fsutil');
+        writeJsonAtomic(resolve(String(ctx.flags.out)), m);
+      }
+      out(ctx, [...metrics.textLines(m).slice(0, ctx.flags.out ? 39 : 40), ...(ctx.flags.out ? [`WROTE ${resolve(String(ctx.flags.out)).replace(/\\/g, '/')}`] : [])], m); return 0;
+    }
+    if (sub === 'request') { ops.requestReport(ctx.home); out(ctx, ['REQUESTED a CTO report; the next tick creates it']); return 0; }
+    if (sub === 'list') {
+      const l = ops.listReports(ctx.home, { n: Number(ctx.flags.n) || 20 });
+      const sm = ops.summary(ctx.home);
+      out(ctx, [`last report: ${sm.last_report_path || 'none'} (${sm.report_age}); last assess ${sm.assess_age}`, ...l.map((x) => `${new Date(x.mtime).toISOString().slice(0, 16)}Z ${x.kind} ${x.path}`)], { ...sm, files: l }); return 0;
+    }
+    throw usage('report data [--since ISO] [--team T] [--out <file>] [--json] | report request | report list');
   },
 
   async checks(ctx) {

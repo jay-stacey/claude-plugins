@@ -16,7 +16,8 @@
       "format": "date-time"
     },
     "type": {
-      "type": "string"
+      "type": "string",
+      "description": "Event type (contracts §3, §21.7.7 adds report.published, improvement.decided, cycle.started, cycle.ended, baseline.collected, item.created)."
     },
     "source": {
       "enum": [

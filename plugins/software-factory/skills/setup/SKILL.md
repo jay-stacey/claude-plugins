@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Sets up software-factory for this repo, or for a folder that holds several git repos (workspace mode) - scans the codebase, interviews the user (mission, rules, roles, gates, budget, tracker) in about 12 short questions, and writes .factory/ (config, constitution, org chart, role overlays). Use when the user asks to set up, configure, reconfigure or re-scan the factory, or when .factory/config.json is missing.
+description: Sets up software-factory for this repo, or for a folder that holds several git repos (workspace mode) - scans the codebase, interviews the user (mission, rules, roles, gates, budget, tracker, teams) in about 12-16 short questions, and writes .factory/ (config, constitution, org chart, role overlays). Use when the user asks to set up, configure, reconfigure or re-scan the factory, or when .factory/config.json is missing.
 argument-hint: "[--reset] [--section <name>] [--new] [--no-scan]"
 context: fork
 agent: setup-interviewer
@@ -36,7 +36,8 @@ References (read when the phase says so):
 Section names and what they regenerate: `scan` (config commands + stack, overlays, constitution
 coding standards), `commands` (config, overlays), `mission` (org.md), `goals` (inbox requests only),
 `constitution` (constitution.md), `team` and `gates` (config, org.md, overlays), `budget` (config),
-`tracker` (config), `roles` (overlays only), `pointer` (CLAUDE.md line). Unknown name: list these and stop.
+`tracker` (config), `teams` (config `teams`, `tracker.goal_mapping`, `streams`, `cycles`; org.md;
+constitution), `roles` (overlays only), `pointer` (CLAUDE.md line). Unknown name: list these and stop.
 
 ## Phase 0: Preflight (no questions unless noted)
 
@@ -102,13 +103,17 @@ Classic mode:
 
 Read `references/questionnaire.md`, then ask its calls in order, skipping what it marks conditional.
 Workspace mode: use the "Workspace branch" of call 1 in place of the single-repo call 1.
+Call 7 (Teams) runs when the tracker is Linear or in workspace mode. With Linear, call
+`tracker_discover` with `scopeHint.list_teams` before call 6 and with `scopeHint.team_keys` after
+call 7, as the questionnaire says. At most 7 AskUserQuestion calls, 8 in workspace mode.
 After each call: write that section's answers to `.factory/setup/pending/answers-<section>.json`
 (include `"completed": true` and every source you showed) and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" setup save <section> <file>`.
 
 ## Phase 9: Generate
 
 1. Config. Build one patch with only the keys setup owns (questionnaire "Config mapping"; workspace
-   mode: "Workspace config mapping"), write it to
+   mode: "Workspace config mapping"). From call 7 it adds `teams` (unless the user chose one team),
+   `tracker.goal_mapping`, `streams` and `cycles`. Write it to
    `.factory/setup/pending/config.json`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" config merge <file>`, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" config validate`.
    On a validation error, fix the patch once and merge again.
 2. Seed goals. For each goal the user chose: `node "${CLAUDE_PLUGIN_ROOT}/scripts/factory.mjs" inbox add --type goal.add --payload '<json>'` with
@@ -126,7 +131,9 @@ After each call: write that section's answers to `.factory/setup/pending/answers
      than one is edited.
    - Roles that are no longer active: leave their overlay file; say it is unused.
    - Workspace mode: the constitution and every overlay get the "Repos" table from their template
-     (one row per repo the factory may change). Classic mode: leave the Repos section out.
+     (one row per repo the factory may change). Classic mode: leave the Repos section out unless
+     config has `teams`; then the constitution's Repos section names the teams only.
+   - `org.md` gets the "Teams" table when config has `teams` (team, parent, tracker key, repos, roles).
 4. Pointer. If the user said yes and `CLAUDE.md` or `AGENTS.md` exists at `<repo>` (not asked in
    workspace mode, where `<repo>` is not a repo), append with Edit:
    `This repo runs software-factory. Agents follow .factory/constitution.md; do not hand-edit .factory/ state while the loop runs.`
@@ -139,6 +146,10 @@ After each call: write that section's answers to `.factory/setup/pending/answers
      your settings. Agents can run your build, test, lint and other listed commands (with extra
      arguments), but not arbitrary shell commands."
    - Tracker line from the questionnaire (sync ships later, or credentials needed).
+   - Teams: one line per team (id, tracker key, repos), plus streams and cycles as chosen.
+   - "The CTO collects a baseline of open pull requests and in-flight work every hour, and writes a
+     report every day. Read it with /software-factory:report; approve its proposals with
+     /software-factory:approve."
    - Classic mode: "Commit `.factory/` so your team shares the setup." (Only the allow-listed files are tracked.)
    - Workspace mode: "`.factory/` is not inside any repo, so nothing is committed. To share it with your
      team, make `.factory` its own git repo (`git init` inside `.factory`)." Say it; never run it.

@@ -6,17 +6,50 @@ import { emit } from './events.mjs';
 import { load as loadConfig } from './config.mjs';
 import { slugify } from './ids.mjs';
 import { ROLES, ENUMS } from './schema.mjs';
-import { KIND_ROLE, estimateFor, CODE_ROLES } from './roles.mjs';
+import { KIND_ROLE, estimateFor, CODE_ROLES, OPS_KINDS } from './roles.mjs';
 import { move, setGoalStatus } from './lifecycle.mjs';
 import { overlap, lsFiles } from './glob.mjs';
 import * as repos from './repos.mjs';
+import * as teams from './teams.mjs';
 
 export function fail(msg, exitCode = 1) { const e = new Error(msg); e.exitCode = exitCode; return e; }
 
-export function goalDocsRel(goal) { return `docs/${goal.id}-${goal.slug}`; }
-export function goalDocsDir(home, goal) { return join(home, 'docs', `${goal.id}-${goal.slug}`); }
+/** Goal kind (contracts §21.1): a missing value means `goal`. */
+export function goalKind(goal) { return (goal && goal.kind) || 'goal'; }
+export function isStanding(goal) { return goalKind(goal) !== 'goal'; }
+
+export function goalDocsRel(goal) {
+  if (goalKind(goal) === 'ops') return 'docs/ops';
+  if (goalKind(goal) === 'stream') return `docs/streams/${goal.team || 'core'}`;
+  return `docs/${goal.id}-${goal.slug}`;
+}
+export function goalDocsDir(home, goal) { return join(home, goalDocsRel(goal)); }
 
 export function tasksOf(home, goalId) { return store.list(home, 'task', (t) => t.goal_id === goalId); }
+
+/**
+ * A standing goal (ops or stream, contracts §21.1): status active at birth, no intake, never done.
+ * Callers hold the mutex and check that it does not exist yet.
+ */
+export function createStandingGoal(home, { kind, title, outcome, criteria, team = null, limit, windowStart }) {
+  const cfg = loadConfig(home);
+  const goal = store.create(home, 'goal', {
+    kind, title: title.slice(0, 80), slug: slugify(title), outcome: outcome.slice(0, 600), success_criteria: criteria,
+    priority: 'P2', status: 'active', status_reason: 'standing work', created_by: { kind: 'human', via: 'cli' },
+    team, teams: team ? [team] : [], lead_team: team,
+    budget: { limit_tokens: limit, warn_pct: cfg.budget.warn_pct, stop_pct: cfg.budget.stop_pct, user_set: false, window_start: windowStart },
+  });
+  ensureDir(goalDocsDir(home, goal));
+  emit(home, { type: 'goal.status', goal_id: goal.id, msg: `${goal.id} created: ${goal.title}`, data: { from: null, to: 'active', kind } });
+  return goal;
+}
+
+/** Add a team to a `kind: goal` goal's teams[] (the CLI tracks every team that gets an epic or task). */
+export function addGoalTeam(home, goalId, teamId) {
+  const g = store.get(home, 'goal', goalId);
+  if (!g || !teamId || isStanding(g) || (g.teams || []).includes(teamId)) return g;
+  return store.update(home, 'goal', goalId, (x) => { x.teams = [...(x.teams || []), teamId]; });
+}
 
 // ---------------- goals ----------------
 export function newGoal(home, input, { via = 'cli', kind = 'human' } = {}) {
@@ -32,7 +65,8 @@ export function newGoal(home, input, { via = 'cli', kind = 'human' } = {}) {
     const goal = store.create(home, 'goal', {
       title: title.slice(0, 80), slug: slugify(title), outcome: String(input.outcome || title).slice(0, 600),
       success_criteria: criteria.slice(0, 7), constraints: (input.constraints || []).map(String), priority,
-      status: 'planning', created_by: { kind, via },
+      status: 'planning', created_by: { kind, via }, kind: 'goal', teams: [], lead_team: null,
+      ...(input.tracker_ref ? { tracker_ref: input.tracker_ref } : {}),
       budget: { limit_tokens: userBudget || cfg.budget.tier_defaults.M, warn_pct: cfg.budget.warn_pct, stop_pct: cfg.budget.stop_pct, user_set: !!userBudget },
       notes: input.notes || null,
     });
@@ -47,10 +81,16 @@ export function newGoal(home, input, { via = 'cli', kind = 'human' } = {}) {
   });
 }
 
-export function setGoal(home, goalId, { tier, needs_ui, pod } = {}) {
+export function setGoal(home, goalId, { tier, needs_ui, pod, teams: teamList, lead_team } = {}) {
   const cfg = loadConfig(home);
   if (tier !== undefined && !ENUMS.tier.includes(tier)) throw fail('--tier must be S|M|L', 2);
+  for (const id of [...(teamList || []), ...(lead_team ? [lead_team] : [])]) teams.get(home, cfg, id); // exit 1 on an unknown team
   return store.update(home, 'goal', goalId, (g) => {
+    if (teamList !== undefined || lead_team !== undefined) {
+      const lead = lead_team !== undefined ? lead_team : (g.lead_team || null);
+      const list = [...new Set([...(lead ? [lead] : []), ...(teamList !== undefined ? teamList : (g.teams || []))])];
+      g.teams = list; g.lead_team = lead || list[0] || null; // the lead team comes first (tracker project teams)
+    }
     if (tier !== undefined) {
       g.tier = tier;
       if (!g.budget.user_set) g.budget.limit_tokens = cfg.budget.tier_defaults[tier];
@@ -119,23 +159,36 @@ export function removeGoal(home, goalId, { discard = false, by = 'human', via = 
 }
 
 // ---------------- epics ----------------
-export function newEpic(home, { goal_id, title, summary = '', depends_on = [], repo = null }) {
+export function newEpic(home, { goal_id, title, summary = '', depends_on = [], repo = null, team = null, item = null }) {
   const cfg = loadConfig(home);
   const goal = store.mustGet(home, 'goal', goal_id);
   if (!title) throw fail('epic needs --title', 2);
   for (const d of depends_on) if (!store.get(home, 'epic', d)) throw fail(`depends_on ${d} not found`);
+  if (goalKind(goal) === 'ops') throw fail(`${goal_id} is the ops goal; it holds no epics`);
   // Workspace mode: an epic lives in exactly one repo (contracts §20.3). Classic mode ignores --repo.
   const ws = repos.isWorkspace(cfg);
   if (ws && !repo) throw fail(`epic needs --repo (one of: ${repos.names(home, cfg).join(', ')})`, 2);
   const r = repos.get(home, cfg, ws ? repo : null);
+  if (team) teams.get(home, cfg, team);
+  let itemTask = null;
+  if (item) { // a fix for a stream item (§21.4.4)
+    itemTask = store.mustGet(home, 'task', item);
+    if (itemTask.kind !== 'triage') throw fail(`${item} is a ${itemTask.kind} task, not a triage item`);
+    if (itemTask.goal_id !== goal_id) throw fail(`${item} belongs to ${itemTask.goal_id}, not ${goal_id}`);
+  }
+  // Team (§21.2): given, else the stream's team, else the team of the epic's repo.
+  const teamId = team || (goalKind(goal) === 'stream' ? goal.team : null) || teams.resolve(home, cfg, { epic: { repo: ws ? r.name : null }, goal });
   return withMutex(home, () => {
     const id = store.nextId(home, 'epic');
     const slug = slugify(title);
     const epic = store.create(home, 'epic', {
       id, goal_id, title: title.slice(0, 80), slug, summary, depends_on, status: 'draft',
       branch: `factory/${id}-${slug}`, base_branch: r.delivery.base_branch, repo: ws ? r.name : null,
+      team: teamId, item_task_id: itemTask ? itemTask.id : null,
     });
     store.update(home, 'goal', goal.id, (g) => { if (!g.epics.includes(id)) g.epics.push(id); });
+    addGoalTeam(home, goal.id, teamId);
+    if (itemTask) store.update(home, 'task', itemTask.id, (t) => { t.item_epic_ids = [...new Set([...(t.item_epic_ids || []), id])]; });
     return epic;
   });
 }
@@ -169,12 +222,20 @@ export function createTask(home, fields) {
   const role = fields.role || KIND_ROLE[fields.kind] || 'cto';
   const goal = fields.goal_id ? store.get(home, 'goal', fields.goal_id) : null;
   const t = { ...fields, role, acceptance_criteria: normAcs(fields.acceptance_criteria) };
-  if (t.repo === undefined && t.epic_id) { const ep = store.get(home, 'epic', t.epic_id); t.repo = (ep && ep.repo) || null; }
+  const ep = t.epic_id ? store.get(home, 'epic', t.epic_id) : null;
+  if (t.repo === undefined && t.epic_id) t.repo = (ep && ep.repo) || null;
   if (t.priority === undefined && goal) t.priority = goal.priority;
   if (t.reviews_required === undefined) t.reviews_required = reviewsFor(cfg, t, goal);
   if (!t.estimate_tokens) t.estimate_tokens = estimateFor(cfg, { ...t, estimate_tokens: 0 }, 'author');
+  if (t.team === undefined) t.team = teams.resolve(home, cfg, { task: t, epic: ep, goal }); // §21.2 resolution order
+  // A task inside a stream item's epic inherits the item's cycle when it has none (§21.4.7).
+  if ((t.cycle === undefined || t.cycle === null) && ep && ep.item_task_id) {
+    const it = store.get(home, 'task', ep.item_task_id);
+    if (it && it.cycle) t.cycle = it.cycle;
+  }
   const rec = store.create(home, 'task', t);
   if (rec.epic_id) store.update(home, 'epic', rec.epic_id, (e) => { if (!e.tasks.includes(rec.id)) e.tasks.push(rec.id); });
+  if (goal) addGoalTeam(home, goal.id, rec.team);
   emit(home, { type: 'task.created', goal_id: rec.goal_id, epic_id: rec.epic_id, task_id: rec.id, msg: `${rec.id} ${rec.kind}: ${rec.title}`, data: { kind: rec.kind, role: rec.role, status: rec.status } });
   return rec;
 }
@@ -229,6 +290,14 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
       const goal = goalId ? store.get(home, 'goal', goalId) : null;
       if (!goal) { errors.push(`${where}: goal_id missing or not found`); continue; }
       if (!raw.title) errors.push(`${where}: title required`);
+      if (raw.team && !teams.find(home, cfg, raw.team)) errors.push(`${where}: unknown team ${raw.team}`);
+      if (raw.cycle !== undefined && raw.cycle !== null && typeof raw.cycle !== 'string') errors.push(`${where}: cycle must be a cycle id or null`);
+      if (raw.item !== undefined && raw.item !== null && typeof raw.item === 'string') {
+        const it = store.get(home, 'task', raw.item);
+        if (!it || it.kind !== 'triage') errors.push(`${where}: item ${raw.item} is not a triage task`);
+      }
+      if (kind === 'triage' && goalKind(goal) !== 'stream') errors.push(`${where}: triage tasks belong to a stream goal`);
+      if (OPS_KINDS.has(kind) && goalKind(goal) !== 'ops') errors.push(`${where}: ${kind} tasks belong to the ops goal`);
       const role = raw.role || KIND_ROLE[kind];
       if (!ROLES.includes(role)) errors.push(`${where}: unknown role ${role}`);
       if (kind === 'code') {
@@ -273,9 +342,14 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
     const out = [];
     for (const p of planned) {
       const tasks = tasksOf(home, p.goal.id);
-      const sequenced = tasks.some((t) => t.kind === 'sequence' && t.status === 'done');
+      // Stream goals have no sequence task: their code tasks start in backlog (§21.1.4).
+      const sequenced = isStanding(p.goal) || tasks.some((t) => t.kind === 'sequence' && t.status === 'done');
       const gateDeps = [...(p.raw.gate_deps || [])];
       if (p.role === 'frontend-engineer' && p.goal.needs_ui && !gateDeps.includes('G3')) gateDeps.push('G3');
+      // A fix for a stream item inherits the item's cycle and priority (§21.4.7).
+      const ep = p.raw.epic_id ? store.get(home, 'epic', p.raw.epic_id) : null;
+      const itemId = typeof p.raw.item === 'string' ? p.raw.item : (ep && ep.item_task_id) || null;
+      const itemTask = itemId ? store.get(home, 'task', itemId) : null;
       const fields = {
         id: p.id, goal_id: p.goal.id, epic_id: p.raw.epic_id || null, repo: p.repo, kind: p.kind, role: p.role,
         title: String(p.raw.title).slice(0, 80), description: String(p.raw.description || '').slice(0, 1200),
@@ -287,7 +361,20 @@ export function newTasks(home, input, { actor = 'cli' } = {}) {
         created_by: actor,
       };
       if (p.raw.priority) fields.priority = p.raw.priority;
+      else if (itemTask) fields.priority = itemTask.priority;
       if (p.raw.reviews_required) fields.reviews_required = p.raw.reviews_required;
+      if (p.raw.team) fields.team = p.raw.team;
+      else if (goalKind(p.goal) === 'stream' && !p.raw.epic_id) fields.team = p.goal.team;
+      if (p.raw.cycle !== undefined) fields.cycle = p.raw.cycle;
+      else if (itemTask) fields.cycle = itemTask.cycle || null;
+      if (itemTask && p.kind !== 'triage') fields.item_task_id = itemTask.id;
+      if (p.kind === 'triage') {
+        const it = p.raw.item && typeof p.raw.item === 'object' ? p.raw.item : {};
+        // task new never links a tracker issue (people use item new --tracker); reported_by is always agent
+        fields.item = { class: ENUMS.item_class.includes(it.class) ? it.class : 'bug', tracker_ref: null, reported_by: 'agent' };
+        fields.item_epic_ids = [];
+        if (!fields.team) fields.team = p.goal.team || null;
+      }
       out.push(createTask(home, fields));
     }
     return out;

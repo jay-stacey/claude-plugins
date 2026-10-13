@@ -131,6 +131,16 @@ export async function applyTracker(home, req, { by = 'human' } = {}) {
     case 'tracker.field_update': {
       const { kind, rec } = subjectOf(home, p);
       if (!rec) return { status: 'rejected', reason: 'subject not found' };
+      if (p.field === 'cycle') { // a human moved the issue to another cycle (§21.6.4)
+        if (kind !== 'task') return { status: 'applied', reason: 'logged (cycles apply to tasks)' };
+        const cycles = await import('./cycles.mjs');
+        const teams = await import('./teams.mjs');
+        const goal = store.get(home, 'goal', rec.goal_id);
+        const teamId = rec.team || teams.resolve(home, cfg, { task: rec, goal });
+        const id = cycles.fromTrackerId(home, cfg, teamId, p.value ?? null);
+        store.update(home, 'task', rec.id, (x) => { x.cycle = id; });
+        return { status: 'applied', reason: `cycle ${id || 'none'}` };
+      }
       if (p.field === 'priority') {
         if (!ENUMS.priority.includes(p.value)) return { status: 'rejected', reason: `priority ${p.value} is not P0..P3` };
         store.update(home, kind, rec.id, (x) => { x.priority = p.value; });
@@ -144,14 +154,48 @@ export async function applyTracker(home, req, { by = 'human' } = {}) {
     case 'tracker.conflict': return escalateFromTracker(home, req, `tracker conflict on ${p.field} (${p.remote_key || 'tracker'})`);
     case 'tracker.intake': {
       const { newGoal } = await import('./actions.mjs');
-      const title = `[${p.remote_key || 'tracker'}] ${clip(p.title, 70)}`.slice(0, 80);
+      const teams = await import('./teams.mjs');
+      const key = p.key || p.remote_key || null;
+      // Link the source issue or project (§21.3.6): never a second goal for the same remote item.
+      if (p.remote_id) {
+        const dup = store.list(home, 'goal', (g) => g.tracker_ref && String(g.tracker_ref.remote_id) === String(p.remote_id) && g.status !== 'cancelled')[0];
+        if (dup) return { status: 'applied', reason: `already linked as ${dup.id}` };
+      }
+      const title = `[${key || 'tracker'}] ${clip(p.title, 70)}`.slice(0, 80);
+      const tracker_ref = p.remote_id ? { provider: (cfg.tracker && cfg.tracker.provider) || null, remote_id: p.remote_id, key, url: p.url || null, kind: p.kind === 'project' ? 'project' : 'issue' } : null;
       const g = newGoal(home, {
-        title, outcome: `Triage tracker item ${p.remote_key || ''} (${p.url || 'no url'}) into a goal or task.`.slice(0, 600),
-        success_criteria: [`${p.remote_key || 'The tracker item'} is triaged by the CTO`], priority: 'P2',
-        notes: p.body ? `Tracker text (local copy): ${String(p.body).slice(0, 2000)}` : null,
+        title, outcome: `Triage tracker item ${key || ''} (${p.url || 'no url'}) into a goal or task.`.slice(0, 600),
+        success_criteria: [`${key || 'The tracker item'} is triaged by the CTO`], priority: 'P2',
+        notes: p.body ? `Tracker text (local copy): ${String(p.body).slice(0, 2000)}` : null, tracker_ref,
       }, { via: 'tracker', kind: 'tracker' });
-      setGoalStatus(home, g.id, 'draft', `tracker intake ${p.remote_key || ''}; activate with goal.activate`.trim());
+      const teamIds = [...new Set((Array.isArray(p.teams) ? p.teams : []).flatMap((k) => teams.forTrackerKey(home, cfg, k)))];
+      setGoalStatus(home, g.id, 'draft', `tracker intake ${key || ''}; activate with goal.activate`.trim(), (x) => {
+        if (teamIds.length) { x.teams = [...new Set([...teamIds, ...(x.teams || [])])]; }
+      });
       return { status: 'applied', reason: `draft goal ${g.id} created; activate it to start` };
+    }
+    case 'tracker.backlog_item': { // a bug or tech-debt issue pulled into a stream (§21.4.5)
+      const streams = await import('./streams.mjs');
+      const teams = await import('./teams.mjs');
+      const cycles = await import('./cycles.mjs');
+      if (!streams.enabled(cfg)) return { status: 'rejected', reason: 'streams are off; set streams.enabled true' };
+      const dup = streams.findByRemoteId(home, p.remote_id);
+      if (dup) return { status: 'applied', reason: `already linked as ${dup.id}` };
+      const st = streams.streamTeams(home, cfg);
+      const team = teams.forTrackerKey(home, cfg, p.team_key).find((id) => st.includes(id));
+      if (!team) return { status: 'rejected', reason: `no stream team for tracker team ${p.team_key || '?'}` };
+      const cycle = cycles.enabled(cfg) ? cycles.fromTrackerId(home, cfg, team, p.cycle_tracker_id || null) : null;
+      const r = streams.newItem(home, {
+        team, class: p.class, title: p.title, priority: p.priority ?? null, reported_by: 'tracker', cycle,
+        description: trusted(cfg, p) ? String(p.body || '').slice(0, 1200) : `See ${p.url || p.key || 'the tracker'}`,
+        tracker_ref: { provider: (cfg.tracker && cfg.tracker.provider) || null, remote_id: p.remote_id, key: p.key || null, url: p.url || null, kind: 'issue' },
+      }, { cfg });
+      return { status: 'applied', reason: r.created ? `created ${r.task.id}` : r.reason };
+    }
+    case 'tracker.cycles': { // tracker cycles per team key (§21.6.2)
+      const cycles = await import('./cycles.mjs');
+      const r = cycles.applyTrackerCycles(home, cfg, p);
+      return { status: 'applied', reason: `${r.keys} tracker teams, ${r.teams.length} factory teams` };
     }
     case 'tracker.comment': {
       const { rec } = subjectOf(home, p);
