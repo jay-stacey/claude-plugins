@@ -8,7 +8,8 @@ dashboard and the chat cannot drift apart on the format. Output is JSON.
     python tasks.py [--vault DIR] [--now ISO] <command> [args]
 
 Commands: init, add, parse, list, show, update, move, done, drop, park,
-resume, archive, log, stats, context, brief-save, brief-get, shutdown-save.
+resume, archive, log, stats, context, brief-save, brief-get, shutdown-save,
+focus-start, focus-status, focus-end.
 Run ``python tasks.py <command> -h`` for flags.
 
 Exit codes: 0 ok, 2 bad input, 3 the file changed since you read it
@@ -32,7 +33,7 @@ PRIORITIES = ("high", "med", "low")
 TODAY_CAP = 5      # now + today together
 PARK_CAP = 3
 FIELD_ORDER = ("id", "title", "list", "priority", "due", "estimate", "actual",
-               "first_step", "next_step", "parked_at", "source", "tags",
+               "first_step", "next_step", "parked_at", "slipped", "source", "tags",
                "created", "updated", "done_at")
 POINTS = {"high": 3, "med": 2, "low": 1}
 EVENT_POINTS = {"brief": 3, "shutdown": 3, "focus": 2}
@@ -510,7 +511,12 @@ def cmd_update(store, args, now):
     if args.if_sha and task["sha"] != args.if_sha:
         raise Fail("The task changed on disk since you opened it. Reload it and try again.",
                    code=3, sha=task["sha"])
+    old_due = task["fields"].get("due")
     new = fields_from_args(args, now, base=task["fields"])
+    if old_due and new.get("due") and str(new["due"]) > str(old_due):
+        # Count each push to a later day; the shutdown re-asks the estimate
+        # once a task has slipped twice.
+        new["slipped"] = str(int(task["fields"].get("slipped") or 0) + 1)
     target = args.list
     task["fields"] = {**new, "list": task["fields"]["list"]}
     body = read_body(args)
@@ -668,6 +674,89 @@ def cmd_stats(store, args, now):
             "done_today": len(done_today),
             "brief_done": any(e["event"] == "brief" for e in on(day)),
             "shutdown_done": any(e["event"] == "shutdown" for e in on(day))}
+
+
+# ------------------------------------------------------------ focus ---------
+
+def _focus_path(store):
+    return store.state / "focus.json"
+
+
+def _focus_running(store, now):
+    data = _read_json(_focus_path(store))
+    if not data:
+        return None
+    try:
+        ends = dt.datetime.fromisoformat(data["ends_at"])
+    except (KeyError, ValueError):
+        return None
+    data["remaining_min"] = max(0, int((ends - now).total_seconds() // 60))
+    data["over"] = ends <= now
+    return data
+
+
+def _write_focus(store, task, minutes, now):
+    store.state.mkdir(parents=True, exist_ok=True)
+    data = {"task": task["fields"]["id"], "title": task["fields"].get("title"),
+            "started_at": iso_min(now), "minutes": minutes,
+            "ends_at": iso_min(now + dt.timedelta(minutes=minutes))}
+    path = _focus_path(store)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+    return data
+
+
+def cmd_focus_start(store, args, now):
+    running = _focus_running(store, now)
+    if running and not running["over"] and not args.replace:
+        raise Fail(f"A focus session on {running['task']} runs until {running['ends_at'][11:]}. "
+                   "End it first, or pass --replace.", code=4, session=running)
+    task = store.find(args.id)
+    if task["fields"]["list"] in ("done", "dropped"):
+        raise Fail("That task is already finished.")
+    demoted = None
+    if task["fields"]["list"] != "now":
+        demoted = store.place(task, "now", now)
+        task["fields"].pop("parked_at", None)
+        store.save(task)
+    minutes = parse_minutes(args.minutes) or 25
+    return {"session": _write_focus(store, task, minutes, now), "demoted": demoted}
+
+
+def cmd_focus_status(store, args, now):
+    running = _focus_running(store, now)
+    return {"running": bool(running), "session": running}
+
+
+def cmd_focus_end(store, args, now):
+    running = _read_json(_focus_path(store))
+    if not running:
+        raise Fail("No focus session is running.", code=5)
+    started = dt.datetime.fromisoformat(running["started_at"])
+    planned = int(running.get("minutes") or 25)
+    if args.minutes:
+        spent = parse_minutes(args.minutes)
+    else:
+        # A forgotten timer should not record a whole afternoon.
+        spent = max(0, min(int((now - started).total_seconds() // 60), planned + 30))
+    task = store.find(running["task"])
+    f = task["fields"]
+    before = parse_minutes(f.get("actual")) if f.get("actual") else 0
+    f["actual"] = fmt_minutes(before + spent)
+    f["updated"] = iso_min(now)
+    store.save(task)
+    pts = EVENT_POINTS["focus"] if spent >= 10 else 0
+    store.log("focus", now, task=f["id"], minutes=spent, points=pts)
+    _focus_path(store).unlink(missing_ok=True)
+    out = {"task": summary(task), "spent_min": spent, "points": pts, "result": args.result}
+    if args.result == "done":
+        done = cmd_done(store, argparse.Namespace(id=f["id"], actual=None), now)
+        out.update(task=done["task"], points=pts + done["points"], suggest_now=done.get("suggest_now"))
+    elif args.result == "more":
+        out["session"] = _write_focus(store, task, parse_minutes(args.more) or 15, now)
+    return out
 
 
 # ------------------------------------------------- brief and shutdown -------
@@ -867,6 +956,15 @@ def build_parser():
     bg.add_argument("--date")
     ss = sub.add_parser("shutdown-save", help="Save the shutdown JSON and log the shutdown.")
     ss.add_argument("file")
+    fs = sub.add_parser("focus-start", help="Start a focus timer on a task; it becomes the Now task.")
+    fs.add_argument("id")
+    fs.add_argument("--minutes", default="25m")
+    fs.add_argument("--replace", action="store_true", help="End a running session without logging it")
+    sub.add_parser("focus-status", help="Is a focus timer running, and how long is left.")
+    fe = sub.add_parser("focus-end", help="End the focus timer: done, more, stuck or stopped.")
+    fe.add_argument("--result", choices=("done", "more", "stuck", "stopped"), default="stopped")
+    fe.add_argument("--minutes", help="Time really spent; default is the clock")
+    fe.add_argument("--more", default="15m", help="Length of the next session with --result more")
     return p
 
 
@@ -874,7 +972,8 @@ COMMANDS = {"init": cmd_init, "add": cmd_add, "parse": cmd_parse, "list": cmd_li
             "update": cmd_update, "move": cmd_move, "done": cmd_done, "drop": cmd_drop, "park": cmd_park,
             "resume": cmd_resume, "archive": cmd_archive, "log": cmd_log, "stats": cmd_stats,
             "context": cmd_context, "brief-save": cmd_brief_save, "brief-get": cmd_brief_get,
-            "shutdown-save": cmd_shutdown_save}
+            "shutdown-save": cmd_shutdown_save, "focus-start": cmd_focus_start,
+            "focus-status": cmd_focus_status, "focus-end": cmd_focus_end}
 
 
 def run(argv):

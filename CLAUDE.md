@@ -130,7 +130,8 @@ Commit titles follow `<plugin> <version>: <what changed>` or
   files directly. Its tests: `python -m unittest discover -s plugins/executive-assistant/tests`.
 - Email rules and the user profile live in `{vault}/assistant/` (templates in
   `templates/`). Speech comes from the voice-replies plugin; this plugin has no
-  TTS hook.
+  TTS hook. Its only hook is an opt-in SessionStart note (`scripts/session_context.py`,
+  userConfig `session_context`) that must stay silent and exit 0 on any failure.
 
 Safety rules for this plugin:
 

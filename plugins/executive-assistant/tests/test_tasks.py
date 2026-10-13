@@ -153,6 +153,15 @@ class FlowTests(StoreCase):
         self.assertIn("changed on disk", err["error"])
         self.assertEqual(self.run_cli("show", t["id"])["task"]["title"], "edited elsewhere")
 
+    def test_pushing_due_later_counts_slips(self):
+        t = self.add("slippy", "--due", "2026-10-13", "--list", "today")
+        self.run_cli("update", t["id"], "--due", "2026-10-14")
+        self.run_cli("update", t["id"], "--title", "renamed only")
+        out = self.run_cli("update", t["id"], "--due", "2026-10-16")
+        self.assertEqual(out["task"]["slipped"], "2")
+        self.assertNotIn("slipped", self.run_cli("update", self.add("x", "--due", "2026-10-15")["id"],
+                                                 "--due", "2026-10-14")["task"])
+
     def test_update_can_clear_a_field_and_set_body(self):
         t = self.add("x", "--due", "2026-10-15", "--list", "week")
         out = self.run_cli("update", t["id"], "--due", "", "--notes", "line one\\nline two")
@@ -264,6 +273,58 @@ class BriefTests(StoreCase):
     def test_shutdown_requires_first_step(self):
         err = self.run_cli("shutdown-save", self.write("s.json", {"date": "2026-10-13"}), expect=2)
         self.assertIn("first_step", err["error"])
+
+
+class FocusTests(StoreCase):
+    def test_start_makes_task_now_and_blocks_a_second_session(self):
+        old = self.add("old now", "--list", "now")
+        t = self.add("focus me", "--list", "today", "--estimate", "30m")
+        out = self.run_cli("focus-start", t["id"], "--minutes", "25m")
+        self.assertEqual(out["session"]["ends_at"], "2026-10-13T10:13")
+        self.assertEqual(out["demoted"], old["id"])
+        self.assertEqual(self.run_cli("show", t["id"])["task"]["list"], "now")
+        err = self.run_cli("focus-start", old["id"], expect=4)
+        self.assertIn("runs until 10:13", err["error"])
+        status = self.run_cli("focus-status", now="2026-10-13T10:00")
+        self.assertEqual(status["session"]["remaining_min"], 13)
+
+    def test_end_adds_time_to_actual_and_logs_points(self):
+        t = self.add("work", "--list", "today", "--estimate", "30m", "--actual", "10m")
+        self.run_cli("focus-start", t["id"])
+        out = self.run_cli("focus-end", "--result", "stopped", now="2026-10-13T10:10")
+        self.assertEqual(out["spent_min"], 22)
+        self.assertEqual(out["points"], 2)
+        self.assertEqual(self.run_cli("show", t["id"])["task"]["actual"], "32m")
+        self.assertFalse(self.run_cli("focus-status")["running"])
+
+    def test_forgotten_timer_is_capped(self):
+        t = self.add("work", "--list", "today")
+        self.run_cli("focus-start", t["id"], "--minutes", "25m")
+        out = self.run_cli("focus-end", now="2026-10-13T16:00")
+        self.assertEqual(out["spent_min"], 55)
+
+    def test_short_session_earns_no_points(self):
+        t = self.add("work", "--list", "today")
+        self.run_cli("focus-start", t["id"])
+        self.assertEqual(self.run_cli("focus-end", "--minutes", "5m")["points"], 0)
+
+    def test_done_result_finishes_task_with_both_point_kinds(self):
+        t = self.add("ship", "--list", "today", "--priority", "high", "--estimate", "20m")
+        self.run_cli("focus-start", t["id"])
+        out = self.run_cli("focus-end", "--result", "done", now="2026-10-13T10:18")
+        self.assertEqual(out["task"]["list"], "done")
+        self.assertEqual(out["points"], 5)
+        self.assertEqual(self.run_cli("stats", now="2026-10-13T10:18")["points_today"], 5)
+
+    def test_more_starts_a_fresh_short_session(self):
+        t = self.add("long one", "--list", "today")
+        self.run_cli("focus-start", t["id"])
+        out = self.run_cli("focus-end", "--result", "more", now="2026-10-13T10:13")
+        self.assertEqual(out["session"]["ends_at"], "2026-10-13T10:28")
+        self.assertTrue(self.run_cli("focus-status", now="2026-10-13T10:14")["running"])
+
+    def test_end_without_session_is_not_found(self):
+        self.run_cli("focus-end", expect=5)
 
 
 class InitAndCliTests(StoreCase):

@@ -98,6 +98,12 @@
       "title": "Response style",
       "description": "How the assistant talks to you. 'conversational' (default) uses plain language and short sentences with minimal formatting. 'structured' allows headed sections and tables.",
       "default": "conversational"
+    },
+    "session_context": {
+      "type": "boolean",
+      "title": "Show the day plan in new sessions",
+      "description": "Start every new Claude session with your Now task and next meeting.",
+      "default": false
     }
   }
 }
