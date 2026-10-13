@@ -13,6 +13,7 @@ Reads the hook JSON on stdin. Exit 0 allows; exit 2 blocks and the reason on
 stderr goes back to Claude.
 """
 import json
+import os
 import re
 import sys
 
@@ -61,16 +62,54 @@ def check(command):
     return None
 
 
-def main():
+FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+
+
+def check_path(path, allow_dirs):
+    """Return None when path sits inside one of allow_dirs, else a plain reason.
+
+    The chat may keep notes and its own memory, nothing else: a prompt hidden
+    in an email must not be able to write a startup script or a config file.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return "Blocked: no file path."
+    try:
+        target = os.path.realpath(path)
+        for d in allow_dirs:
+            base = os.path.realpath(d)
+            if os.path.commonpath([os.path.normcase(target), os.path.normcase(base)]) == os.path.normcase(base):
+                return None
+    except (ValueError, OSError):
+        pass
+    return "Blocked: Day Desk chat can write only inside your notes folder and its memory folder."
+
+
+def allow_dirs_from(argv):
+    dirs = []
+    for i, arg in enumerate(argv):
+        if arg == "--allow-dir" and i + 1 < len(argv) and argv[i + 1]:
+            dirs.append(argv[i + 1])
+    return dirs
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     try:
         data = json.loads(sys.stdin.read() or "{}")
     except ValueError:
         print("Blocked: unreadable hook input.", file=sys.stderr)
         return 2
     tool = data.get("tool_name", "")
+    tool_input = data.get("tool_input") or {}
+    if tool in FILE_TOOLS:
+        reason = check_path(tool_input.get("file_path") or tool_input.get("notebook_path"), allow_dirs_from(argv))
+        if reason:
+            print(reason, file=sys.stderr)
+            return 2
+        return 0
     if tool not in ("Bash", "PowerShell"):
         return 0
-    reason = check((data.get("tool_input") or {}).get("command"))
+    reason = check(tool_input.get("command"))
     if reason:
         print(reason, file=sys.stderr)
         return 2

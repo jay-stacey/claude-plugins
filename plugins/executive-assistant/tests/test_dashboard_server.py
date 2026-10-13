@@ -205,6 +205,67 @@ class ScheduleAndShutdownTests(ServerCase):
         self.call("POST", "/api/shutdown", {"done": []}, expect=400)
 
 
+class ReviewFixTests(ServerCase):
+    def test_failed_refresh_is_reported_not_hidden(self):
+        class FakeChat:
+            busy = False
+
+            def refresh_schedule(self, date):
+                return {"ok": False, "error": "Google did not answer."}
+
+            def history(self):
+                return {"session_id": None, "messages": []}
+        self.app.chat = FakeChat()
+        self.assertTrue(self.call("POST", "/api/schedule/refresh")["started"])
+        for _ in range(50):
+            s = self.call("GET", "/api/schedule")
+            if not s["refreshing"]:
+                break
+            import time
+            time.sleep(0.05)
+        self.assertEqual(s["refresh_error"], "Google did not answer.")
+
+    def test_refresh_exception_is_reported(self):
+        class Boom:
+            busy = False
+
+            def refresh_schedule(self, date):
+                raise RuntimeError("secret internals")
+
+            def history(self):
+                return {"session_id": None, "messages": []}
+        self.app.chat = Boom()
+        self.call("POST", "/api/schedule/refresh")
+        import time
+        for _ in range(50):
+            s = self.call("GET", "/api/schedule")
+            if not s["refreshing"]:
+                break
+            time.sleep(0.05)
+        self.assertIn("RuntimeError", s["refresh_error"])
+        self.assertNotIn("secret internals", s["refresh_error"])
+
+    def test_shutdown_skips_stale_items_and_still_closes_the_day(self):
+        a = self.call("POST", "/api/tasks", {"title": "Real thing", "list": "today"})["task"]
+        out = self.call("POST", "/api/shutdown", {"done": [a["id"], "t-0999"],
+                                                  "moved": [{"id": "t-0998", "to": "2026-10-20"},
+                                                            {"id": a["id"], "to": "not-a-date"}],
+                                                  "first_step": "Start the notes", "tonight": None})
+        self.assertEqual(sorted(x["id"] for x in out["skipped"]), [a["id"], "t-0998", "t-0999"])
+        self.assertEqual(out["points"], 3)
+        self.assertTrue(out["stats"]["shutdown_done"])
+        self.assertEqual(self.call("GET", f"/api/tasks/{a['id']}")["task"]["list"], "done")
+
+    def test_missing_nudger_is_reported_in_state(self):
+        self.app.nudger = None
+        self.app.nudges_error = "Reminders are off: ImportError while loading them."
+        self.assertIn("ImportError", self.call("GET", "/api/state")["nudges_error"])
+
+    def test_stop_never_kills_a_process_that_is_not_day_desk(self):
+        import os
+        self.assertFalse(server.is_day_desk(os.getpid()))   # this test runner, not a server
+
+
 class ProfileTests(unittest.TestCase):
     def test_reads_profile_lines_and_defaults(self):
         prof = server.parse_profile("- Start: 6:45\n- Stop: 15:30\n- Deep work window: 07:00 to 11:00\n"

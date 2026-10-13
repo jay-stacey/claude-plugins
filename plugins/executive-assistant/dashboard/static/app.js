@@ -409,6 +409,8 @@
       const when = stale ? `${WD3[d.getDay()]} ${timeOf(sc.as_of)}` : timeOf(sc.as_of);
       asOf = `<span class="${stale || ageMin > 180 ? 'old' : ''}">Schedule as of ${esc(when)}${sc.source === 'brief' ? ' (from the brief)' : ''}</span> · <button class="linkish" type="button" data-act="sched-refresh">Refresh</button>`;
     }
+    // A failed refresh must not pass for a fresh calendar.
+    if (!refreshing && sc.refresh_error) asOf += `<br><span class="old" role="status">Refresh failed: ${esc(sc.refresh_error)} This is the older schedule.</span>`;
     const body = evs.length || allday.length ? `
       ${nm}
       ${allday.length ? `<div class="allday">${allday.map(e => `<span class="chip">${esc(e.title)}</span>`).join('')}</div>` : ''}
@@ -1360,6 +1362,8 @@
         SD.result = await post('/api/shutdown', payload) || {};
         SD.result.payload = payload;
         SD.busy = false;
+        const skipped = Array.isArray(SD.result.skipped) ? SD.result.skipped : [];
+        if (skipped.length) toast('Day closed, with skips', `${skipped.length} item${skipped.length > 1 ? 's' : ''} changed on disk and ${skipped.length > 1 ? 'were' : 'was'} left as is: ${skipped.map(x => x.why).join(' ')}`, { kind: 'bad', ms: 12000 });
         await refresh();
         drawShutdown();
         return;
@@ -1421,6 +1425,12 @@
     return el;
   }
   function handleNudges() {
+    // Reminders that failed to load would otherwise fail silently, and the
+    // user counts on them for meetings.
+    if (S.state && S.state.nudges_error && !S.nudgesErrorShown) {
+      S.nudgesErrorShown = true;
+      toast('Reminders are off', `${S.state.nudges_error} Restart with /dashboard restart.`, { kind: 'bad', sticky: true });
+    }
     const list = (S.state && Array.isArray(S.state.nudges)) ? S.state.nudges : [];
     const live = new Set(list.map(n => n.id));
     list.forEach(n => {

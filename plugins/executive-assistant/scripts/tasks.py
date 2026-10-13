@@ -18,6 +18,7 @@ Exit codes: 0 ok, 2 bad input, 3 the file changed since you read it
 Standard library only. Python 3.9 or later.
 """
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -82,13 +83,15 @@ def fmt_minutes(n):
 # ------------------------------------------------------- frontmatter --------
 
 PLAIN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9 _./@+()&,'-]*$")
+# Plain scalars that YAML readers such as Obsidian would turn into numbers.
+NUMBER_LIKE = re.compile(r"^[-+]?(\d[\d_]*)?(\.\d+)?([eE][-+]?\d+)?$|^0x[0-9a-fA-F]+$|^0o[0-7]+$")
 
 
 def _scalar_out(v, in_list=False):
     if v is None:
         return ""
     s = str(v)
-    risky = in_list and any(c in s for c in ",[]{}")
+    risky = (in_list and any(c in s for c in ",[]{}")) or (s and NUMBER_LIKE.match(s) is not None)
     if PLAIN.match(s) and not risky and s.strip() == s and \
             s.lower() not in ("true", "false", "null", "yes", "no", "on", "off", "~"):
         return s
@@ -223,8 +226,24 @@ class Store:
             out += sorted((self.dir / "archive").rglob("t-*.md"))
         return out
 
+    # Parsed tasks keyed by path and content hash. The dashboard polls every
+    # 20 seconds; reading a small file is cheap, parsing is what this saves.
+    # The key is the content, not mtime and size: moving a task from "later"
+    # to "today" keeps the size, and mtime can stay the same within a tick.
+    # Callers get a deep copy because place() edits fields in place.
+    _cache = {}
+
     def load(self, path):
         data = path.read_bytes()
+        key = sha_of(data)
+        hit = Store._cache.get(str(path))
+        if hit and hit[0] == key:
+            return copy.deepcopy(hit[1])
+        task = self._parse(path, data)
+        Store._cache[str(path)] = (key, copy.deepcopy(task))
+        return task
+
+    def _parse(self, path, data):
         fields, body = split_doc(data.decode("utf-8", errors="replace"))
         if not fields.get("id"):
             m = re.match(r"t-\d+", path.stem)
@@ -322,16 +341,24 @@ class Store:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return rec
 
+    _events_cache = {}
+
     def events(self):
         p = self.state / "log.jsonl"
         if not p.exists():
             return []
+        st = p.stat()
+        key = (st.st_mtime_ns, st.st_size)
+        hit = Store._events_cache.get(str(p))
+        if hit and hit[0] == key:
+            return copy.deepcopy(hit[1])
         out = []
         for line in p.read_text(encoding="utf-8").splitlines():
             try:
                 out.append(json.loads(line))
             except ValueError:
                 continue
+        Store._events_cache[str(p)] = (key, copy.deepcopy(out))
         return out
 
 

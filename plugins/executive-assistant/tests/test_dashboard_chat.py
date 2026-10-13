@@ -349,8 +349,6 @@ class SelectAllowedTests(unittest.TestCase):
         "mcp__google-workspace__",      # no tool segment
         "WebFetch",
         "Bash",
-        "Write",
-        "Edit",
     ]
 
     def test_keeps_read_tools_and_safe_writes(self):
@@ -371,11 +369,21 @@ class SelectAllowedTests(unittest.TestCase):
 
     def test_builtins(self):
         rules = chat.select_allowed(["TodoWrite", "Read"], ROOT)
-        for name in ("Read", "Glob", "Grep", "Skill", "Agent", "ToolSearch", "TodoWrite"):
+        for name in ("Read", "Glob", "Grep", "Skill", "Agent", "ToolSearch", "TodoWrite", "Write", "Edit"):
             self.assertIn(name, rules)
         self.assertNotIn("TodoWrite", chat.select_allowed(["Read"], ROOT))
-        for bad in ("Bash", "Write", "Edit", "WebFetch", "WebSearch", "PowerShell"):
+        for bad in ("Bash", "WebFetch", "WebSearch", "PowerShell", "NotebookEdit"):
             self.assertNotIn(bad, rules)
+
+    def test_deny_list_names_every_dangerous_tool_and_no_read_tool(self):
+        denied = chat.select_denied(self.DROP + self.KEEP)
+        for name in ("mcp__google-workspace__send_gmail_message", "mcp__0b5e66b0-f707__send_message",
+                     "mcp__0b5e66b0-f707__trash_thread", "mcp__launchdarkly__get-keys"):
+            self.assertIn(name, denied)
+        for name in self.KEEP:
+            self.assertNotIn(name, denied)
+        for name in chat.DENIED_BUILTINS:
+            self.assertIn(name, denied)
 
     def test_bash_rules_cover_only_the_plugin_scripts(self):
         rules = chat.select_allowed([], ROOT)

@@ -50,8 +50,62 @@ class GuardTests(unittest.TestCase):
         argv = runner._base_argv()
         settings = json.loads(argv[argv.index("--settings") + 1])
         hook = settings["hooks"]["PreToolUse"][0]
-        self.assertEqual(hook["matcher"], "Bash|PowerShell")
-        self.assertIn("shell_guard.py", hook["hooks"][0]["command"])
+        self.assertEqual(hook["matcher"], "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit")
+        command = hook["hooks"][0]["command"]
+        self.assertIn("shell_guard.py", command)
+        self.assertIn(f'--allow-dir "{ROOT.resolve().as_posix()}"', command)
+        self.assertIn("agent-memory", command)
+
+    def test_chat_run_denies_dangerous_tools(self):
+        import chat
+        import tempfile
+        runner = chat.ChatRunner(tempfile.mkdtemp(prefix="guard-chat-"), str(ROOT), claude_cmd=["claude"])
+        runner.discover_tools = lambda force=False: ["mcp__g__send_gmail_message", "mcp__g__get_events"]
+        seen = {}
+
+        def fake_run(argv, stdin):
+            seen["argv"] = argv
+            yield from ()
+        runner._run = fake_run
+        list(runner._stream("hi", new=True))
+        argv = seen["argv"]
+        deny, allow = argv.index("--disallowedTools"), argv.index("--allowedTools")
+        self.assertLess(deny, allow)
+        self.assertIn("mcp__g__send_gmail_message", argv[deny + 1:allow])
+        self.assertIn("mcp__g__get_events", argv[allow + 1:])
+        self.assertNotIn("mcp__g__send_gmail_message", argv[allow + 1:])
+
+
+class PathGuardTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.vault = Path(tempfile.mkdtemp(prefix="guard-vault-"))
+        self.memory = Path(tempfile.mkdtemp(prefix="guard-mem-"))
+        self.allow = [str(self.vault), str(self.memory)]
+
+    def test_inside_vault_and_memory_pass(self):
+        self.assertIsNone(shell_guard.check_path(str(self.vault / "daily" / "x.md"), self.allow))
+        self.assertIsNone(shell_guard.check_path(str(self.memory / "assistant" / "MEMORY.md"), self.allow))
+
+    def test_outside_and_traversal_are_blocked(self):
+        for bad in (str(self.vault.parent / "elsewhere.txt"), str(self.vault / ".." / "escape.md"),
+                    str(Path.home() / ".bashrc"), "", None):
+            self.assertIsNotNone(shell_guard.check_path(bad, self.allow), bad)
+
+    def test_sibling_folder_with_shared_prefix_is_blocked(self):
+        sibling = str(self.vault) + "-evil" + "/x.md"
+        self.assertIsNotNone(shell_guard.check_path(sibling, self.allow))
+
+    def test_hook_blocks_a_write_outside(self):
+        def run(path):
+            payload = {"tool_name": "Write", "tool_input": {"file_path": path, "content": "x"}}
+            return subprocess.run([sys.executable, str(ROOT / "dashboard" / "shell_guard.py"),
+                                   "--allow-dir", str(self.vault)],
+                                  input=json.dumps(payload), capture_output=True, text=True)
+        self.assertEqual(run(str(self.vault / "ok.md")).returncode, 0)
+        bad = run(str(Path.home() / "Startup" / "evil.cmd"))
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("only inside your notes folder", bad.stderr)
 
 
 if __name__ == "__main__":

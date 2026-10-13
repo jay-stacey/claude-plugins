@@ -62,6 +62,38 @@ class FormatTests(StoreCase):
         self.assertEqual(out["tasks"][0]["list"], "later")
 
 
+class ReviewFixTaskTests(StoreCase):
+    def test_number_like_values_are_quoted(self):
+        out = tasks.join_doc({"id": "t-0001", "title": "2026", "first_step": "3.42", "source": "1e5",
+                              "next_step": "2026 budget", "tags": ["42", "ops"]}, "")
+        self.assertIn('title: "2026"', out)
+        self.assertIn('first_step: "3.42"', out)
+        self.assertIn('source: "1e5"', out)
+        self.assertIn("next_step: 2026 budget", out)
+        self.assertIn('tags: ["42", ops]', out)
+        self.assertEqual(tasks.split_doc(out)[0]["title"], "2026")
+
+    def test_cache_sees_a_same_size_rewrite_in_the_same_tick(self):
+        import os
+        t = self.add("same size", "--list", "later")
+        path = Path(t["path"])
+        store = tasks.Store(str(self.vault))
+        self.assertEqual(store.load(path)["fields"]["list"], "later")
+        st = path.stat()
+        text = path.read_text(encoding="utf-8").replace("list: later", "list: today")
+        path.write_text(text, encoding="utf-8", newline="\n")
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
+        self.assertEqual(path.stat().st_size, st.st_size)
+        self.assertEqual(store.load(path)["fields"]["list"], "today")
+
+    def test_cached_tasks_are_copies(self):
+        t = self.add("copy me", "--list", "week")
+        store = tasks.Store(str(self.vault))
+        first = store.load(Path(t["path"]))
+        first["fields"]["title"] = "mutated in memory"
+        self.assertEqual(store.load(Path(t["path"]))["fields"]["title"], "copy me")
+
+
 class ParseTests(StoreCase):
     def test_quick_add_reads_day_estimate_priority_tags(self):
         p = self.run_cli("parse", "call the bank fri 15m !high #admin")

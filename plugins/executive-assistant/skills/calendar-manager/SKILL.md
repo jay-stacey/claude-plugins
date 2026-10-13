@@ -2,7 +2,7 @@
 name: calendar-manager
 description: Plans focus blocks from open tasks and free time, books them in Google Calendar after a yes, and shifts the assistant's own blocks later in the day when plans change. Implements the Timebox contract (propose, book, shift) and checks every write by reading the calendar back. Worker used by the calendar-assistant.
 user-invocable: false
-allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read
+allowed-tools: mcp__google-workspace__list_calendars, mcp__google-workspace__get_events, mcp__google-workspace__query_freebusy, mcp__google-workspace__manage_event, mcp__google-workspace__manage_focus_time, mcp__plugin_executive-assistant_google-workspace__list_calendars, mcp__plugin_executive-assistant_google-workspace__get_events, mcp__plugin_executive-assistant_google-workspace__query_freebusy, mcp__plugin_executive-assistant_google-workspace__manage_event, mcp__plugin_executive-assistant_google-workspace__manage_focus_time, Read
 ---
 
 # Calendar manager

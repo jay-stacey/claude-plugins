@@ -99,6 +99,7 @@ class App:
         self.state_dir = self.vault / ".assistant"
         self.lock = threading.Lock()
         self.refreshing = False
+        self.refresh_error = None       # plain sentence from the last failed refresh
         self.note_cache = {}
         self.chat = None
         self.nudger = None
@@ -113,8 +114,9 @@ class App:
             import nudges as nudges_mod
             self.nudges_mod = nudges_mod
             self.nudger = nudges_mod.Nudger(self.nudge_inputs, toasts=toast, clock=self.now)
-        except Exception:
+        except Exception as e:      # reminders off; the page says so
             self.nudges_mod = None
+            self.nudges_error = f"Reminders are off: {e.__class__.__name__} while loading them."
 
     def now(self):
         if self.fixed_now:
@@ -160,7 +162,8 @@ class App:
                     return d.get("events") or []
             return None
 
-        out = {"source": "none", "as_of": None, "refreshing": self.refreshing, "date": today,
+        out = {"source": "none", "as_of": None, "refreshing": self.refreshing,
+               "refresh_error": self.refresh_error, "date": today,
                "events": [], "days": cal.get("days") or [], "flags": cal.get("flags") or [],
                "week_summary": cal.get("week_summary") or brief.get("week_summary")}
         candidates = []
@@ -180,12 +183,17 @@ class App:
         if self.refreshing:
             return {"started": False, "note": "A refresh is already running."}
         self.refreshing = True
+        self.refresh_error = None
 
         def work():
+            # A failed refresh must not look like a fresh calendar, so the
+            # error stays visible until the next refresh succeeds.
             try:
-                self.chat.refresh_schedule(self.now().date().isoformat())
-            except Exception:
-                pass
+                result = self.chat.refresh_schedule(self.now().date().isoformat()) or {}
+                if not result.get("ok"):
+                    self.refresh_error = result.get("error") or "The calendar could not be read."
+            except Exception as e:
+                self.refresh_error = f"The calendar could not be read ({e.__class__.__name__})."
             finally:
                 self.refreshing = False
 
@@ -212,6 +220,7 @@ class App:
                 "focus": self.t("focus-status"), "profile": self.profile(),
                 "schedule": self.schedule(), "brief": brief,
                 "nudges": self.nudger.pending() if self.nudger else [],
+                "nudges_error": None if self.nudger else getattr(self, "nudges_error", "Reminders are off."),
                 "chat": chat_state, "server": {"started_at": self.started_at}}
 
     def nudge_inputs(self):
@@ -366,24 +375,27 @@ class App:
         if not isinstance(body, dict) or not body.get("first_step"):
             raise HttpError(400, "Tomorrow's first step is missing.")
         now = self.now()
-        done_titles = []
+        # Close the day even when one item is stale (a task deleted or moved on
+        # disk since the page loaded). Skipped items are reported, not fatal.
+        skipped = []
         for tid in body.get("done") or []:
             try:
-                r = self.t("done", tid)
-                done_titles.append(r["task"])
+                self.t("done", tid)
             except HttpError as e:
-                if e.status != 404:
-                    raise
+                skipped.append({"id": tid, "why": str(e)})
         week_end = now.date() + dt.timedelta(days=6 - now.date().weekday())
         moved = []
         for m in body.get("moved") or []:
+            m = m if isinstance(m, dict) else {}
             to = m.get("to")
             try:
                 day = dt.date.fromisoformat(to)
+                r = self.t("update", m.get("id"), "--due", to, "--list", "week" if day <= week_end else "later")
+                moved.append((r["task"]["title"], to))
             except (TypeError, ValueError):
-                raise HttpError(400, f"'{to}' is not a date like 2026-10-14.")
-            r = self.t("update", m.get("id"), "--due", to, "--list", "week" if day <= week_end else "later")
-            moved.append((r["task"]["title"], to))
+                skipped.append({"id": m.get("id"), "why": f"'{to}' is not a date like 2026-10-14."})
+            except HttpError as e:
+                skipped.append({"id": m.get("id"), "why": str(e)})
         data = {k: body.get(k) for k in ("done", "moved", "finish_today", "brain_dump", "first_step",
                                          "first_task", "tonight")}
         data["date"] = now.date().isoformat()
@@ -413,7 +425,8 @@ class App:
             self.append_section(self.daily_note_path(now.date()), "## Shutdown", lines)
         except OSError:
             pass
-        return {"saved": saved["saved"], "points": saved["points"], "stats": self.t("stats")}
+        return {"saved": saved["saved"], "points": saved["points"], "stats": self.t("stats"),
+                "skipped": skipped}
 
 
 # ---------------------------------------------------------- handler --------
@@ -759,13 +772,30 @@ def cmd_status(args):
             "pid": info.get("pid"), "started_at": info.get("started_at")}
 
 
+def is_day_desk(pid):
+    """True when pid is a Day Desk server, so a reused pid is never killed."""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                                  f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').CommandLine"],
+                                 capture_output=True, text=True, timeout=15).stdout
+        else:
+            raw = Path(f"/proc/{int(pid)}/cmdline").read_bytes()
+            out = raw.replace(b"\0", b" ").decode("utf-8", "replace")
+    except Exception:
+        return False
+    return "server.py" in out and " serve" in out
+
+
 def cmd_stop(args):
     sf = state_file(args.vault)
     info = app_state(sf)
     if not info:
         return {"stopped": False, "note": "Day Desk is not running."}
     pid = info.get("pid")
-    if pid and healthy(info.get("port")):
+    # A server that stopped answering still sends reminders, and a second
+    # start would double them, so end it too when the pid is really ours.
+    if pid and (healthy(info.get("port")) or is_day_desk(pid)):
         try:
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=10)

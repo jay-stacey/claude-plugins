@@ -2,7 +2,7 @@
 name: calendar-reviewer
 description: Reads the user's own Google Calendar events for the next few workdays, finds free time inside the workday, flags heavy days, prep needs, release-train collisions and other problems, and returns a CalendarReport. Read-only worker used by the calendar-assistant for the morning brief and for /timebox.
 user-invocable: false
-allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read
+allowed-tools: mcp__google-workspace__list_calendars, mcp__google-workspace__get_events, mcp__google-workspace__query_freebusy, mcp__plugin_executive-assistant_google-workspace__list_calendars, mcp__plugin_executive-assistant_google-workspace__get_events, mcp__plugin_executive-assistant_google-workspace__query_freebusy, Read
 ---
 
 # Calendar reviewer
