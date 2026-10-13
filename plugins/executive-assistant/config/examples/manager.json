@@ -104,42 +104,6 @@
       }
     }
   },
-  "calendarManager": {
-    "timeboxing": {
-      "enabled": true,
-      "maxUtilization": 0.8,
-      "preferredFocusTime": "morning"
-    },
-    "recurringBlocks": [
-      {
-        "name": "Team 1:1s Review",
-        "frequency": "weekly",
-        "dayOfWeek": "Friday",
-        "duration": 30,
-        "description": "Review and prepare for upcoming 1:1s"
-      },
-      {
-        "name": "Strategic Planning",
-        "frequency": "weekly",
-        "dayOfWeek": "Monday",
-        "timeSlot": "08:00",
-        "duration": 60,
-        "description": "Weekly strategic planning and prioritization"
-      },
-      {
-        "name": "Skip-Level Check-In Prep",
-        "frequency": "monthly",
-        "dayOfMonth": 1,
-        "duration": 30,
-        "description": "Prepare for executive meetings"
-      }
-    ],
-    "bottleneckThresholds": {
-      "overcommitment": 0.9,
-      "minDeepWorkHours": 1.5,
-      "backToBackMeetingHours": 3
-    }
-  },
   "slack": {
     "enabled": true,
     "scanHours": 24,

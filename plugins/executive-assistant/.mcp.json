@@ -3,7 +3,7 @@
     "google-workspace": {
       "command": "uvx",
       "args": [
-        "google-workspace-mcp",
+        "workspace-mcp",
         "--single-user"
       ],
       "env": {

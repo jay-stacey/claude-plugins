@@ -26,7 +26,7 @@ Or run `/init` for a guided walkthrough.
 
 | Plugin | Version | What it does |
 |---|---|---|
-| [executive-assistant](plugins/executive-assistant) | 7.3.0 | Daily workflow automation across Gmail, Google Calendar, Slack, Jira, Linear, and your notes app. Triage email to inbox zero, timebox the calendar, and consolidate action items into a daily note. |
+| [executive-assistant](plugins/executive-assistant) | 8.0.0 | A morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Built for an ADHD workday. |
 | [voice-replies](plugins/voice-replies) | 1.2.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU), with a compact voice and speed panel above the prompt. |
 | [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
 | [software-factory](plugins/software-factory) | 0.3.0 | An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code, in one repo or across a folder of repos. Teams map to Linear teams and sub-teams, bugs and tech debt run in team streams, cycles sync with Linear, and the CTO baselines work in flight and sends regular reports with improvement proposals. You approve at four gates and merge the pull requests. Includes a local control center with a kanban, a live org chart and token budgets. |
@@ -34,14 +34,16 @@ Or run `/init` for a guided walkthrough.
 
 ### executive-assistant
 
-Skills: `/daily-prep` (full prep), `/inbox-zero`, `/timebox`, `/init` (setup).
-
-Notes: plain markdown files in a folder you configure, with frontmatter tags
-and a file-based search index (no database) for tag, text, and backlink recall.
+Your workday, start to finish: `/morning-brief` (email rules, five-day calendar,
+one task to start with), `/focus` (timer, stuck, park, resume), `/timebox`
+(mid-day re-plan), `/inbox-zero`, `/shutdown` (close the day), `/dashboard`
+(Day Desk, a local dashboard with chat), and `/init` (setup). Tasks and email
+rules are plain markdown files in your notes folder.
 
 Requires the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
 server for Gmail and Calendar; Slack, Atlassian, and Linear MCP servers are
-optional and enabled per feature in config.
+optional and enabled per feature in config. Full guide:
+[plugins/executive-assistant](plugins/executive-assistant/README.md).
 
 ### voice-replies
 

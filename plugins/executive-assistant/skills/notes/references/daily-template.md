@@ -2,7 +2,7 @@
 
 Fallback skeleton used when the vault has no `templates/daily.md`. Sections are
 the ones the assistant's other skills write into, so keep the headings stable if
-you customise this — `task-consolidator` and `notes` both locate content by
+you customise this — `morning-brief`, `shutdown` and `notes` locate content by
 `##` heading text.
 
 ```markdown
@@ -13,21 +13,15 @@ tags: [daily]
 
 # {{date}}
 
-## Today's Focus
+## Brief
 
-## Inbox
+## Plan
 
-## Schedule
-
-## Urgent
-
-## Important
-
-## Routine
+## Work log
 
 ## Notes
 
-## Reflection
+## Shutdown
 ```
 
 ## Placeholders

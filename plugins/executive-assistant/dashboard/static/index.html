@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Day Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="gate" id="gate" role="alert" hidden>
+  <div class="gate-in">
+    <span class="brand-dot" aria-hidden="true"></span>
+    <h1>Day Desk needs its key</h1>
+    <p>Open Day Desk from the link that <code>/dashboard</code> printed. That link carries a key that keeps other pages from reading your data.</p>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <nav class="rail" aria-label="Views">
+    <div class="brand"><span class="brand-dot" aria-hidden="true"></span><span class="txt">Day Desk</span></div>
+    <button class="nav-btn" type="button" data-view="today" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span class="txt">Today</span></button>
+    <button class="nav-btn" type="button" data-view="tasks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4.5" width="16" height="15" rx="2.5"/><path d="M8 9.5l1.6 1.6L12.5 8M8 15h8"/></svg><span class="txt">Tasks</span><span class="nav-count mono" id="navTasks"></span></button>
+    <button class="nav-btn" type="button" data-view="week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span class="txt">Week</span></button>
+    <button class="nav-btn" type="button" data-view="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12h7M9 16h5"/></svg><span class="txt">Notes</span></button>
+    <button class="nav-btn" type="button" id="chatNav" aria-controls="chat" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4.5 6.5A2.5 2.5 0 017 4h10a2.5 2.5 0 012.5 2.5v7A2.5 2.5 0 0117 16H10l-4.5 4v-4A2.5 2.5 0 014.5 13.5z"/></svg><span class="txt">Assistant</span></button>
+    <div class="rail-foot" aria-hidden="true">
+      <span><kbd>/</kbd> ask the assistant</span>
+      <span><kbd>n</kbd> add a task</span>
+      <span><kbd>Esc</kbd> close</span>
+    </div>
+  </nav>
+
+  <main class="main" id="main">
+    <div class="banner" id="offline" role="alert" hidden></div>
+    <header class="topbar" id="topbar"></header>
+
+    <section id="v-today" aria-label="Today"></section>
+
+    <section id="v-tasks" aria-label="Tasks" hidden>
+      <div class="quickadd">
+        <form class="qa-row" id="qaForm">
+          <input id="qa" autocomplete="off" aria-label="Quick add a task" aria-describedby="qaPrev" placeholder="Add a task. Try: call the bank fri 15m !high #admin">
+          <button class="btn primary" type="submit">Add</button>
+        </form>
+        <div class="qa-preview" id="qaPrev" aria-live="polite">Words like fri, tomorrow, 15m, !high and #tag are read for you.</div>
+      </div>
+      <div id="board"></div>
+    </section>
+
+    <section id="v-week" aria-label="Week" hidden></section>
+
+    <section id="v-notes" aria-label="Notes" hidden>
+      <div class="notes">
+        <div class="notes-list">
+          <input id="nSearch" type="search" placeholder="Search notes" aria-label="Search notes" autocomplete="off">
+          <button class="btn small" type="button" id="nNewBtn">New note</button>
+          <form class="new-note" id="nNewForm" hidden>
+            <label for="nNewPath">Path in your notes folder</label>
+            <input id="nNewPath" placeholder="inbox/idea.md" autocomplete="off" spellcheck="false">
+            <div class="row"><button class="btn small primary" type="submit">Create</button><button class="btn small ghost" type="button" id="nNewCancel">Cancel</button></div>
+            <div class="field-err" id="nNewErr" role="alert"></div>
+          </form>
+          <div id="nList"></div>
+        </div>
+        <div class="editor">
+          <div class="ed-bar">
+            <span class="path" id="nPath">No note open</span>
+            <div class="ed-tools">
+              <span class="save-state" id="saveState" role="status" aria-live="polite"></span>
+              <div class="seg" role="group" aria-label="Editor view">
+                <button type="button" data-mode="live" aria-pressed="true" title="Hide markdown marks while you write">Live</button>
+                <button type="button" data-mode="source" aria-pressed="false" title="Show every markdown mark">Source</button>
+              </div>
+            </div>
+          </div>
+          <div class="conflict" id="nConflict" role="alert" hidden>
+            <span>Changed on disk — reload or keep yours. Your text is still here.</span>
+            <button class="btn small" type="button" id="nReload">Reload (lose mine)</button>
+            <button class="btn small primary" type="button" id="nCopy">Save a copy</button>
+          </div>
+          <div class="ed-body">
+            <div class="ed" id="nHost"></div>
+            <div class="empty" id="nEmpty"><b>Pick a note on the left.</b><br>Or start one with New note. Changes save to the file as you type.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="chat" id="chat" aria-label="Assistant chat">
+    <div class="chat-head">
+      <div>
+        <h2>Assistant</h2>
+        <p>Ask about your day, move a task, or add one.</p>
+      </div>
+      <div class="acts">
+        <button class="btn small ghost" type="button" id="chatNew">New chat</button>
+        <button class="icon-btn" type="button" id="chatClose" aria-label="Close chat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+    </div>
+    <div class="chat-log" id="chatLog" role="log" aria-live="polite" aria-relevant="additions text"></div>
+    <div class="chat-sugg" id="chatSugg" aria-label="Suggestions"></div>
+    <form class="composer" id="composer">
+      <label class="label" for="chatInput">Message</label>
+      <textarea id="chatInput" placeholder="Ask about your day, move a task, add a task..." aria-describedby="chatHint"></textarea>
+      <div class="composer-row"><small id="chatHint">Enter to send. Shift+Enter for a new line.</small><span class="chat-busy" id="chatBusy" role="status"></span><button class="btn primary small" type="submit" id="chatSend">Send</button></div>
+      <p class="chat-foot">Runs your executive-assistant on this machine. It drafts email and Slack text but does not send it.</p>
+    </form>
+  </aside>
+</div>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div id="layer"></div>
+
+<script src="/static/editor.bundle.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

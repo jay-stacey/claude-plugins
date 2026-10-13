@@ -1,429 +1,422 @@
-# Executive Assistant Plugin
+# Executive Assistant
 
-A highly configurable executive assistant for productivity workflow automation. Supports multiple email providers, project management tools, and note-taking apps with a personality system that adapts to your preferences.
+Executive Assistant helps you through the whole workday, not only the morning.
+It clears your Gmail with rules you keep in a file, reads your calendar for the
+next five workdays, and checks Linear, Slack and Jira for what needs you. It
+then picks one task to start with and books focus time. During the day it runs
+focus timers, helps you recover after interruptions, and re-plans when the day
+changes. In the evening it closes the day and saves tomorrow's first step.
+Your tasks are plain markdown files in your notes folder. A local dashboard
+called Day Desk shows it all and has a chat box.
 
-## Overview
+Built for one person with ADHD: one thing at a time, short answers, no guilt.
+## Install
 
-This plugin helps you start each day with a clear picture of what needs your attention. It scans multiple communication channels, categorizes items by priority, extracts action items, and consolidates everything into your preferred note-taking app in an ADHD-friendly format.
-
-**Time Savings**: Reduces morning "catch-up" time from 30+ minutes to 4-6 minutes.
-
-## Features
-
-### Core Capabilities
-- **📅 Calendar Management**: Intelligent timeboxing with bottleneck detection and strategic planning
-- **📧 Email Processing**: Gmail integration (Outlook coming soon) with inbox zero workflow
-- **📰 Newsletter Curation**: Extract articles from TLDR newsletters, build reading lists
-- **💬 Messaging Review**: Slack integration (Teams coming soon) with mention prioritization
-- **🎯 Project Management**: Jira and Linear integration for ticket analysis
-- **📝 Markdown Notes**: read, write, search, and section-aware append in a folder you configure
-- **📖 Notes Desk**: read, search, and edit your notes in a private claude.ai artifact, then sync the edits back to disk
-- **⏰ Smart Timeboxing**: Match todos to optimal time slots using energy patterns
-- **🎭 Configurable Personality**: Professional, friendly, casual, or custom presets
-- **🔒 Safety First**: Read-only operations, explicit confirmation before writes
-
-### Integrations
-
-| Service | Status | Method |
-|---------|--------|--------|
-| Gmail | ✅ Ready | MCP native API |
-| Google Calendar | ✅ Ready | MCP native API |
-| Slack | ✅ Ready | MCP native API |
-| Jira | ✅ Ready | Atlassian MCP |
-| Linear | ✅ Ready | Linear MCP |
-| Markdown Notes | ✅ Ready | Local filesystem |
-| Outlook | 🔜 Coming Soon | Microsoft Graph MCP |
-| Teams | 🔜 Coming Soon | Microsoft Graph MCP |
-
-## Quick Start
-
-### 0. Configure the plugin
-
-On install, Claude Code prompts for the plugin's settings (notes vault path,
-notes provider, timezone, and Google OAuth credentials). Credentials are stored
-in secure storage, not in `settings.json`.
-
-To change them later, reconfigure the plugin from the plugins menu.
-
-### 1. Initialize Your Profile
-
-Run the initialization wizard to set up your preferences:
+Add the marketplace, then install the plugin:
 
 ```bash
+/plugin marketplace add jay-stacey/claude-plugins
+/plugin install executive-assistant@personal-plugins
+```
+
+Then set it up:
+
+```bash
+/plugin configure executive-assistant@personal-plugins
 /init
 ```
 
-This will guide you through:
-- Basic information (name, role, timezone)
-- Work style preferences
-- Tool selection (email, calendar, messaging, notes)
-- Personalization options
+`/plugin configure` asks for the settings below. `/init` asks a few short
+questions and writes your profile.
 
-### 2. Run Your First Daily Prep
+### Settings
 
-Preview what the plugin will do:
+| Key | What it does | Default |
+|---|---|---|
+| `notes_vault_path` | Your notes folder. Tasks, rules and the dashboard all live here. Empty turns notes off, and most of the plugin needs it. | none |
+| `timezone` | Time zone for the calendar and daily notes. | `America/Toronto` |
+| `google_oauth_client_id` | Google OAuth client ID for Gmail and Calendar. Stored in secure storage. | none |
+| `google_oauth_client_secret` | Google OAuth client secret. Stored in secure storage. | none |
+| `notes_daily_folder` | Daily notes folder, inside the vault. | `daily` |
+| `notes_date_format` | Daily note file name format. | `YYYY-MM-DD` |
+| `working_hours_start` | Start of your workday, `HH:MM`. | `06:30` |
+| `working_hours_end` | End of your workday, `HH:MM`. | `15:00` |
+| `enabled_integrations` | Sources the brief uses: any of `gmail`, `calendar`, `slack`, `jira`, `linear`, `notes`. | `gmail`, `calendar`, `notes` |
+| `assistant_name` | What the assistant calls itself. | `Assistant` |
+| `personality_preset` | Tone preset from `config/presets/`, such as `warm`. Empty is neutral. | none |
+| `response_style` | `conversational` (plain, short) or `structured` (headings and tables allowed). | `conversational` |
+| `session_context` | Show your Now task and next meeting at the start of every new Claude session. | `false` |
 
-```bash
-/daily-prep --dry-run
-```
+### Google sign-in (Gmail and Calendar)
 
-When ready, run the full workflow:
+Do this once, about ten minutes.
 
-```bash
-/daily-prep
-```
+1. In the Google Cloud Console, create a project and turn on the Gmail API and
+   the Google Calendar API.
+2. Set up the OAuth consent screen (External, add yourself as a test user).
+3. Create an OAuth client ID of type "Desktop app".
+4. Paste the client ID and secret into `/plugin configure`, then restart Claude
+   Code. The first Gmail or Calendar call opens a browser tab. Sign in and
+   approve. The login is saved.
 
-## Commands
+The plugin runs the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
+server (`uvx workspace-mcp --single-user`), so install `uv`. Note the package name is
+`workspace-mcp`; a different project uses the name `google-workspace-mcp`. Slack, Jira and Linear use their own MCP
+servers; add them to `enabled_integrations` once connected.
 
-### `/daily-prep` - Main Executive Assistant
+## Your day, in order
 
-The primary command for daily workflow automation.
+Each step is a slash command. Plain words work too.
 
-```bash
-# Full daily prep
-/daily-prep
+### 1. `/morning-brief`
 
-# Preview without making changes
-/daily-prep --dry-run
-
-# Quick overview (minimal interaction)
-/daily-prep --quick
-
-# Skip specific sources
-/daily-prep --skip-calendar
-/daily-prep --skip-email
-/daily-prep --skip-slack
-/daily-prep --skip-jira
-/daily-prep --skip-linear
-
-# Focus on one source
-/daily-prep --only-email
-/daily-prep --only-calendar
-/daily-prep --only-jira
-```
-
-### `/init` - Initialization Wizard
-
-Set up your profile and preferences:
+Start here. It clears email, reads the week, picks your one task, and asks all
+its questions once at the end. It prints a status line per phase, so it never
+goes quiet.
 
 ```bash
-/init
+/morning-brief                    # the full brief
+/morning-brief --quick            # urgent items only
+/morning-brief --dry-run          # change nothing, say what would happen
+/morning-brief --skip-email       # also --skip-calendar, --skip-elsewhere
+/morning-brief --prepare          # no questions; saves them for later (for a 06:00 run)
 ```
 
-Generates:
-- `user-profile.md` - Your personalized profile
-- `.config.local.json` - Your local configuration overrides
+Say "start my day" or "catch me up" instead if you like. After two or more
+workdays away it switches to catch-up mode: email first, then "what moved while
+you were out", and a lighter plan.
 
-### `/inbox-zero` - Quick Inbox Cleanup
+### 2. `/focus`
 
-Focused email processing workflow:
+Starts a timer on your Now task and sits beside you like a coworker. It gives
+the task a first step you can do in 5 minutes. It checks in when time is up.
 
 ```bash
-/inbox-zero
+/focus                    # 25 minutes on the Now task
+/focus 50                 # 10, 25 or 50 minutes
+/focus t-0142 25          # a specific task
+/focus stuck              # split the task into a smaller step
+/focus park               # save your place before an interruption
+/focus resume             # get back in, in two lines
 ```
 
-### `/timebox` - Calendar Optimization
+At check-in you pick one: done, 15 more minutes, I am stuck, or stop for now.
+Say "I got pulled away" and it parks the task. Say "where was I" and it brings
+you back. At most three tasks can be parked.
 
-Intelligent schedule analysis and timeboxing:
+### 3. `/timebox`
+
+The mid-day re-plan. Tell it what changed, in plain words. It moves only its
+own focus blocks, later the same day.
 
 ```bash
-/timebox
-/timebox --today-only
-/timebox --strategic-only
-/timebox --analyze-only
+/timebox move the release notes to the afternoon
+/timebox I lost the morning, re-plan the rest of today
+/timebox --this-week              # also plan the other workdays
+/timebox --dry-run                # show the plan, write nothing
 ```
 
-### `/notes-viewer` - Notes Desk
+It offers at most two options and books only after your yes. It reads the
+calendar back and tells you if a block did not save.
 
-Publishes your notes folder as Notes Desk, a private claude.ai artifact. It has
-a collapsible note list with search, folder filters and tag chips, and a
-live-preview editor: notes read like rich text, markdown marks show only on the
-line you are editing, and changes save as you type. Wikilinks, backlinks, an
-outline, tables and task boxes work in place.
+### 4. `/inbox-zero`
 
-Edits wait in the artifact until you ask Claude to sync them. Claude then checks
-each one against the file on disk, shows you the changes, and writes only what
-you approve. The editor changes only the characters you type, so diffs stay
-clean.
+A focused email pass at any time. It applies your email rules, labels and
+archives the rest, and reads the real counts back from Gmail. Also `--labels-only`.
 
 ```bash
-/notes-viewer                         # 200 most recent notes
-/notes-viewer my project notes        # scope it in plain words
+/inbox-zero                # unread mail
+/inbox-zero --dry-run      # report only
+/inbox-zero --quick        # skip newsletters and old-mail cleanup
+/inbox-zero --all          # also read mail in the inbox
 ```
 
-Then, after editing in the page: "sync my Notes Desk edits".
+### 5. `/shutdown`
 
-Notes that look like they hold a secret (keys, tokens, passwords, card numbers)
-are held back from the snapshot. Needs Claude Code signed in to claude.ai.
+Closes the day in about five minutes. It never scolds.
 
-## Configuration
+1. It marks what you finished, with proof where it can find it.
+2. For each open high-priority task: finish today, or move to a day.
+3. You empty your head. Each line becomes a task.
+4. You confirm tomorrow's first step. The morning brief opens with it.
+5. Working tonight? If yes, pick one task and a stop time.
 
-### Configuration Files
-
-| File | Purpose |
-|------|---------|
-| `config/default.json` | Default settings (don't modify) |
-| `.config.local.json` | Your local overrides (gitignored) |
-| `user-profile.md` | Generated by `/init` |
-| `config/presets/*.json` | Personality presets |
-
-### Feature Toggles
-
-Enable/disable integrations in your configuration:
-
-```json
-{
-  "features": {
-    "gmail": { "enabled": true },
-    "googleCalendar": { "enabled": true },
-    "slack": { "enabled": false },
-    "jira": { "enabled": true },
-    "linear": { "enabled": false },
-    "notes": {
-      "enabled": true,
-      "enabled": true
-    }
-  }
-}
+```bash
+/shutdown              # the full routine
+/shutdown --quick      # skip the brain dump and the proof search
+/shutdown --dry-run    # ask, but save nothing
 ```
 
-### Notes Provider Selection
+It adds a Shutdown section to today's daily note.
 
-Choose your note-taking tool:
+### 6. `/dashboard`
 
-```json
-{
-  "notes": {
-    "enabled": true,
-    "enabled": true,
-    "vaultPath": "/path/to/notes",
-    "dailyFolder": "daily",
-    "dateFormat": "YYYY-MM-DD",
-    "templatePath": "templates/daily.md"
-  }
-}
+Opens Day Desk in your browser. See [Day Desk](#day-desk-the-dashboard).
+
+Also `/dashboard status`, `/dashboard stop` and `/dashboard restart`.
+
+### Tasks, in plain words
+
+You do not need a command for tasks. Just say it:
+
+- "Add a task to call the bank Friday, 15 minutes, high priority."
+- "What's next?" or "I finished the CSV review."
+- "Park this." and later "Where was I?"
+
+Quick-add understands `fri` (a day), `15m` or `1h` (an estimate), `!high` (a
+priority) and `#admin` (a tag). The skill is `tasks`.
+
+**Limits, on purpose:** one Now task, at most five tasks in Now and Today
+together, at most three parked. A long Today list turns into a guilt pile.
+When you hit a limit, the assistant offers to swap a task out or put the new
+one in This week.
+
+### Notes, in plain words
+
+- "Save this to my notes."
+- "Find my notes about the Auth0 migration."
+
+The `notes` skill reads, writes and searches your markdown notes. It keeps a
+search index in `{vault}/.index/`. The index holds only metadata (path, title,
+tags, dates, links), never note text. It is only a speed-up. Delete `.index/`
+at any time and nothing is lost; search falls back to a plain text search.
+
+### Notes Desk (`/notes-viewer`)
+
+Opens your notes as Notes Desk, a private claude.ai artifact you can read on
+your phone, with search, tag chips and a live-preview editor. Edits wait in the
+page until you say "sync my Notes Desk edits". Claude checks each edit against
+the file on disk, shows you the changes, and writes only what you approve.
+Notes that look like they hold a secret are left out. It needs Claude Code
+signed in to claude.ai.
+
+Run `/notes-viewer`, or scope it: `/notes-viewer my project notes`.
+
+## Where your data lives
+
+Everything is a file you can open and edit by hand.
+```
+{vault}/
+  tasks/                one file per task
+  assistant/
+    email-rules.md      your email rules
+    profile.md          your workday and focus profile
+  daily/                daily notes (the brief and shutdown add sections)
+  .assistant/           the plugin's own state (see below)
+  .index/               notes search index (safe to delete)
 ```
 
-Notes are plain markdown files in the folder you configure.
+### `{vault}/tasks/`
 
-### Personality Configuration
+One file per task, named like `t-0142-write-release-notes.md`. The top is
+YAML frontmatter and the rest is your free notes.
 
-Customize the assistant's communication style:
-
-```json
-{
-  "personality": {
-    "name": "Assistant",
-    "style": "professional",
-    "useEmojis": true,
-    "celebrateWins": true,
-    "humorLevel": "light",
-    "greetingStyle": "time-aware"
-  }
-}
+```markdown
+---
+id: t-0142
+title: Write release notes for 3.42
+list: today
+priority: high
+due: 2026-10-15
+estimate: 30m
+actual: 50m
+first_step: Open the 3.42 release in Linear and copy the issue list
+source: https://linear.app/example/issue/NEO-412
+tags: [release]
+created: 2026-10-13T07:02
+done_at:
+---
+Notes, links and subtasks.
 ```
 
-**Available Styles:**
-- `professional` - Clear, efficient, results-oriented
-- `friendly` - Warm, supportive, ADHD-friendly
-- `casual` - Relaxed, conversational, more personality
-- `formal` - Business-appropriate, structured
+`list` is one of `now`, `today`, `week`, `later`, `done`, `dropped`. `priority`
+is `high`, `med` or `low`. Parked tasks also carry `next_step` and `parked_at`.
+Done tasks move to `tasks/archive/<yyyy-mm>/` after seven days.
 
-**Using a preset:**
+A task never copies a Linear issue. It links to one in `source`.
 
-Set `personality.preset` in your config to any file in `config/presets/`.
+### `{vault}/assistant/email-rules.md`
 
-
-### Calendar Management
-
-Configure breaks, color codes, and filtering:
-
-```json
-{
-  "calendar": {
-    "workingHours": { "start": "08:00", "end": "17:00" },
-    "breaks": {
-      "enabled": true,
-      "minBufferMinutes": 15,
-      "lunchBreak": { "start": "12:00", "duration": 60 }
-    },
-    "colorCodes": {
-      "deepWork": "#4CAF50",
-      "meeting": "#2196F3"
-    }
-  }
-}
-```
-
-### Email Whitelist/Blacklist
-
-Control which emails get processed:
-
-```json
-{
-  "gmail": {
-    "whitelist": {
-      "domains": ["company.com"],
-      "senders": ["ceo@company.com"]
-    },
-    "blacklist": {
-      "domains": ["spam.com"],
-      "subjectPatterns": ["UNSUBSCRIBE"]
-    }
-  }
-}
-```
-
-## Architecture
-
-### Plugin Structure
+The assistant reads this file before every email pass. One rule per line, five
+parts split by `|`:
 
 ```
-executive-assistant/
-├── .claude-plugin/
-│   └── plugin.json              # Plugin manifest
-├── config/
-│   ├── default.json             # Default configuration
-│   ├── schema.json              # JSON Schema validation
-│   ├── examples/                # Example configurations
-│   │   ├── developer.json
-│   │   ├── manager.json
-│   │   └── minimal.json
-│   └── presets/
-│       └── *.json               # Personality presets
-├── agents/
-│   ├── assistant.md             # Main orchestrator
-│   ├── email-assistant.md       # Email processing
-│   ├── calendar-assistant.md    # Calendar management
-│   └── task-assistant.md        # Task consolidation
-├── skills/
-│   ├── gmail-processor/         # Email scanning
-│   ├── gmail-organizer/         # Inbox zero
-│   ├── calendar-reviewer/       # Schedule analysis
-│   ├── calendar-manager/        # Timeboxing
-│   ├── slack-reviewer/          # Slack messages
-│   ├── jira-reviewer/           # Jira tickets
-│   ├── linear-reviewer/         # Linear issues
-│   ├── task-consolidator/       # Notes integration
-│   ├── initializer/             # Setup wizard
-│   ├── notes/                  # Markdown notes
-│   └── notes-viewer/           # Notes Desk artifact and edit sync
-│       ├── interface.md
-│       └── markdown/
-├── commands/
-│   ├── ea.md                    # Main command
-│   ├── init.md                  # Initialization
-│   ├── inbox-zero.md            # Email cleanup
-│   └── timebox.md               # Calendar optimization
-├── templates/
-│   └── user-profile.md          # Profile template
-├── hooks/
-│   └── hooks.json               # Session automation
-└── README.md                    # This file
+- action | mode | name | gmail query | label
 ```
 
-### Skills
+- **action:** `keep` (show it to you, never move it), `support` (support owns
+  it, archive it, never make it a task), `label` (label then archive), `archive`
+  or `trash`.
+- **mode:** `auto` acts at once and reports a count. `confirm` waits for one
+  yes per run.
+- **gmail query:** normal Gmail search words. Test it in the Gmail search box
+  first. The last part, a label name, is only for `label` and `archive` rules.
 
-| Skill | Purpose | Tools |
-|-------|---------|-------|
-| gmail-processor | Scan inbox, categorize, extract newsletters | Gmail MCP |
-| gmail-organizer | Apply labels, achieve inbox zero | Gmail MCP |
-| calendar-reviewer | Analyze schedule, find free time | Calendar MCP |
-| calendar-manager | Timeboxing, bottleneck detection | Calendar MCP |
-| slack-reviewer | Message prioritization | Slack MCP |
-| jira-reviewer | Ticket analysis | Atlassian MCP |
-| linear-reviewer | Issue tracking | Linear MCP |
-| task-consolidator | Update notes with tasks | Notes providers |
-| initializer | Setup wizard | Read, Write |
-
-### Notes Provider Interface
-
-All notes providers implement a common interface:
+The first matching rule wins, so `keep` rules come first. Three examples:
 
 ```
-findDailyNote(date)       - Locate today's note
-createDailyNote(date)     - Create from template
-readNote(path)            - Read note content
-updateNote(path, content) - Update note
-appendToSection(path, section, content) - Add to section
+- keep | auto | Production incidents | from:azure-noreply@microsoft.com subject:(Sev0 OR Sev1) -subject:resolved
+- trash | auto | Promotions | category:promotions -is:starred
+- label | auto | Inventory feed error logs | subject:("feed error" OR "import failed") | Monitoring/Feeds
 ```
 
-## Safety and Privacy
+**"Always trash these."** Say it about any group of mail, now or later, and
+the assistant writes one rule line and shows you the exact line. Say "never
+touch these" for a `keep` rule. If a message was trashed by mistake, say so.
+The assistant moves it back and stops that rule from becoming a Gmail filter.
 
-### Data Handling
-- **No Storage**: Email/Slack/Jira data processed in-memory only
-- **No Cloud**: Everything runs locally via Claude Code
-- **No Logging**: Sensitive content not logged to files
-- **User Approval**: All writes require confirmation
+**Gmail filter offers.** When a rule has fired cleanly for two weeks, the
+brief offers to make it a real Gmail filter, so that mail never reaches your
+inbox at all. A filter is a lasting change to your Gmail account, so it only
+happens after your yes. If you say no, it does not ask again.
 
-### Safety Protocols
-1. **NEVER** deletes emails, messages, or tickets without approval
-2. **NEVER** sends responses automatically
-3. **NEVER** updates Jira/Linear status without permission
-4. **ALWAYS** shows changes before writing to notes
-5. **ALWAYS** provides links to original sources
+Gmail keeps trashed mail for 30 days. A rule with a `<placeholder>` is skipped
+until you fill it in.
 
-### Authentication
-- Gmail: MCP authentication
-- Slack: MCP authentication
-- Jira: Atlassian MCP authentication
-- Linear: Linear MCP authentication
+### `{vault}/assistant/profile.md`
 
-## ADHD-Friendly Design
+Your workday hours, the fixed points of your week, your focus profile, and
+people whose mail always gets through. `/init` fills it in.
 
-This plugin is specifically designed for ADHD users:
+### `{vault}/.assistant/`
 
-### Reduce Decision Fatigue
-- Automatic categorization - system decides what's urgent
-- Pre-organized tasks - everything sorted into sections
-- Single entry point - just run `/daily-prep` each morning
+The plugin's own state. Safe to read, not meant for editing.
 
-### Low Cognitive Load
-- Plain language, short sentences - no dashboards or status tables
-- Needs you? Said in a sentence. Doesn't? One bullet.
-- At most two choices at a time, with a recommendation
-- Summary numbers at a glance
+| Path | What it holds |
+|---|---|
+| `brief/<date>.json` | The saved morning brief. The dashboard reads it. |
+| `shutdown/<date>.json` | The saved shutdown: what got done, tomorrow's first step. |
+| `schedule/<date>.json` | A fresh calendar read from the dashboard. |
+| `focus.json` | The running focus timer, if any. |
+| `log.jsonl` | One line per event (brief, shutdown, focus session), used for points, streaks and your real speed. |
+| `dashboard.json`, `dashboard.log` | Port and link of the running dashboard, and its log. |
 
-### Prevent Overwhelm
-- Preview before writing
-- Skip options for any source
-- Configurable time windows
+## Day Desk (the dashboard)
 
-### Support Focus
-- Top 3 priorities prompt
-- Clear next steps guidance
-- Win celebration (if enabled)
+A local page on your machine, started with `/dashboard`. It shows the same
+files the skills use.
 
-## Troubleshooting
+| View | What it does |
+|---|---|
+| Today | Your Now card with its first step, Up Next, Done Today, the day timeline with a now-line, a countdown to the next meeting, and follow-ups. |
+| Tasks | Columns for Today, This week, Later and Done. Quick-add understands "call bank fri 15m !high". A side panel edits every field and the notes. |
+| Week | Five workdays with meeting load, release-train markers, deadlines and prep flags. |
+| Notes | Your notes folder with search and the live-preview editor. Stops with a warning if a file changed on disk since you opened it. |
+| Chat | A side panel on every view. Ask "what's next?" or "move that to tomorrow". |
 
-### Service Won't Connect
+**The link has a key in it.** The address looks like
+`http://127.0.0.1:<port>/#<key>`. Bookmark the whole link. The key keeps other
+web pages on your machine from reading the dashboard, and it changes each time
+the server starts.
 
-1. Check MCP server is running: `claude mcp test <service>`
-2. Verify authentication is current
-3. Try skipping the service: `/daily-prep --skip-<service>`
+**How chat works.** The server runs your own `claude` command line, with your
+own login, as the `assistant` agent. No API key and no extra cost per message.
+Tool activity shows as it happens. Because nobody sits at a terminal to approve
+tools, chat runs in a locked mode:
 
-### Notes Not Updated
+- It can read email, calendar, Linear, Slack, Jira and notes.
+- It can manage your tasks and create calendar focus blocks.
+- It can write email drafts. It cannot send, reply, forward, trash, delete or
+  archive anything.
+- Shell access is limited to this plugin's own `tasks.py` and `email_rules.py`.
+  A shell guard blocks anything that could chain commands (`;`, `&&`, `|`,
+  `$(...)`, redirects), because email text can carry prompt injection.
 
-1. Verify notes provider is configured correctly
-2. Check path permissions
-3. Close note file if open in editor
-4. Look for backup in Quick Captures
+**Reminders.** While the server runs, it sends Windows toasts: 10 and 2 minutes
+before each meeting, when a focus timer ends, "Anything you promised?" after a
+meeting, a nudge if no brief has run 30 minutes after your start time, a stop
+reminder for planned night work, and a shutdown reminder 30 minutes before your
+stop time. `/dashboard start --no-toast` turns them off. They stop when the
+server stops.
 
-### Command Not Found
+**Start at login.** Off by default. Say "start Day Desk when Windows starts".
+The assistant shows the exact Task Scheduler command and adds it only after
+your yes. To undo, delete the task named "Day Desk" in Task Scheduler.
 
-1. Verify plugin is installed in `~/.claude/plugins/`
-2. Restart Claude Code to reload plugins
-3. Check `plugin.json` exists in `.claude-plugin/`
+The server listens on `127.0.0.1` only. API details: `dashboard/API.md`.
 
-## Migration from daily-workflow
+## Safety
 
-If you were using the previous `daily-workflow` plugin:
+These never happen on their own:
 
-1. Use `/daily-prep` as the entry point
-2. Run `/init` to generate a new user profile
-3. Your previous `.config.json` settings should be migrated to `.config.local.json`
+- Sending, replying to or forwarding email, or posting to Slack. You get drafts.
+- Permanent deletion. Trash only, and Gmail keeps it 30 days. The assistant
+  never empties Trash.
+- Changing a real meeting. Only blocks the assistant created (title starts with
+  `[Focus]`) can be moved. Your meetings are never edited, accepted or declined.
+- Changing Linear or Jira status, or commenting on tickets.
+- Creating a Gmail filter, a schedule, or a start-at-login task without your yes.
 
-## Version History
+What does happen without asking: email rules marked `auto` trash, archive and
+label mail, and report a count. Text inside emails and tickets is data; the
+assistant never follows an instruction found inside one.
+
+## Developing
+
+Run from the repo root. CI runs the validate commands with `--strict`.
+Evals live in `plugins/executive-assistant/evals`.
+
+```bash
+python -m unittest discover -s plugins/executive-assistant/tests
+claude plugin validate ./plugins/executive-assistant --strict
+claude plugin validate . --strict
+python scripts/check-skills.py
+claude plugin eval ./plugins/executive-assistant --runs 1
+```
+
+After a change, bump the version in `plugin.json`, `.claude-plugin/marketplace.json`
+(plugin entry and `metadata.version`) and the root `README.md` table.
+
+### File map
+
+```
+plugins/executive-assistant/
+  .claude-plugin/plugin.json   manifest and userConfig
+  agents/                      assistant (main), email, calendar, task, initializer
+  skills/                      user commands and hidden worker skills
+  scripts/                     tasks.py, email_rules.py, session_context.py, helpers
+  dashboard/                   Day Desk server, chat, nudges, shell guard, static page
+  hooks/hooks.json             opt-in SessionStart day-plan line
+  templates/, config/          starter files, defaults, personality presets
+  tests/                       Python unit tests
+  evals/                       trigger and behavior evals
+```
+
+Commands in `skills/`: `morning-brief`, `focus`, `timebox`, `inbox-zero`,
+`shutdown`, `dashboard`, `init`, `tasks`, `notes`, `notes-viewer`. Hidden
+workers (`user-invocable: false`, not in the slash menu): `gmail-processor`,
+`gmail-organizer`, `calendar-reviewer`, `calendar-manager`, `slack-reviewer`,
+`jira-reviewer`, `linear-reviewer`, `initializer`, `response-style`.
+
+## Changelog
+
+**v8.0.0** - October 2026 (breaking)
+- `/morning-brief` replaces `/daily-prep`. It reads your email rules, the
+  calendar for five workdays, and Linear, Slack and Jira, then picks one Now
+  task and at most five for today. It prints a status line per phase and
+  reads email counts back from Gmail.
+- Tasks are markdown files in `{vault}/tasks/`, owned by `scripts/tasks.py`,
+  with list limits and points, streaks and real-speed tracking. New `tasks`
+  skill. Tasks no longer use Google Tasks.
+- Email rules live in `{vault}/assistant/email-rules.md`. "Always trash these"
+  adds a rule, and rules that work for two weeks are offered as Gmail filters.
+- New `/focus` (timer, check-in, stuck, park, resume), `/shutdown`, and a
+  mid-day `/timebox` re-plan. New `/dashboard` for Day Desk, a local dashboard
+  with chat, reminders and a notes editor.
+- Fixed: the bundled Google server ran the wrong package
+  (`google-workspace-mcp`, a different project). It now runs
+  `workspace-mcp --single-user`, so the plugin's own Gmail and Calendar
+  connection can start. Helper agents also accept the bundled server's tool
+  names, and the Linear, Slack and Jira helper can now reach claude.ai
+  connectors.
+- The dashboard chat runs your own `claude` with a tool allow-list (drafts
+  only, no send or delete) and a shell guard. New opt-in `session_context`
+  setting adds your Now task to new sessions.
+- Removed: `/daily-prep`, the `task-consolidator` skill, and the text-to-speech
+  hook. Worker skills (`gmail-*`, `calendar-*`, `slack-reviewer`,
+  `jira-reviewer`, `linear-reviewer`, `initializer`, `response-style`) no
+  longer show in the slash menu.
+- Working hours default to 06:30 to 15:00.
 
 **v7.3.0** - October 2026
 - Notes Desk has an always-on live-preview editor with autosave, a collapsible
@@ -439,7 +432,6 @@ If you were using the previous `daily-workflow` plugin:
 - New `response_style` config option (`conversational` by default)
 - ADHD preferences now default ON and are read by every agent
 - Removed `/ea`; use `/daily-prep`
-
 
 **v3.0.0** - February 2026
 - Renamed from `daily-workflow` to `executive-assistant`
@@ -461,18 +453,4 @@ If you were using the previous `daily-workflow` plugin:
 
 ## License
 
-MIT License - Feel free to modify and adapt for your needs.
-
----
-
-**Ready to get started?** Run:
-
-```bash
-/init
-```
-
-Then:
-
-```bash
-/daily-prep --dry-run
-```
+MIT.

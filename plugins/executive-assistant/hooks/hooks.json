@@ -1,17 +1,21 @@
 {
+  "description": "Opt-in day-plan anchor at the start of a new Claude session",
   "hooks": {
-    "SubagentStop": [
+    "SessionStart": [
       {
-        "matcher": "assistant|email-assistant|calendar-assistant|task-assistant|initializer",
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
             "command": "python",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/tts-speak.py"
+              "${CLAUDE_PLUGIN_ROOT}/scripts/session_context.py",
+              "--vault",
+              "${user_config.notes_vault_path}",
+              "--enabled",
+              "${user_config.session_context}"
             ],
-            "async": true,
-            "timeout": 120
+            "timeout": 5
           }
         ]
       }

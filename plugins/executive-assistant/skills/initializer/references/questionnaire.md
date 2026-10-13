@@ -1,7 +1,8 @@
-# Questionnaire Phases 2-6 — initializer
+# Questionnaire phases 2-6 - initializer
 
-Full question wording, options, and branching for the setup interview.
-Read this before running Phase 2.
+Question wording, options, and branching for the setup interview. The focus
+profile questions (Phase 7) are in `SKILL.md`. On a re-run, offer the current
+answer as the first option.
 
 ## Phase 2: Basic Information
 
@@ -138,13 +139,26 @@ Options:
 5. Other / None
 ```
 
-### Question 4.5: Note-Taking Tool
+### Question 4.5: Notes
 ```
-Which note-taking tool do you use?
+Do you keep markdown notes in a folder?
 
 Options:
 1. Yes - I keep markdown notes in a folder
 2. No - skip notes integration
+```
+
+### Question 4.6: Notes folder (only if 4.5 is Yes)
+```
+Where is your notes folder, and which subfolder holds daily notes?
+
+Examples:
+- C:/Users/you/Notes, daily notes in "daily"
+- ~/Obsidian/Vault, daily notes in "journal"
+```
+Maps to `notes_vault_path` and `notes_daily_folder` (default `daily`). Repeat the
+path back to confirm it, because every notes skill stops when the path is
+wrong.
 
 ---
 
@@ -190,6 +204,18 @@ Options:
 2. Sometimes - For big achievements
 3. No - Just the facts
 ```
+
+### Question 5.5: Assistant name and personality
+```
+What should I call myself, and which tone preset do you want?
+
+Options:
+1. Keep "Assistant", neutral professional tone
+2. Pick a name, neutral tone
+3. Pick a name, warm preset
+```
+Maps to `assistant_name` and `personality_preset` (presets live in
+`config/presets/`; leave empty for neutral).
 
 ---
 

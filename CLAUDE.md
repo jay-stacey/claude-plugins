@@ -125,7 +125,21 @@ Commit titles follow `<plugin> <version>: <what changed>` or
   `config/examples/` holds role configs. `config/presets/` holds personalities.
 - Gmail and Calendar use the bundled Google Workspace MCP server (`.mcp.json`,
   run with `uvx`). Slack, Atlassian, and Linear MCP servers are optional.
-- `hooks/hooks.json` runs `scripts/tts-speak.py` when an assistant sub-agent stops.
+- Tasks are markdown files in `{vault}/tasks/`. `scripts/tasks.py` owns every
+  read and write of them; skills and the dashboard call it and never edit task
+  files directly. Its tests: `python -m unittest discover -s plugins/executive-assistant/tests`.
+- Email rules and the user profile live in `{vault}/assistant/` (templates in
+  `templates/`). Speech comes from the voice-replies plugin; this plugin has no
+  TTS hook. Its only hook is an opt-in SessionStart note (`scripts/session_context.py`,
+  userConfig `session_context`) that must stay silent and exit 0 on any failure.
+
+- Day Desk, the dashboard, lives in `dashboard/` (contract: `dashboard/API.md`).
+  `server.py` is stdlib Python on 127.0.0.1 with a per-run token, Host and
+  Origin checks. `chat.py` runs `claude -p --agent executive-assistant:assistant`
+  in `dontAsk` mode with a read-only tool allow-list, and `shell_guard.py` is a
+  PreToolUse hook that blocks command chaining. Keep both when you change chat.
+  The dashboard never reads Google credentials; schedule data comes from the
+  brief or a headless refresh.
 
 Safety rules for this plugin:
 
