@@ -25,6 +25,15 @@ const PLANNING_OK = new Set(['intake', 'prd', 'escalation', 'research', 'assess'
 
 export function activeRuns(home) { return store.list(home, 'run', (r) => ACTIVE_RUN.has(r.status)); }
 
+/**
+ * Runs that still hold their task: active, or ended but not yet collected. The SubagentStop hook marks a
+ * run completed before the next `tick begin` collects it; without this, a plan in that window sees no
+ * run on the task and dispatches the same review (or author) run again.
+ */
+function holdingRuns(home) {
+  return store.list(home, 'run', (r) => ACTIVE_RUN.has(r.status) || (!r.collected_at && ['completed', 'deferred'].includes(r.status)));
+}
+
 function authorKind(task) {
   if (task.pending_kind === 'integrate') return 'integrate';
   if (task.pending_kind === 'fixup') return 'fixup';
@@ -57,7 +66,7 @@ export function goalAllows(goal, task) {
 export function candidates(home, cfg = loadConfig(home)) {
   const tasks = store.list(home, 'task');
   const goals = new Map(store.list(home, 'goal').map((g) => [g.id, g]));
-  const active = activeRuns(home);
+  const active = holdingRuns(home);
   const dependents = new Map();
   for (const t of tasks) for (const d of t.depends_on || []) dependents.set(d, (dependents.get(d) || 0) + 1);
   const out = [];

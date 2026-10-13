@@ -70,7 +70,7 @@
     {
       "name": "software-factory",
       "source": "./plugins/software-factory",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "description": "An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code in git worktrees, in one repo or across a workspace of repos. Teams mapped to Linear teams, bug and tech-debt streams, cycles, baselines of work in flight, and CTO reports with improvement proposals. Human approval gates, proof-checked handoffs, token budgets, and a local control center with a kanban and a live org chart.",
       "category": "development",
       "keywords": [
