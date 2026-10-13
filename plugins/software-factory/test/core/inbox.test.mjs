@@ -64,6 +64,33 @@ test('non-human goal.add needs no signature; needs_confirmation becomes a tracke
   assert.equal(gate.type, 'tracker');
 });
 
+test('goal.add keeps its tracker_ref, so sync links the goal to an existing project instead of creating one', async () => {
+  const { home } = await makeHome();
+  const inbox = await lib('inbox');
+  const store = await lib('store');
+  const ref = { provider: 'linear', kind: 'project', remote_id: 'proj-uuid-7', key: 'P-DP1-89', url: 'https://linear.app/x/project/p-dp1-89' };
+  inbox.write(home, { type: 'goal.add', source: 'dashboard', payload: { title: 'Linked', outcome: 'o', success_criteria: ['c'], tracker_ref: ref } });
+  inbox.write(home, { type: 'goal.add', source: 'dashboard', payload: { title: 'Unlinked', outcome: 'o', success_criteria: ['c'] } });
+  const res = await inbox.process(home, { tick: 3 });
+  assert.deepEqual(res.map((r) => r.status), ['applied', 'applied']);
+  const goals = store.list(home, 'goal');
+  assert.deepEqual(goals.find((g) => g.title === 'Linked').tracker_ref, ref);
+  assert.equal(goals.find((g) => g.title === 'Unlinked').tracker_ref, undefined);
+});
+
+test('goal.add rejects a malformed tracker_ref', async () => {
+  const { home } = await makeHome();
+  const inbox = await lib('inbox');
+  const store = await lib('store');
+  assert.throws(
+    () => inbox.write(home, { type: 'goal.add', source: 'dashboard', payload: { title: 'Bad', outcome: 'o', success_criteria: ['c'], tracker_ref: { kind: 'epic', remote_id: '' } } }),
+    /tracker_ref\.remote_id required.*tracker_ref\.kind must be issue\|project/,
+  );
+  inbox.write(home, { type: 'goal.add', source: 'dashboard', payload: { title: 'Good', outcome: 'o', success_criteria: ['c'] } });
+  await inbox.process(home, { tick: 4 });
+  assert.deepEqual(store.list(home, 'goal').map((g) => g.title), ['Good']);
+});
+
 test('invalid file name content is rejected, tmp files are ignored', async () => {
   const { home } = await makeHome();
   const inbox = await lib('inbox');
