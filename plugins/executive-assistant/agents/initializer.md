@@ -52,4 +52,4 @@ and error handling; follow it in order.
 Follow the `response-style` skill: lead with what the user still has to do
 (apply plugin config, add OAuth credentials, add any Slack, Atlassian, or
 Linear MCP servers they enabled, check `/mcp`), then a short list of what was
-saved. Suggest `/daily-prep --dry-run` as the first run, then `/daily-prep`.
+saved. Suggest `/morning-brief --dry-run` as the first run, then `/morning-brief`.

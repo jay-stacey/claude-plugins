@@ -1,6 +1,6 @@
 ---
 name: response-style
-description: How the assistant and its sub-agents talk to the user - plain language, low cognitive load, conversational rather than dashboard-like. Load before writing any user-facing summary, triage report, status line, or daily-prep output.
+description: How the assistant and its sub-agents talk to the user - plain language, low cognitive load, conversational rather than dashboard-like. Load before writing any user-facing summary, triage report, status line, or morning-brief, shutdown and focus output.
 user-invocable: false
 allowed-tools: Read
 ---

@@ -207,127 +207,71 @@
   },
   "calendar": {
     "enabled": true,
+    "_comment": "Fallbacks only. The profile at {vault}/assistant/profile.md wins, then /plugin configure values.",
     "workingHours": {
-      "start": "08:00",
-      "end": "17:00"
+      "start": "06:30",
+      "end": "15:00"
     },
+    "workdays": [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday"
+    ],
     "timezone": "America/Toronto",
-    "minFreeBlockMinutes": 30,
+    "reviewDays": 5,
+    "includeCalendars": [],
+    "minFreeBlockMinutes": 25,
+    "energyPatterns": {
+      "deep": {
+        "start": "06:30",
+        "end": "11:30"
+      },
+      "collab": {
+        "start": "11:30",
+        "end": "13:30"
+      },
+      "admin": {
+        "start": "13:30",
+        "end": "15:00"
+      }
+    },
     "breaks": {
       "enabled": true,
-      "minBufferMinutes": 15,
+      "minBufferMinutes": 10,
       "lunchBreak": {
-        "start": "12:00",
-        "duration": 60
+        "start": "11:30",
+        "duration": 30,
+        "window": "11:00-13:30"
       },
       "enforceBufferBetweenMeetings": true
     },
-    "colorCodes": {
-      "deepWork": "#4CAF50",
-      "meeting": "#2196F3",
-      "personal": "#9C27B0",
-      "blocked": "#F44336",
-      "tentative": "#FFC107"
-    },
     "eventFiltering": {
-      "whitelist": [],
-      "blacklist": [],
       "hideDeclined": true,
-      "hideCancelled": true
+      "hideCancelled": true,
+      "ownEventsOnly": true
     },
-    "energyPatterns": {
-      "morning": {
-        "start": "08:00",
-        "end": "11:00",
-        "label": "Deep Work",
-        "icon": "battery",
-        "type": "deep_work"
-      },
-      "midday": {
-        "start": "11:00",
-        "end": "14:00",
-        "label": "Meetings/Collab",
-        "icon": "people",
-        "type": "collaboration"
-      },
-      "afternoon": {
-        "start": "14:00",
-        "end": "17:00",
-        "label": "Focus Time",
-        "icon": "clipboard",
-        "type": "admin"
-      }
+    "flags": {
+      "heavyDayMeetingHours": 5,
+      "minDeepFreeMinutes": 60,
+      "backToBackHours": 2,
+      "maxPrepTasks": 5
     },
     "timeboxing": {
       "enabled": true,
       "maxUtilization": 0.75,
       "bufferMinutes": 10,
-      "preferredFocusTime": "morning"
-    }
-  },
-  "calendarManager": {
-    "timeboxing": {
-      "enabled": true,
-      "maxUtilization": 0.75,
-      "bufferMinutes": 10,
+      "maxBlockMinutes": 120,
+      "roundToMinutes": 5,
+      "defaultEstimateMinutes": 30,
       "preferredFocusTime": "morning"
     },
-    "recurringBlocks": [
-      {
-        "name": "Security Audit",
-        "frequency": "monthly",
-        "dayOfMonth": 15,
-        "duration": 120,
-        "description": "Monthly security review: dependencies, vulnerabilities, access audit",
-        "color": "red",
-        "priority": "high"
-      },
-      {
-        "name": "DevSecOps Review",
-        "frequency": "quarterly",
-        "monthOfQuarter": 3,
-        "dayOfMonth": 28,
-        "duration": 180,
-        "description": "Quarterly DevSecOps review: pipeline security, deployment processes, infrastructure hardening",
-        "color": "orange",
-        "priority": "high"
-      },
-      {
-        "name": "Process Improvement",
-        "frequency": "monthly",
-        "dayOfMonth": 1,
-        "duration": 90,
-        "description": "Monthly process review: identify bottlenecks, optimize workflows, implement improvements",
-        "color": "blue",
-        "priority": "medium"
-      },
-      {
-        "name": "Professional Development",
-        "frequency": "weekly",
-        "dayOfWeek": "Friday",
-        "timeSlot": "15:00",
-        "duration": 60,
-        "description": "Weekly learning time: courses, reading, skill development",
-        "color": "green",
-        "priority": "medium"
-      }
-    ],
-    "bottleneckThresholds": {
-      "overcommitment": 0.85,
-      "minDeepWorkHours": 2,
-      "backToBackMeetingHours": 2.5,
-      "fragmentationThreshold": 4
-    },
-    "protectedTime": {
-      "morningDeepWork": {
-        "enabled": false,
-        "days": [
-          "Monday",
-          "Wednesday",
-          "Friday"
-        ],
-        "timeRange": "08:00-10:00"
-      }
+    "focusBlock": {
+      "titlePrefix": "[Focus]",
+      "marker": "ea:focus",
+      "descriptionFirstLine": "ea:focus · created by executive-assistant",
+      "transparency": "opaque"
     }
   },
   "slack": {

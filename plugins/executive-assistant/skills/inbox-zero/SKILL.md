@@ -2,17 +2,30 @@
 name: inbox-zero
 description: Clear the Gmail inbox to zero - sweep unread mail, apply the user's email rules, categorize by priority, label, archive, and trash what the rules allow. Use when the user asks for inbox zero, email cleanup, or a focused inbox pass.
 argument-hint: "[--dry-run] [--quick] [--all] [--labels-only]"
-context: fork
-agent: email-assistant
-allowed-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Write, Edit
-model: sonnet
+allowed-tools: Agent, AskUserQuestion, Bash, Read, mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*
 ---
 
 # /inbox-zero
 
-Focused Gmail cleanup. Run the `gmail-processor` skill, then `gmail-organizer`.
-Those two carry the full procedure, so this file only sets the flags and the
-rules that sit above them.
+Focused Gmail cleanup. This skill runs in the main conversation so it can ask
+the user for one yes and wait for it. The `email-assistant` agent does the
+work with its `gmail-processor` and `gmail-organizer` skills, which carry the
+full procedure. This file sets the flags, the order, and the rules above them.
+
+## Steps
+
+1. Print "Checking email...". Ask `email-assistant` to run gmail-processor
+   with the flags below. It acts on `auto` rules and returns its EmailReport
+   (shape in `${CLAUDE_PLUGIN_ROOT}/docs/brief-contract.md`).
+2. If `pending_confirm` has groups, ask once with AskUserQuestion: one
+   question per group (at most four), each with the count and two sample
+   subjects. Recommend the rule's action first.
+3. On a yes, run `batch_modify_gmail_message_labels` on that group's
+   `message_ids` (look up label ids with `list_gmail_labels` first). Then
+   count `in:inbox` again.
+4. If the report has `rule_suggestions`, offer them in the same question set,
+   and add an accepted one with
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/email_rules.py add --line "..."`.
 
 ## Flags
 

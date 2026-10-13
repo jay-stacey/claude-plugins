@@ -74,7 +74,7 @@
     "enabled_integrations": {
       "type": "string",
       "title": "Enabled integrations",
-      "description": "Which sources daily-prep runs. Choose any of: gmail, calendar, slack, jira, linear, notes.",
+      "description": "Which sources the morning brief uses. Choose any of: gmail, calendar, slack, jira, linear, notes.",
       "multiple": true,
       "default": [
         "gmail",

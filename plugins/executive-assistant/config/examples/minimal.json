@@ -47,12 +47,6 @@
       "enabled": false
     }
   },
-  "calendarManager": {
-    "timeboxing": {
-      "enabled": false
-    },
-    "recurringBlocks": []
-  },
   "notes": {
     "enabled": true,
     "vaultPath": "./notes",

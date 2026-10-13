@@ -212,6 +212,60 @@ class StatsTests(StoreCase):
         self.assertEqual(self.run_cli("stats")["speed"], 1.0)
 
 
+class BriefTests(StoreCase):
+    def write(self, name, data):
+        p = self.vault / name
+        p.write_text(json.dumps(data), encoding="utf-8")
+        return str(p)
+
+    def brief(self, date, **extra):
+        return self.write(f"b-{date}.json", {"date": date, "email": {}, "calendar": {}, "plan": {}, **extra})
+
+    def test_brief_save_logs_points_once_per_day(self):
+        first = self.run_cli("brief-save", self.brief("2026-10-13"))
+        again = self.run_cli("brief-save", self.brief("2026-10-13", mode="refresh"))
+        self.assertEqual((first["points"], again["points"]), (3, 0))
+        self.assertEqual(self.run_cli("stats")["points_today"], 3)
+        self.assertEqual(self.run_cli("brief-get")["mode"], "refresh")
+
+    def test_brief_save_rejects_missing_sections(self):
+        err = self.run_cli("brief-save", self.write("bad.json", {"date": "2026-10-13", "email": {}}), expect=2)
+        self.assertIn("calendar", err["error"])
+        self.assertFalse((self.vault / ".assistant" / "brief" / "2026-10-13.json").exists())
+
+    def test_context_flags_catch_up_after_two_missed_workdays(self):
+        self.run_cli("brief-save", self.brief("2026-10-08"))      # Thu
+        ctx = self.run_cli("context")                               # Tue 13: Fri and Mon missed
+        self.assertEqual(ctx["last_brief"], "2026-10-08")
+        self.assertEqual(ctx["workdays_missed"], 2)
+        self.assertTrue(ctx["catch_up"])
+        self.assertFalse(ctx["brief_today"])
+
+    def test_context_no_catch_up_over_a_weekend_or_off_day(self):
+        self.run_cli("brief-save", self.brief("2026-10-09"))      # Fri
+        self.run_cli("log", "off", "--date", "2026-10-12")         # Mon off
+        ctx = self.run_cli("context")
+        self.assertEqual(ctx["workdays_missed"], 0)
+        self.assertFalse(ctx["catch_up"])
+
+    def test_context_reads_last_shutdown_and_due_tasks(self):
+        self.run_cli("shutdown-save", self.write("s.json", {"date": "2026-10-12",
+                                                            "first_step": "Open the release notes draft"}))
+        late = self.add("late thing", "--due", "2026-10-10", "--list", "week")
+        soon = self.add("soon thing", "--due", "2026-10-15", "--list", "week")
+        self.add("now thing", "--list", "now")
+        ctx = self.run_cli("context")
+        self.assertEqual(ctx["last_shutdown"]["first_step"], "Open the release notes draft")
+        self.assertEqual([t["id"] for t in ctx["overdue"]], [late["id"]])
+        self.assertEqual([t["id"] for t in ctx["due_this_week"]], [soon["id"]])
+        self.assertEqual(ctx["now"]["title"], "now thing")
+        self.assertTrue(ctx["first_use"])
+
+    def test_shutdown_requires_first_step(self):
+        err = self.run_cli("shutdown-save", self.write("s.json", {"date": "2026-10-13"}), expect=2)
+        self.assertIn("first_step", err["error"])
+
+
 class InitAndCliTests(StoreCase):
     def test_init_copies_templates_once(self):
         out = self.run_cli("init")

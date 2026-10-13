@@ -8,7 +8,8 @@ dashboard and the chat cannot drift apart on the format. Output is JSON.
     python tasks.py [--vault DIR] [--now ISO] <command> [args]
 
 Commands: init, add, parse, list, show, update, move, done, drop, park,
-resume, archive, log, stats. Run ``python tasks.py <command> -h`` for flags.
+resume, archive, log, stats, context, brief-save, brief-get, shutdown-save.
+Run ``python tasks.py <command> -h`` for flags.
 
 Exit codes: 0 ok, 2 bad input, 3 the file changed since you read it
 (``--if-sha``), 4 a list limit was hit, 5 not found.
@@ -669,6 +670,132 @@ def cmd_stats(store, args, now):
             "shutdown_done": any(e["event"] == "shutdown" for e in on(day))}
 
 
+# ------------------------------------------------- brief and shutdown -------
+
+def _day_file(store, kind, day):
+    return store.state / kind / f"{day}.json"
+
+
+def _read_json(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _save_day_json(store, kind, args, now, required=()):
+    try:
+        data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise Fail(f"Cannot read {kind} JSON from {args.file}: {e}")
+    if not isinstance(data, dict):
+        raise Fail(f"The {kind} file must hold one JSON object.")
+    day = data.get("date") or now.date().isoformat()
+    try:
+        dt.date.fromisoformat(day)
+    except ValueError:
+        raise Fail(f"'date' must look like 2026-10-13, not '{day}'.")
+    missing = [k for k in required if k not in data]
+    if missing:
+        raise Fail(f"The {kind} file is missing: {', '.join(missing)}.")
+    data["date"] = day
+    data.setdefault("generated_at", iso_min(now))
+    path = _day_file(store, kind, day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+    # Points and streak count one brief and one shutdown per day, however
+    # often the user re-runs them.
+    event = {"brief": "brief", "shutdown": "shutdown"}[kind]
+    already = any(e.get("event") == event and e.get("ts", "").startswith(day) for e in store.events())
+    if not already:
+        when = dt.datetime.combine(dt.date.fromisoformat(day), now.time())
+        store.log(event, when, points=EVENT_POINTS[event])
+    return {"saved": path.as_posix(), "points": 0 if already else EVENT_POINTS[event]}
+
+
+def cmd_brief_save(store, args, now):
+    return _save_day_json(store, "brief", args, now, required=("email", "calendar", "plan"))
+
+
+def cmd_shutdown_save(store, args, now):
+    return _save_day_json(store, "shutdown", args, now, required=("first_step",))
+
+
+def cmd_brief_get(store, args, now):
+    folder = store.state / "brief"
+    if args.date:
+        path = folder / f"{args.date}.json"
+    else:
+        files = sorted(folder.glob("*.json")) if folder.is_dir() else []
+        path = files[-1] if files else None
+    data = _read_json(path) if path else None
+    if data is None:
+        raise Fail("No brief saved yet." if not args.date else f"No brief for {args.date}.", code=5)
+    return data
+
+
+def workdays_between(a, b, off_days=()):
+    """Workdays strictly after a and strictly before b."""
+    n, d = 0, a + dt.timedelta(days=1)
+    while d < b:
+        if d.weekday() < 5 and d.isoformat() not in off_days:
+            n += 1
+        d += dt.timedelta(days=1)
+    return n
+
+
+def cmd_context(store, args, now):
+    """Everything the morning brief needs to know before it gathers anything."""
+    today = now.date()
+    events = store.events()
+    off = {e["ts"][:10] for e in events if e.get("event") == "off"}
+    briefs = sorted({e["ts"][:10] for e in events if e.get("event") == "brief"})
+    before = [d for d in briefs if d < today.isoformat()]
+    last_brief = before[-1] if before else None
+    missed = workdays_between(dt.date.fromisoformat(last_brief), today, off) if last_brief else None
+
+    shut_dir = store.state / "shutdown"
+    shut_files = sorted(p for p in shut_dir.glob("*.json") if p.stem < today.isoformat()) if shut_dir.is_dir() else []
+    last_shut = _read_json(shut_files[-1]) if shut_files else None
+
+    tasks = store.all()
+    open_ = [t for t in tasks if t["fields"]["list"] not in ("done", "dropped")]
+    week_end = today + dt.timedelta(days=6 - today.weekday())
+
+    def due(t):
+        try:
+            return dt.date.fromisoformat(t["fields"].get("due")) if t["fields"].get("due") else None
+        except ValueError:
+            return None
+
+    now_task = next((t for t in open_ if t["fields"]["list"] == "now"), None)
+    return {
+        "date": today.isoformat(),
+        "weekday": today.strftime("%a"),
+        "is_workday": today.weekday() < 5 and today.isoformat() not in off,
+        "is_monday": today.weekday() == 0,
+        "brief_today": today.isoformat() in briefs,
+        "last_brief": last_brief,
+        "workdays_missed": missed,
+        "catch_up": bool(missed is not None and missed >= 2),
+        "first_use": last_brief is None and not briefs,
+        "last_shutdown": {"date": shut_files[-1].stem, "first_step": last_shut.get("first_step"),
+                          "tonight": last_shut.get("tonight")} if last_shut else None,
+        "now": summary(now_task) if now_task else None,
+        "today": [summary(t) for t in open_ if t["fields"]["list"] == "today"],
+        "parked": [summary(t) for t in open_ if t["fields"].get("parked_at")],
+        "overdue": [summary(t) for t in open_ if due(t) and due(t) < today],
+        "due_this_week": [summary(t) for t in open_ if due(t) and today <= due(t) <= week_end],
+        "counts": {k: sum(1 for t in tasks if t["fields"]["list"] == k) for k in LISTS},
+        "stats": cmd_stats(store, argparse.Namespace(date=None), now),
+        "files": {"rules": (store.vault / "assistant" / "email-rules.md").exists(),
+                  "profile": (store.vault / "assistant" / "profile.md").exists()},
+    }
+
+
 # -------------------------------------------------------------- cli ---------
 
 def build_parser():
@@ -733,12 +860,21 @@ def build_parser():
     lg.add_argument("--date")
     st = sub.add_parser("stats", help="Points, streak and your usual speed.")
     st.add_argument("--date")
+    sub.add_parser("context", help="What the morning brief needs: catch-up, last shutdown, due tasks.")
+    bs = sub.add_parser("brief-save", help="Save the brief JSON for the dashboard and log the brief.")
+    bs.add_argument("file")
+    bg = sub.add_parser("brief-get", help="Read a saved brief (latest by default).")
+    bg.add_argument("--date")
+    ss = sub.add_parser("shutdown-save", help="Save the shutdown JSON and log the shutdown.")
+    ss.add_argument("file")
     return p
 
 
 COMMANDS = {"init": cmd_init, "add": cmd_add, "parse": cmd_parse, "list": cmd_list, "show": cmd_show,
             "update": cmd_update, "move": cmd_move, "done": cmd_done, "drop": cmd_drop, "park": cmd_park,
-            "resume": cmd_resume, "archive": cmd_archive, "log": cmd_log, "stats": cmd_stats}
+            "resume": cmd_resume, "archive": cmd_archive, "log": cmd_log, "stats": cmd_stats,
+            "context": cmd_context, "brief-save": cmd_brief_save, "brief-get": cmd_brief_get,
+            "shutdown-save": cmd_shutdown_save}
 
 
 def run(argv):

@@ -210,8 +210,8 @@ Saved:
 - user-profile.md with your role, VIPs, and preferences
 - focus profile in {vault}/assistant/profile.md
 
-When you're ready, run `/daily-prep --dry-run` to preview a morning, then
-`/daily-prep` for the real thing.
+When you're ready, run `/morning-brief --dry-run` to preview a morning, then
+`/morning-brief` for the real thing.
 ```
 
 Name only the Slack, Atlassian, or Linear servers the user enabled.
