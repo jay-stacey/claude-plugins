@@ -17,6 +17,17 @@ export function knownType(t) { return TYPES.includes(t) || /^(tracker|sync)\.[a-
 
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 
+/** Errors for an optional link to an existing tracker item or project (goal.add, item.add). */
+function trackerRefErrors(r, e) {
+  if (r === undefined || r === null) return;
+  if (!isObj(r)) { e.push('payload.tracker_ref must be an object'); return; }
+  if (typeof r.remote_id !== 'string' || !r.remote_id.trim()) e.push('payload.tracker_ref.remote_id required');
+  for (const k of Object.keys(r)) if (!['provider', 'remote_id', 'key', 'url', 'kind'].includes(k)) e.push(`payload.tracker_ref.${k} is not allowed`);
+  for (const k of ['provider', 'key', 'url']) if (r[k] !== undefined && r[k] !== null && typeof r[k] !== 'string') e.push(`payload.tracker_ref.${k} must be a string`);
+  if (r.kind !== undefined && !['issue', 'project'].includes(r.kind)) e.push('payload.tracker_ref.kind must be issue|project');
+  if (typeof r.url === 'string' && r.url && !/^https?:\/\//i.test(r.url)) e.push('payload.tracker_ref.url must be http(s)');
+}
+
 function payloadErrors(type, p) {
   const e = [];
   const str = (k) => { if (typeof p[k] !== 'string' || !p[k].trim()) e.push(`payload.${k} required`); };
@@ -26,6 +37,7 @@ function payloadErrors(type, p) {
       str('title'); str('outcome');
       if (!Array.isArray(p.success_criteria) || !p.success_criteria.length) e.push('payload.success_criteria needs 1-7 items');
       if (p.priority && !ENUMS.priority.includes(p.priority)) e.push('payload.priority must be P0..P3');
+      trackerRefErrors(p.tracker_ref, e);
       break;
     case 'goal.activate': case 'goal.pause': case 'goal.resume': str('goal_id'); break;
     case 'goal.remove': str('goal_id'); if (p.confirm_text !== p.goal_id) e.push('payload.confirm_text must equal goal_id'); break;
@@ -38,17 +50,7 @@ function payloadErrors(type, p) {
       str('team'); str('title');
       if (!['bug', 'tech_debt', 'chore'].includes(p.class)) e.push('payload.class must be bug|tech_debt|chore');
       if (p.priority && !ENUMS.priority.includes(p.priority)) e.push('payload.priority must be P0..P3');
-      if (p.tracker_ref !== undefined && p.tracker_ref !== null) {
-        const r = p.tracker_ref;
-        if (!isObj(r)) e.push('payload.tracker_ref must be an object');
-        else {
-          if (typeof r.remote_id !== 'string' || !r.remote_id.trim()) e.push('payload.tracker_ref.remote_id required');
-          for (const k of Object.keys(r)) if (!['provider', 'remote_id', 'key', 'url', 'kind'].includes(k)) e.push(`payload.tracker_ref.${k} is not allowed`);
-          for (const k of ['provider', 'key', 'url']) if (r[k] !== undefined && r[k] !== null && typeof r[k] !== 'string') e.push(`payload.tracker_ref.${k} must be a string`);
-          if (r.kind !== undefined && !['issue', 'project'].includes(r.kind)) e.push('payload.tracker_ref.kind must be issue|project');
-          if (typeof r.url === 'string' && r.url && !/^https?:\/\//i.test(r.url)) e.push('payload.tracker_ref.url must be http(s)');
-        }
-      }
+      trackerRefErrors(p.tracker_ref, e);
       if (p.cycle !== undefined && p.cycle !== null && !(typeof p.cycle === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*-\d+$/.test(p.cycle))) e.push('payload.cycle must be a cycle id like core-12 or null');
       break;
     case 'cycle.commit': str('task_id'); str('cycle'); break;
@@ -121,7 +123,7 @@ export async function applyRequest(home, req, { via = 'dashboard', session = nul
   switch (req.type) {
     case 'gate.decide': await flow.decideGate(home, p.gate_id, { decision: p.decision, by, via: viaSrc, notes: p.notes || '', add_tokens: p.add_tokens }); break;
     case 'goal.add': {
-      const g = actions.newGoal(home, { title: p.title, outcome: p.outcome, success_criteria: p.success_criteria, priority: p.priority, budget_tokens: p.budget_tokens, constraints: p.constraints, notes: p.notes }, { via: req.source === 'tracker' ? 'tracker' : req.source === 'setup' ? 'setup' : viaSrc, kind: req.actor.kind === 'tracker' ? 'tracker' : 'human' });
+      const g = actions.newGoal(home, { title: p.title, outcome: p.outcome, success_criteria: p.success_criteria, priority: p.priority, budget_tokens: p.budget_tokens, constraints: p.constraints, notes: p.notes, tracker_ref: p.tracker_ref }, { via: req.source === 'tracker' ? 'tracker' : req.source === 'setup' ? 'setup' : viaSrc, kind: req.actor.kind === 'tracker' ? 'tracker' : 'human' });
       return { status: 'applied', reason: `created ${g.id}` };
     }
     case 'goal.activate': actions.activateGoal(home, p.goal_id); break;
