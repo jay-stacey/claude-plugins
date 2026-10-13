@@ -3,12 +3,22 @@
 Loads Kokoro-82M once (on the GPU or CPU that setup.ps1 chose) and speaks text sent to it, so replies start fast.
 Listens on 127.0.0.1 only. Exits by itself after IDLE_EXIT_SECONDS with no requests.
 
+Every Claude session shares this one server. Jobs play one at a time, in the order they
+arrive, and a session can stop only its own jobs.
+
 Endpoints:
-  GET  /health        -> {"ok": true, "device": "cuda", "voices": [...]}
-  POST /speak         {"text": str, "voice": str, "speed": float} -> {"ok": true, "id": int}
-                      Returns at once; the speech plays in the background.
+  GET  /health        -> {"ok": true, "api": 2, "device": "cuda", "voices": [...]}
+  POST /speak         {"text": str, "voice": str, "speed": float,
+                       "session": str, "tag": str, "when": "idle" | "queue"}
+                      -> {"ok": true, "id": int, "state": "queued"}
+                      With "when": "idle" while any job is queued or playing, nothing is
+                      queued: {"ok": true, "id": null, "state": "busy", "by": tag}.
+                      Returns at once; the speech plays in the background. When a job
+                      plays right after a different session's, the server says its tag first.
   GET  /status?id=N   -> {"ok": true, "state": "queued" | "speaking" | "done" | "stopped" | "error"}
-  POST /stop          -> stops what is playing and anything queued
+  POST /stop          {"session": str} stops that session's jobs; {} stops every job. No body
+                      (plugin 1.2 and older) stops only jobs sent with no session.
+  POST /shutdown      -> the server exits (the plugin uses it to start a newer copy)
 """
 
 import json
@@ -17,6 +27,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -35,6 +46,9 @@ import torch
 from kokoro import KModel, KPipeline
 
 PORT = 47861
+# The plugin restarts a server that reports an older API.
+API_VERSION = 2
+MAX_TEXT = 20000
 SAMPLE_RATE = 24000
 IDLE_EXIT_SECONDS = 2 * 60 * 60
 REPO = "hexgrad/Kokoro-82M"
@@ -83,13 +97,15 @@ model = KModel(repo_id=REPO).to(device).eval()
 # "a" = American English, "b" = British English. Both share the one model.
 pipelines = {code: KPipeline(lang_code=code, repo_id=REPO, model=model) for code in ("a", "b")}
 
-# Jobs are numbered. A newer job, or a /stop, ends every older one.
-state_lock = threading.Lock()
-play_lock = threading.Lock()
+# Jobs are numbered. One worker thread plays them oldest first. /stop marks a session's
+# jobs "stopped", and the player checks for that between 100 ms blocks of audio.
+jobs_cond = threading.Condition()
+jobs: dict[int, dict] = {}
+pending: "deque[int]" = deque()
 latest_job = 0
-stopped_upto = 0
-job_states: dict[int, str] = {}
+last_session: str | None = None
 last_request = time.monotonic()
+ACTIVE = ("queued", "speaking")
 
 
 def log(message: str) -> None:
@@ -97,14 +113,19 @@ def log(message: str) -> None:
 
 
 def should_stop(job: int) -> bool:
-    return job < latest_job or job <= stopped_upto
+    entry = jobs.get(job)
+    return entry is None or entry["state"] == "stopped"
 
 
-def set_state(job: int, state: str) -> None:
-    with state_lock:
-        job_states[job] = state
-        for old in [j for j in job_states if j < job - 50]:
-            del job_states[old]
+def is_busy() -> bool:
+    return any(entry["state"] in ACTIVE for entry in jobs.values())
+
+
+def forget_old_jobs() -> None:
+    """Keeps the newest 50 finished jobs, so /status can still answer for them."""
+    finished = sorted(j for j, entry in jobs.items() if entry["state"] not in ACTIVE)
+    for old in finished[:-50]:
+        del jobs[old]
 
 
 def speak(job: int, text: str, voice: str, speed: float) -> str:
@@ -135,20 +156,33 @@ def speak(job: int, text: str, voice: str, speed: float) -> str:
                 stream.write(audio[start:start + block])
 
 
-def run_job(job: int, text: str, voice: str, speed: float) -> None:
-    # One voice at a time: wait for the older job to notice it was replaced.
-    with play_lock:
-        if should_stop(job):
-            set_state(job, "stopped")
-            return
-        set_state(job, "speaking")
+def worker() -> None:
+    """Plays queued jobs one at a time, oldest first."""
+    global last_session
+    while True:
+        with jobs_cond:
+            while not pending:
+                jobs_cond.wait()
+            job = pending.popleft()
+            entry = jobs.get(job)
+            if entry is None or entry["state"] != "queued":
+                continue
+            entry["state"] = "speaking"
+            text = entry["text"]
+            # Say which session this is when the voice moves from one session to another.
+            if entry["tag"] and last_session is not None and entry["session"] != last_session:
+                text = f"{entry['tag']}. {text}"
+            last_session = entry["session"]
         try:
-            result = speak(job, text, voice, speed)
+            result = speak(job, text, entry["voice"], entry["speed"])
         except Exception as err:  # noqa: BLE001 - report any audio/model failure
             log(f"job {job} failed: {err}")
             result = "error"
-        set_state(job, result)
-        log(f"job {job} {result}")
+        with jobs_cond:
+            if entry["state"] == "speaking":
+                entry["state"] = result
+            log(f"job {job} {entry['state']}")
+            forget_old_jobs()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -163,61 +197,113 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0"))
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("the body is not a JSON object")
+        return body
+
     def do_GET(self) -> None:
         global last_request
         last_request = time.monotonic()
         url = urlparse(self.path)
         if url.path == "/health":
-            self.reply(200, {"ok": True, "device": device, "voices": VOICES})
+            self.reply(200, {"ok": True, "api": API_VERSION, "device": device, "voices": VOICES})
         elif url.path == "/status":
             try:
                 job = int(parse_qs(url.query).get("id", ["0"])[0])
             except ValueError:
                 job = 0
-            with state_lock:
-                state = job_states.get(job, "done")
+            with jobs_cond:
+                entry = jobs.get(job)
+                state = entry["state"] if entry is not None else "done"
             self.reply(200, {"ok": True, "state": state})
         else:
             self.reply(404, {"ok": False})
 
     def do_POST(self) -> None:
-        global last_request, latest_job, stopped_upto
+        global last_request, latest_job
         last_request = time.monotonic()
+        if self.path == "/shutdown":
+            log("shutdown asked for")
+            self.reply(200, {"ok": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         if self.path == "/stop":
-            with state_lock:
-                stopped_upto = latest_job
-            log(f"stop up to job {stopped_upto}")
+            # {"session": s} stops that session; {} stops every session. No body at all comes
+            # from plugin 1.2 and older, which name no session: stop only their jobs (session
+            # ""), so an old session cannot silence new ones. A broken body stops nothing.
+            if int(self.headers.get("Content-Length", "0") or 0) == 0:
+                session = ""
+            else:
+                try:
+                    session = self.read_json().get("session")
+                except (ValueError, TypeError):
+                    self.reply(400, {"ok": False, "error": "bad request"})
+                    return
+            if session is not None and not isinstance(session, str):
+                self.reply(400, {"ok": False, "error": "session must be a string"})
+                return
+            with jobs_cond:
+                for entry in jobs.values():
+                    if entry["state"] in ACTIVE and (session is None or entry["session"] == session):
+                        entry["state"] = "stopped"
+            log("stop every session" if session is None else "stop one session" if session else "stop old sessions")
             self.reply(200, {"ok": True})
             return
         if self.path != "/speak":
             self.reply(404, {"ok": False})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            body = json.loads(self.rfile.read(length) or b"{}")
-            text = str(body.get("text", "")).strip()[:4000]
+            body = self.read_json()
+            text = str(body.get("text", "")).strip()[:MAX_TEXT]
             voice = str(body.get("voice", "af_heart"))
             speed = min(2.0, max(0.5, float(body.get("speed", 1.0))))
+            session = str(body.get("session", ""))[:100]
+            tag = str(body.get("tag", "")).strip()[:60]
+            when = str(body.get("when", "queue"))
         except (ValueError, TypeError):
             self.reply(400, {"ok": False, "error": "bad request"})
             return
         if voice not in VOICES:
             self.reply(400, {"ok": False, "error": f"unknown voice {voice}"})
             return
-        with state_lock:
-            latest_job += 1
-            job = latest_job
-            job_states[job] = "queued" if text else "done"
-        log(f"job {job} queued ({len(text)} chars, {voice}, {speed}x)")
-        if text:
-            threading.Thread(target=run_job, args=(job, text, voice, speed), daemon=True).start()
-        self.reply(200, {"ok": True, "id": job})
+        if when not in ("idle", "queue"):
+            self.reply(400, {"ok": False, "error": "when must be idle or queue"})
+            return
+        with jobs_cond:
+            if when == "idle" and is_busy():
+                by = next((e["tag"] for e in jobs.values() if e["state"] in ACTIVE), "")
+                body_out = {"ok": True, "id": None, "state": "busy", "by": by}
+                job = None
+            else:
+                latest_job += 1
+                job = latest_job
+                state = "queued" if text else "done"
+                jobs[job] = {
+                    "state": state,
+                    "session": session,
+                    "tag": tag,
+                    "text": text,
+                    "voice": voice,
+                    "speed": speed,
+                }
+                if text:
+                    pending.append(job)
+                    jobs_cond.notify()
+                body_out = {"ok": True, "id": job, "state": state}
+        if job is not None:
+            log(f"job {job} queued ({len(text)} chars, {voice}, {speed}x)")
+        self.reply(200, body_out)
 
 
 def exit_when_idle(server: ThreadingHTTPServer) -> None:
     while True:
         time.sleep(60)
-        if time.monotonic() - last_request > IDLE_EXIT_SECONDS and not play_lock.locked():
+        with jobs_cond:
+            busy = is_busy()
+        if time.monotonic() - last_request > IDLE_EXIT_SECONDS and not busy:
             server.shutdown()
             return
 
@@ -255,5 +341,6 @@ elif __name__ == "__main__":
     except OSError:
         sys.exit(0)  # Another copy already owns the port.
     threading.Thread(target=exit_when_idle, args=(server,), daemon=True).start()
+    threading.Thread(target=worker, daemon=True).start()
     log(f"kokoro server ready on {PORT} ({device})")
     server.serve_forever()
