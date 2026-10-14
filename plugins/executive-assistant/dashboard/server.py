@@ -37,6 +37,7 @@ PLUGIN_ROOT = HERE.parent
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 sys.path.insert(0, str(HERE))
 import tasks  # noqa: E402
+from plugin_config import option  # noqa: E402
 
 STATIC = HERE / "static"
 EDITOR_BUNDLE = PLUGIN_ROOT / "skills" / "notes-viewer" / "assets" / "editor.bundle.js"
@@ -61,8 +62,9 @@ class HttpError(Exception):
 
 def parse_profile(text, env=os.environ):
     """Read the workday out of profile.md. Missing lines fall back to config."""
-    prof = {"start": env.get("CLAUDE_PLUGIN_OPTION_WORKING_HOURS_START") or "06:30",
-            "stop": env.get("CLAUDE_PLUGIN_OPTION_WORKING_HOURS_END") or "15:00",
+    saved = option if env is os.environ else (lambda key: None)
+    prof = {"start": env.get("CLAUDE_PLUGIN_OPTION_WORKING_HOURS_START") or saved("working_hours_start") or "06:30",
+            "stop": env.get("CLAUDE_PLUGIN_OPTION_WORKING_HOURS_END") or saved("working_hours_end") or "15:00",
             "deep": None, "admin_after": "13:30", "shutdown_reminder_min": 30}
     tm = r"(\d{1,2}:\d{2})"
     for line in (text or "").splitlines():
@@ -343,8 +345,8 @@ class App:
 
     # --- shutdown
     def daily_note_path(self, day):
-        folder = os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_DAILY_FOLDER") or "daily"
-        fmt = os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_DATE_FORMAT") or "YYYY-MM-DD"
+        folder = option("notes_daily_folder") or "daily"
+        fmt = option("notes_date_format") or "YYYY-MM-DD"
         name = fmt.replace("YYYY", f"{day.year:04d}").replace("MM", f"{day.month:02d}").replace("DD", f"{day.day:02d}")
         return self.vault / folder / f"{name}.md"
 
@@ -809,7 +811,7 @@ def cmd_stop(args):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="server.py", description="Day Desk, the local dashboard.")
-    p.add_argument("--vault", default=os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH"))
+    p.add_argument("--vault", default=option("notes_vault_path"))
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("start", "serve"):
         sp = sub.add_parser(name)

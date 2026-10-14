@@ -28,6 +28,7 @@ class HookCase(unittest.TestCase):
         self.env.start()
         for key in ("CLAUDE_PLUGIN_OPTION_SESSION_CONTEXT", "CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH"):
             os.environ.pop(key, None)
+        os.environ["EA_SETTINGS_FILE"] = str(self.vault / "no-settings.json")
 
     def tearDown(self):
         self.env.stop()
