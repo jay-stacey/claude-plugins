@@ -29,6 +29,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from plugin_config import option
+
 LISTS = ("now", "today", "week", "later", "done", "dropped")
 PRIORITIES = ("high", "med", "low")
 TODAY_CAP = 5      # now + today together
@@ -209,8 +211,8 @@ def slugify(title):
 class Store:
     def __init__(self, vault):
         if not vault:
-            raise Fail("No notes folder is set. Run /plugin configure executive-assistant@personal-plugins "
-                       "and set the notes vault path.")
+            raise Fail("No notes folder is set. Run /plugin configure executive-assistant@personal-plugins, "
+                       "set the notes vault path, or pass --vault.")
         self.vault = Path(vault).expanduser()
         if not self.vault.is_dir():
             raise Fail(f"The notes folder does not exist: {self.vault}")
@@ -928,8 +930,8 @@ def cmd_context(store, args, now):
 
 def build_parser():
     p = argparse.ArgumentParser(prog="tasks.py", description="Markdown task store for the executive assistant.")
-    p.add_argument("--vault", default=os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH"),
-                   help="Notes folder. Default: CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH.")
+    p.add_argument("--vault", default=option("notes_vault_path"),
+                   help="Notes folder. Default: the notes_vault_path plugin setting.")
     p.add_argument("--now", help="Pretend the time is this ISO value (tests).")
     sub = p.add_subparsers(dest="cmd", required=True)
 

@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from plugin_config import option  # noqa: E402
 
 MAX_CHARS = 400
 MEETING_MINUTES_LIMIT = 90
@@ -164,10 +165,10 @@ def run(argv):
 
     enabled = real_value(args.enabled)
     if enabled is None:
-        enabled = os.environ.get("CLAUDE_PLUGIN_OPTION_SESSION_CONTEXT", "")
+        enabled = option("session_context", "")
     if not is_on(enabled):
         return
-    vault = real_value(args.vault) or os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH", "").strip()
+    vault = real_value(args.vault) or (option("notes_vault_path") or "").strip()
     if not vault or not Path(vault).expanduser().is_dir():
         return
     vault = str(Path(vault).expanduser())

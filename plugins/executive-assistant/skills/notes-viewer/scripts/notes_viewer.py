@@ -40,6 +40,9 @@ SCHEMA = 1
 sys.path.insert(0, os.path.dirname(os.path.abspath(INDEX_SCRIPT)))
 from notes_index import iter_notes, norm_tag, record  # noqa: E402
 
+sys.path.insert(0, os.path.join(SKILL, "..", "..", "scripts"))
+from plugin_config import option  # noqa: E402
+
 #: Patterns that should never leave the machine in a published artifact. A
 #: flagged note is held back unless the caller passes --include-flagged.
 #: Only the reason is reported, never the matched text.
@@ -193,7 +196,7 @@ def cmd_export(args):
         "schema": SCHEMA,
         "generated": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "vault": os.path.basename(vault.rstrip("\\/")) or "notes",
-        "daily_folder": os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_DAILY_FOLDER", "daily"),
+        "daily_folder": option("notes_daily_folder", "daily"),
         "count": len(notes),
         "chunks": [f"data/notes-{i:03d}.json" for i in range(len(chunks))],
         "notes": notes,

@@ -390,6 +390,14 @@ workers (`user-invocable: false`, not in the slash menu): `gmail-processor`,
 
 ## Changelog
 
+**v8.0.1** - October 2026
+- Scripts now find their settings when the `CLAUDE_PLUGIN_OPTION_*`
+  variables are missing. Claude Code gives those variables only to hooks, so
+  skills that ran `tasks.py` or `email_rules.py` (and the copy the desktop app
+  syncs from claude.ai) failed with "No notes folder is set". The new
+  `scripts/plugin_config.py` reads the variable first, then `pluginConfigs` in
+  `~/.claude/settings.json`.
+
 **v8.0.0** - October 2026 (breaking)
 - `/morning-brief` replaces `/daily-prep`. It reads your email rules, the
   calendar for five workdays, and Linear, Slack and Jira, then picks one Now

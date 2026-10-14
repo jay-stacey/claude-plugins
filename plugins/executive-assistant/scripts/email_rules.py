@@ -28,6 +28,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from plugin_config import option
+
 ACTIONS = ("keep", "support", "label", "archive", "trash")
 ALIASES = {"support-owned": "support"}
 MODES = ("auto", "confirm")
@@ -389,8 +391,8 @@ def cmd_mark_filter(vault, args, now):
 
 def build_parser():
     p = argparse.ArgumentParser(prog="email_rules.py", description="Email rules for the executive assistant.")
-    p.add_argument("--vault", default=os.environ.get("CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH"),
-                   help="Notes folder. Default: CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH.")
+    p.add_argument("--vault", default=option("notes_vault_path"),
+                   help="Notes folder. Default: the notes_vault_path plugin setting.")
     p.add_argument("--now", help="Pretend the time is this ISO value (tests).")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("parse", help="Read the rules file: rules in file order, placeholders, errors.")
