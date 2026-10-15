@@ -16,8 +16,9 @@ const BAND = {
 const TURN = { durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' } as const
 const START = { cwd: '.', surface: 'desktop', isInteractive: true } as const
 const SCRIPT = 'Done. All three tests pass.'
-// What the server hears with each /speak from session s1 in the claude-plugins repo.
-const FROM_S1 = { session: 'session:s1', tag: 'claude plugins' } as const
+// What the server hears with each /speak from session s1. No tag: the voice says no
+// session name unless /voice name sets one.
+const FROM_S1 = { session: 'session:s1', tag: '' } as const
 
 type Options = {
   saved?: Record<string, unknown>
@@ -221,7 +222,7 @@ test('a new session starts with the default voice, not another session\'s', asyn
   await settle(clock)
 
   expect(fake.kokoro).toEqual([
-    { text: SCRIPT, voice: 'af_bella', speed: 1, session: 'session:s2', tag: 'claude plugins', when: 'idle' },
+    { text: SCRIPT, voice: 'af_bella', speed: 1, session: 'session:s2', tag: '', when: 'idle' },
   ])
 })
 
@@ -354,6 +355,99 @@ test('/voice name sets what the voice says when it moves to this session', async
 
   expect(fake.store.get('session:s1')).toMatchObject({ label: 'Voice Fixes' })
   expect(fake.kokoro[0]?.tag).toBe('Voice Fixes')
+})
+
+test('/voice name with no words stops saying the session name', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { saved: { 'session:s1': { label: 'Voice Fixes' } } })
+  await $.session.start(START)
+
+  await $.command.run({ command: 'voice', args: 'name' } as never)
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro[0]?.tag).toBe('')
+})
+
+test('/voice call starts each reply with the name, for this session only', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+
+  const reply = await $.command.run({ command: 'voice', args: 'call Jay' } as never)
+  expect(JSON.stringify(reply)).toContain('Jay')
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro).toEqual([{ text: `Jay, ${SCRIPT}`, voice: 'af_heart', speed: 1, ...FROM_S1, when: 'idle' }])
+  expect(fake.store.get('session:s1')).toMatchObject({ callMe: 'Jay', last: SCRIPT })
+  // Only this session: the default for new sessions is untouched.
+  expect(fake.store.get('callMe')).toBe(undefined)
+})
+
+test('the Windows voice also starts with the name', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { isKokoroUp: false, saved: { 'session:s1': { callMe: 'Jay' } } })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  // The mod waits up to 60 s for the server to start, then falls back.
+  for (let i = 0; i < 130; i += 1) await clock.advance(1000)
+
+  expect(fake.windows).toEqual([`Jay, ${SCRIPT}`])
+})
+
+test('the name is said once on Play and Replay, never twice', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { isBusy: true, saved: { 'session:s1': { callMe: 'Jay' } } })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+  await ui.press({ key: 'play' })
+  await settle(clock)
+  await ui.press({ key: 'replay' })
+  await settle(clock)
+
+  expect(fake.kokoro.map(k => k.text)).toEqual([`Jay, ${SCRIPT}`, `Jay, ${SCRIPT}`])
+  await ui.unmount()
+})
+
+test('the Call me field in the band sets the name for this session', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+
+  await ui.input({ key: 'call', text: '  Boss  ' })
+  expect(fake.store.get('session:s1')).toMatchObject({ callMe: 'Boss' })
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro[0]?.text).toBe(`Boss, ${SCRIPT}`)
+  await ui.unmount()
+})
+
+test('/voice default carries the name to new sessions; /voice call with no words clears it here', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { sessionId: 's2', saved: { callMe: 'Jay' } })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+  expect(fake.kokoro[0]?.text).toBe(`Jay, ${SCRIPT}`)
+
+  await $.command.run({ command: 'voice', args: 'call' } as never)
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+  expect(fake.kokoro[1]?.text).toBe(SCRIPT)
+  // The default stays; only this session says no name.
+  expect(fake.store.get('callMe')).toBe('Jay')
+
+  await $.command.run({ command: 'voice', args: 'call Sam' } as never)
+  await $.command.run({ command: 'voice', args: 'default' } as never)
+  expect(fake.store.get('callMe')).toBe('Sam')
 })
 
 test('Full length asks Haiku for the whole reply with room to say it', async ($, on) => {

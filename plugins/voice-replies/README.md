@@ -46,22 +46,26 @@ The plugin starts the server hidden in the background when it first needs it. On
 
 ## Use
 
-A small **Voice replies** panel sits just above the prompt, under any other mod's panel (such as session-brief). It has three dropdowns: **Voice**, **Speed** and **Length**. Pick **Off** in the Voice dropdown to turn voice replies off; pick any voice to turn them back on. The dropdown's label says when it is preparing, in line or speaking, or when the Windows voice stands in for Kokoro. A **Stop** button shows while it speaks.
+A small **Voice replies** panel sits just above the prompt, under any other mod's panel (such as session-brief). It has three dropdowns, **Voice**, **Speed** and **Length**, and a **Call me** field. Pick **Off** in the Voice dropdown to turn voice replies off; pick any voice to turn them back on. The dropdown's label says when it is preparing, in line or speaking, or when the Windows voice stands in for Kokoro. A **Stop** button shows while it speaks.
 
 **Length** sets how much is read. **Short** reads a summary of about 80 words. **Full** reads every point of the reply. A script that is too long (1,500 characters for Short, 12,000 for Full) ends at the last full sentence.
 
 ### Several sessions
 
-Each session keeps its own voice, speed, length and on or off setting. A session you open again keeps what you picked there. A new session starts with the default; `/voice default` makes the current session's choices the default.
+Each session keeps its own voice, speed, length, name for you and on or off setting. A session you open again keeps what you picked there. A new session starts with the default; `/voice default` makes the current session's choices the default.
 
 Sessions take turns. A reply never stops another session's speech:
 
 1. If no session is speaking, the reply plays at once.
 2. If another session is speaking, the reply waits. You get a Windows notification that names the session, and that session's panel shows **1 reply waiting** with **Play** and **Dismiss**.
 3. **Play** puts the reply in line. It plays when the current speech ends.
-4. When the voice moves from one session to another, it first says the session's name. The name is the repository folder, such as "claude plugins". `/voice name <words>` changes it.
+4. The voice does not say which session is speaking. To have it say a name when it moves to this session from another one, use `/voice name <words>`. The notification for a waiting reply always names the session (by its folder when no name is set).
 
 Sending a new prompt stops that session's speech and drops its waiting replies. Other sessions keep speaking.
+
+### What the voice calls you
+
+Type a name in the **Call me** field in the panel and press Enter, or use `/voice call <name>`. Each reply in that session then starts with it, such as "Jay, the tests pass." Clear the field, or use `/voice call` with no name, to stop. `/voice default` makes it the name for new sessions too.
 
 Missed a reply because you were in another session? The panel shows **Replay** once a reply has played. It plays that session's last reply again, after any speech already in line. The last reply is saved with the session's settings, so **Replay** still works after the session restarts.
 
@@ -77,7 +81,8 @@ Missed a reply because you were in another session? The panel shows **Replay** o
 | `/voice voice bm_george` | Picks a voice for this session |
 | `/voice speed 1.2` | Picks a speed for this session: 0.8, 0.9, 1.0, 1.1, 1.2, 1.3 or 1.5 |
 | `/voice length full` | Reads replies in full (`short` reads a summary) |
-| `/voice name Voice fixes` | Sets the name the voice says for this session (no words: the folder name) |
+| `/voice call Jay` | Starts each reply in this session with that name (no name: stops) |
+| `/voice name Voice fixes` | Says that name when the voice moves to this session from another one (no words: says nothing) |
 | `/voice default` | Makes this session's voice, speed, length and on or off the default for new sessions |
 | `/voice voices` | Lists the 28 English voices |
 | `/voice test` | Plays a sample with the current voice and speed |
