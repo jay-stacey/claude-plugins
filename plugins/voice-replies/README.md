@@ -63,6 +63,8 @@ Sessions take turns. A reply never stops another session's speech:
 
 Sending a new prompt stops that session's speech and drops its waiting replies. Other sessions keep speaking.
 
+Missed a reply because you were in another session? The panel shows **Replay** once a reply has played. It plays that session's last reply again, after any speech already in line. The last reply is saved with the session's settings, so **Replay** still works after the session restarts.
+
 | Command | Does |
 | --- | --- |
 | `/voice` | Toggles voice replies on or off in this session |
@@ -71,7 +73,7 @@ Sending a new prompt stops that session's speech and drops its waiting replies. 
 | `/voice stop all` | Stops speech in every session |
 | `/voice play` | Plays this session's waiting replies |
 | `/voice clear` | Drops this session's waiting replies |
-| `/voice replay` | Plays this session's last reply again |
+| `/voice replay` | Plays this session's last reply again (same as **Replay** in the panel) |
 | `/voice voice bm_george` | Picks a voice for this session |
 | `/voice speed 1.2` | Picks a speed for this session: 0.8, 0.9, 1.0, 1.1, 1.2, 1.3 or 1.5 |
 | `/voice length full` | Reads replies in full (`short` reads a summary) |

@@ -265,6 +265,54 @@ test('while another session speaks, the reply waits for Play and a notification 
   await ui.unmount()
 })
 
+test('Replay in the band speaks the last reply again after it played', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+  // Nothing has played yet, so there is nothing to replay.
+  expect((await ui.find({ key: 'replay' })) === undefined).toBe(true)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+  expect(fake.kokoro.length).toBe(1)
+
+  await ui.press({ key: 'replay' })
+  await settle(clock)
+
+  expect(fake.kokoro[1]).toEqual({ text: SCRIPT, voice: 'af_heart', speed: 1, ...FROM_S1, when: 'queue' })
+  // Haiku wrote the script once; Replay does not ask again.
+  expect(fake.prompts.length).toBe(1)
+  await ui.unmount()
+})
+
+test('Replay is not shown while a reply waits for Play', async ($, on) => {
+  const clock = mock.clock(on)
+  fakeEngine(on, { isBusy: true })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect((await ui.find({ key: 'play' })) !== undefined).toBe(true)
+  expect((await ui.find({ key: 'replay' })) === undefined).toBe(true)
+  await ui.unmount()
+})
+
+test('a session started again can still replay its last reply', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { saved: { 'session:s1': { last: 'Earlier reply.' } } })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+
+  await ui.press({ key: 'replay' })
+  await settle(clock)
+
+  expect(fake.kokoro).toEqual([{ text: 'Earlier reply.', voice: 'af_heart', speed: 1, ...FROM_S1, when: 'queue' }])
+  await ui.unmount()
+})
+
 test('a new prompt drops the waiting reply', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on, { isBusy: true })

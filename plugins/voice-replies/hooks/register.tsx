@@ -13,6 +13,8 @@ const engine = atom({ plugin: 'voice-replies', key: 'engine' } as const, 'starti
 const installing = atom({ plugin: 'voice-replies', key: 'install' } as const, '')
 const waiting = atom({ plugin: 'voice-replies', key: 'waiting' } as const, [] as string[])
 const label = atom({ plugin: 'voice-replies', key: 'label' } as const, '')
+// Also saved in this session's store record, so Replay works after a reload or a restart.
+const last = atom({ plugin: 'voice-replies', key: 'last' } as const, '')
 
 const SERVER = 'http://127.0.0.1:47861'
 // The server API this module needs. An older server is restarted from the plugin's copy.
@@ -64,7 +66,7 @@ const LIMITS = {
   full: { rules: FULL_RULES, chars: 12000, maxTokens: 4000, timeoutMs: 60000 },
 } as const
 
-type Settings = { isOn: boolean; voice: string; speed: string; length: VoiceLength; label?: string }
+type Settings = { isOn: boolean; voice: string; speed: string; length: VoiceLength; label?: string; last?: string }
 
 // A speech run in flight. `runId` drops stale work; `speakerPid` lets Stop kill the Windows voice.
 let runId = 0
@@ -73,8 +75,6 @@ let hasWarnedSetup = false
 let hasTriedUpgrade = false
 // `session:<id>`: this session's settings key in the store, and its name on the voice server.
 let sessionKey = ''
-// The last script this session spoke or held, for /voice replay.
-let lastScript = ''
 
 function voiceLabel(name: string): string {
   const accent = name.startsWith('b') ? 'UK' : 'US'
@@ -103,6 +103,7 @@ export const register: Register = on => {
     await update($, length, () => settings.length)
     const name = settings.label ?? (await defaultLabel($))
     await update($, label, () => name)
+    await update($, last, () => settings.last ?? '')
     await update($, status, () => 'idle')
     await $.command.register({
       name: 'voice',
@@ -138,9 +139,8 @@ export const register: Register = on => {
       return { text: 'Cleared the waiting replies.' }
     }
     if (word === 'replay') {
-      if (lastScript === '') return { text: 'Nothing to replay yet.' }
-      const script = lastScript
-      $.clock.after(0, () => void speakScript($, script))
+      if ((await read($, last)) === '') return { text: 'Nothing to replay yet.' }
+      $.clock.after(0, () => void replayLast($))
       return { text: 'Replaying the last reply.' }
     }
     if (word === 'voices') {
@@ -257,6 +257,9 @@ export const register: Register = on => {
     const via = await read($, engine)
     const step = await read($, installing)
     const held = await read($, waiting)
+    // Replay is for a reply that already played, maybe while the person was away. A waiting
+    // reply has Play instead, and Stop takes the place while the voice is busy.
+    const canReplay = enabled && now === 'idle' && held.length === 0 && (await read($, last)) !== ''
     // Say the engine only when it is not the normal one (Kokoro).
     const note =
       now === 'writing' ? 'preparing'
@@ -280,6 +283,9 @@ export const register: Register = on => {
           )}
           {held.length > 0 && (
             <Button key="dismiss" label="Dismiss" dimColor onPress={() => update($, waiting, () => [])} />
+          )}
+          {canReplay && (
+            <Button key="replay" label="Replay" onPress={() => void $.clock.after(0, () => void replayLast($))} />
           )}
           <Box flexGrow={1} />
           <Select
@@ -341,6 +347,7 @@ async function loadSettings($: EngineInterface): Promise<Settings> {
     speed: pick((v): v is string => isOneOf(SPEEDS, v), '1.0', mine.speed, savedSpeed),
     length: pick((v): v is VoiceLength => isOneOf(LENGTHS, v), 'short', mine.length, savedLength),
     label: typeof mine.label === 'string' && mine.label !== '' ? mine.label : undefined,
+    last: typeof mine.last === 'string' ? mine.last : undefined,
   }
 }
 
@@ -609,8 +616,16 @@ async function speakReply($: EngineInterface, answer: string): Promise<void> {
 
   const script = await toSpeech($, answer)
   if (id !== runId) return
-  lastScript = script
+  if (script !== '') {
+    await update($, last, () => script)
+    await saveSettings($, { last: script })
+  }
   await playScript($, script, id, 'idle')
+}
+
+async function replayLast($: EngineInterface): Promise<void> {
+  const script = await read($, last)
+  if (script !== '') await speakScript($, script)
 }
 
 // Plays at once, or after what other sessions have queued: /voice test, replay and Play.
