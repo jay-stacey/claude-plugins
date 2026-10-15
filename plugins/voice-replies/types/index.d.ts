@@ -14,6 +14,8 @@ declare module 'claude-code' {
       install: string
       // Speech scripts of this session's replies that wait for Play, oldest first.
       waiting: string[]
+      // The last speech script this session spoke or held, for Replay. '' when none yet.
+      last: string
       // What the voice says first when it moves to this session from another one.
       label: string
     }

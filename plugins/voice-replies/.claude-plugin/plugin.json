@@ -1,6 +1,6 @@
 {
   "name": "voice-replies",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU (or CPU). Sessions take turns instead of cutting each other off, each session keeps its own voice, and a reply that arrives while another session speaks waits for Play.",
   "author": { "name": "Jay Stacey", "url": "https://github.com/jay-stacey" },
   "license": "MIT",
