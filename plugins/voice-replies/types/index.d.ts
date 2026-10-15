@@ -16,8 +16,10 @@ declare module 'claude-code' {
       waiting: string[]
       // The last speech script this session spoke or held, for Replay. '' when none yet.
       last: string
-      // What the voice says first when it moves to this session from another one.
+      // What the voice says first when it moves to this session from another one. '' says nothing.
       label: string
+      // What the voice calls the person at the start of each reply. '' says no name.
+      callMe: string
     }
   }
 }

@@ -12,7 +12,10 @@ const engine = atom({ plugin: 'voice-replies', key: 'engine' } as const, 'starti
 // The step `/voice install` is on, or '' when no install runs.
 const installing = atom({ plugin: 'voice-replies', key: 'install' } as const, '')
 const waiting = atom({ plugin: 'voice-replies', key: 'waiting' } as const, [] as string[])
+// Said before the session's speech when the voice moves to it; '' (the default) says nothing.
 const label = atom({ plugin: 'voice-replies', key: 'label' } as const, '')
+// What the voice calls the person at the start of each reply; '' says no name.
+const callMe = atom({ plugin: 'voice-replies', key: 'callMe' } as const, '')
 // Also saved in this session's store record, so Replay works after a reload or a restart.
 const last = atom({ plugin: 'voice-replies', key: 'last' } as const, '')
 
@@ -66,7 +69,18 @@ const LIMITS = {
   full: { rules: FULL_RULES, chars: 12000, maxTokens: 4000, timeoutMs: 60000 },
 } as const
 
-type Settings = { isOn: boolean; voice: string; speed: string; length: VoiceLength; label?: string; last?: string }
+type Settings = {
+  isOn: boolean
+  voice: string
+  speed: string
+  length: VoiceLength
+  callMe: string
+  label?: string
+  last?: string
+}
+
+// The longest name the voice says, for the session or for the person.
+const MAX_NAME = 40
 
 // A speech run in flight. `runId` drops stale work; `speakerPid` lets Stop kill the Windows voice.
 let runId = 0
@@ -101,17 +115,17 @@ export const register: Register = on => {
     await update($, voice, () => settings.voice)
     await update($, speed, () => settings.speed)
     await update($, length, () => settings.length)
-    const name = settings.label ?? (await defaultLabel($))
-    await update($, label, () => name)
+    await update($, callMe, () => settings.callMe)
+    await update($, label, () => settings.label ?? '')
     await update($, last, () => settings.last ?? '')
     await update($, status, () => 'idle')
     await $.command.register({
       name: 'voice',
       description:
         'Voice replies for this session: on, off, stop [all], play, clear, replay, voice <name>, ' +
-        'speed <0.8-1.5>, length short|full, name <words>, default, voices, test, install [gpu|cpu]',
+        'speed <0.8-1.5>, length short|full, call <your name>, name <words>, default, voices, test, install [gpu|cpu]',
       argumentHint:
-        '[on|off|stop [all]|play|clear|replay|voice <name>|speed <n>|length short|full|name <words>|default|voices|test|install [gpu|cpu]]',
+        '[on|off|stop [all]|play|clear|replay|voice <name>|speed <n>|length short|full|call <your name>|name <words>|default|voices|test|install [gpu|cpu]]',
     })
     $.clock.after(0, () => void forgetOldSessions($))
     // Warm the server up only where someone is watching; elsewhere it starts on first use.
@@ -169,20 +183,34 @@ export const register: Register = on => {
           : 'Replies are read as a short summary in this session.',
       }
     }
+    if (word === 'call') {
+      // Keep the person's own capitals; '' stops saying a name.
+      const name = rest.join(' ').trim().slice(0, MAX_NAME)
+      await setCallMe($, name)
+      return {
+        text: name === ''
+          ? 'Replies in this session no longer start with your name.'
+          : `Replies in this session start with "${name}".`,
+      }
+    }
     if (word === 'name') {
-      // Keep the person's own capitals; '' goes back to the folder's name.
-      const name = rest.join(' ').trim().slice(0, 40)
-      const shown = name === '' ? await defaultLabel($) : name
-      await update($, label, () => shown)
+      // Keep the person's own capitals; '' stops saying the session's name.
+      const name = rest.join(' ').trim().slice(0, MAX_NAME)
+      await update($, label, () => name)
       await saveSettings($, { label: name === '' ? undefined : name })
-      return { text: `This session is called "${shown}" when the voice moves to it.` }
+      return {
+        text: name === ''
+          ? "The voice no longer says this session's name when it moves to it."
+          : `The voice says "${name}" when it moves to this session.`,
+      }
     }
     if (word === 'default') {
       await $.store.set('isOn', await read($, isOn))
       await $.store.set('voice', await read($, voice))
       await $.store.set('speed', await read($, speed))
       await $.store.set('length', await read($, length))
-      return { text: "New sessions now start with this session's voice, speed and length." }
+      await $.store.set('callMe', await read($, callMe))
+      return { text: "New sessions now start with this session's voice, speed, length and name for you." }
     }
     if (word === 'install') {
       const mode = value === '' ? 'auto' : value
@@ -247,7 +275,8 @@ export const register: Register = on => {
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
     const Select = 'Select' in ui ? ui.Select : undefined
-    if (Select === undefined) return above
+    const Input = 'Input' in ui ? ui.Input : undefined
+    if (Select === undefined || Input === undefined) return above
 
     const enabled = await read($, isOn)
     const now = await read($, status)
@@ -257,6 +286,7 @@ export const register: Register = on => {
     const via = await read($, engine)
     const step = await read($, installing)
     const held = await read($, waiting)
+    const you = await read($, callMe)
     // Replay is for a reply that already played, maybe while the person was away. A waiting
     // reply has Play instead, and Stop takes the place while the voice is busy.
     const canReplay = enabled && now === 'idle' && held.length === 0 && (await read($, last)) !== ''
@@ -319,6 +349,16 @@ export const register: Register = on => {
               onSelect={(value: string) => void (isOneOf(LENGTHS, value) && setLength($, value))}
             />
           )}
+          {enabled && (
+            <Input
+              key="call"
+              label="Call me"
+              placeholder="your name"
+              value={you}
+              submitLabel="save"
+              onSubmit={(value: string) => void setCallMe($, value.trim().slice(0, MAX_NAME))}
+            />
+          )}
           {now !== 'idle' && <Button key="stop" label="Stop" dimColor onPress={() => stopSpeaking($)} />}
         </Box>
       </Box>
@@ -329,11 +369,12 @@ export const register: Register = on => {
 // Settings: the store's top-level keys are the defaults for new sessions (and what 1.2 saved);
 // `session:<id>` holds what this session changed.
 async function loadSettings($: EngineInterface): Promise<Settings> {
-  const [savedOn, savedVoice, savedSpeed, savedLength, own] = await Promise.all([
+  const [savedOn, savedVoice, savedSpeed, savedLength, savedCallMe, own] = await Promise.all([
     $.store.get('isOn'),
     $.store.get('voice'),
     $.store.get('speed'),
     $.store.get('length'),
+    $.store.get('callMe'),
     $.store.get(sessionKey),
   ])
   const mine = asRecord(own)
@@ -346,6 +387,8 @@ async function loadSettings($: EngineInterface): Promise<Settings> {
     voice: pick((v): v is string => isOneOf(VOICES, v), 'af_heart', mine.voice, savedVoice),
     speed: pick((v): v is string => isOneOf(SPEEDS, v), '1.0', mine.speed, savedSpeed),
     length: pick((v): v is VoiceLength => isOneOf(LENGTHS, v), 'short', mine.length, savedLength),
+    // '' saved for this session means "no name here", over the default.
+    callMe: pick((v): v is string => typeof v === 'string', '', mine.callMe, savedCallMe).slice(0, MAX_NAME),
     label: typeof mine.label === 'string' && mine.label !== '' ? mine.label : undefined,
     last: typeof mine.last === 'string' ? mine.last : undefined,
   }
@@ -428,6 +471,11 @@ async function setSpeed($: EngineInterface, value: string): Promise<void> {
 async function setLength($: EngineInterface, value: VoiceLength): Promise<void> {
   await update($, length, () => value)
   await saveSettings($, { length: value })
+}
+
+async function setCallMe($: EngineInterface, value: string): Promise<void> {
+  await update($, callMe, () => value)
+  await saveSettings($, { callMe: value })
 }
 
 async function setStatus($: EngineInterface, value: VoiceStatus): Promise<void> {
@@ -648,13 +696,16 @@ async function playScript($: EngineInterface, script: string, id: number, when: 
     await update($, status, () => 'idle')
     return
   }
+  // The person's name goes on at play time, so a held or replayed script never says it twice.
+  const you = await read($, callMe)
+  const spoken = you === '' ? script : `${you}, ${script}`
   try {
-    const outcome = await speakKokoro($, script, id, when)
+    const outcome = await speakKokoro($, spoken, id, when)
     if (outcome === 'busy') {
       await holdReply($, script)
     } else if (outcome === 'failed' && id === runId) {
       await setStatus($, 'speaking')
-      await speakWindows($, script, id)
+      await speakWindows($, spoken, id)
     }
   } catch (err) {
     $.ui.log(`voice-replies: could not speak: ${String(err)}`, { to: 'debug' })
@@ -668,7 +719,8 @@ async function holdReply($: EngineInterface, script: string): Promise<void> {
   const held = [...(await read($, waiting)), script].slice(-MAX_WAITING)
   await update($, waiting, () => held)
   $.ui.toast('Another session is speaking. This reply waits: press Play to hear it.')
-  const name = await read($, label)
+  // The notification names the session even when the voice does not say its name.
+  const name = (await read($, label)) || (await defaultLabel($))
   try {
     await $.ui.notify(
       `${name === '' ? 'A session' : name} has a reply waiting. Press Play in that session to hear it.`,
