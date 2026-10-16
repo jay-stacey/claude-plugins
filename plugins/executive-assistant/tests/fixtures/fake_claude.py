@@ -10,6 +10,7 @@ a result. Environment options:
     FAKE_CLAUDE_TOOLS     comma-separated tool names for system/init
     FAKE_CLAUDE_EXIT      exit with this code after init, with no result
     FAKE_CLAUDE_IS_ERROR  "1": the result has is_error true
+    FAKE_CLAUDE_ERROR_RESULT  send only a failed API call with this text, as the real CLI does
     FAKE_CLAUDE_SLOW      sleep this many seconds after init (timeout tests)
     FAKE_CLAUDE_CHILD     "1": start a child that sleeps too (tree-kill tests);
                           its pid goes to FAKE_CLAUDE_ARGS + ".child"
@@ -63,6 +64,17 @@ def main():
     if code:
         sys.stderr.write("fake failure\n")
         return code
+
+    api_error = os.environ.get("FAKE_CLAUDE_ERROR_RESULT")
+    if api_error:
+        # How the real CLI reports a failed API call, such as being signed out.
+        emit({"type": "assistant", "parent_tool_use_id": None, "session_id": sid,
+              "error": "authentication_failed", "is_api_error_message": True,
+              "message": {"id": "msg_e", "model": "<synthetic>", "role": "assistant",
+                          "content": [{"type": "text", "text": api_error}]}})
+        emit({"type": "result", "subtype": "success", "is_error": True, "result": api_error,
+              "session_id": sid, "num_turns": 1, "duration_ms": 5, "total_cost_usd": 0.0})
+        return 0
 
     text = os.environ.get("FAKE_CLAUDE_RESULT", "Your Now task is X.")
     parts = [text[:5], text[5:12], text[12:]] if len(text) > 12 else [text]

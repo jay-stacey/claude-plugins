@@ -676,11 +676,11 @@
   }
   async function openDrawer(id) {
     D.id = id; D.task = byId(id);
-    openLayer('drawer', `<div class="scrim" data-act="close-layer"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dHead">
+    openLayer('drawer', `<div class="scrim" data-act="close-layer"></div><div class="drawer" role="dialog" aria-modal="true" aria-labelledby="dHead">
       <div class="drawer-head"><h2 id="dHead">Edit task</h2><button class="icon-btn" type="button" data-act="close-layer" aria-label="Close">${icon.close}</button></div>
       <div class="drawer-body" id="dBody"><div class="empty">Loading the task…</div></div>
       <div class="drawer-foot"><button class="btn danger" type="button" data-act="d-drop" disabled>Drop task</button><div><button class="btn ok" type="button" data-act="d-done" disabled>Mark done</button><button class="btn primary" type="button" data-act="d-save" disabled>Save</button></div></div>
-    </aside>`);
+    </div>`);
     $('.drawer [data-act="close-layer"]').focus();
     await loadDrawer(id);
   }
