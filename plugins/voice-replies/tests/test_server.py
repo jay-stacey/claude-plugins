@@ -71,6 +71,8 @@ class Fakes:
             codes = list(self.writes)
         out: list[int] = []
         for code in codes:
+            if code == 0:  # a pause between lines: silence, not a text
+                continue
             if not out or out[-1] != code:
                 out.append(code)
         return [self.text_for(c) for c in out]
@@ -177,6 +179,7 @@ def _build_stubs() -> dict:
         numpy = types.ModuleType("numpy")
         numpy.float32 = "float32"
         numpy.ndarray = list
+        numpy.zeros = lambda n, dtype=None: [0.0] * n
         stubs["numpy"] = numpy
     return stubs
 
@@ -502,12 +505,27 @@ class TagTests(ServerTestCase):
         self.assertEqual(FAKES.pipeline_texts(), ["one from A", "two from B"])
 
 
+class PauseTests(ServerTestCase):
+    def test_each_line_is_spoken_on_its_own_with_silence_between(self) -> None:
+        _, job = speak("Jay,\nThe tests pass.\n\nNext, commit.")
+        wait_state(job["id"], "done")
+
+        self.assertEqual(FAKES.pipeline_texts(), ["Jay,", "The tests pass.", "Next, commit."])
+        self.assertEqual(FAKES.played(), ["Jay,", "The tests pass.", "Next, commit."])
+        with FAKES.lock:
+            writes = list(FAKES.writes)
+        # Silence (0) sits after the name and between the two sentences, never at the start.
+        runs = [code for i, code in enumerate(writes) if i == 0 or writes[i - 1] != code]
+        name, first, second = (FAKES.code_for(t) for t in ("Jay,", "The tests pass.", "Next, commit."))
+        self.assertEqual(runs, [name, 0, first, 0, second])
+
+
 class HealthTests(ServerTestCase):
-    def test_health_reports_api_2(self) -> None:
+    def test_health_reports_api_3(self) -> None:
         status, body = request("GET", "/health")
         self.assertEqual(status, 200)
         self.assertIs(body["ok"], True)
-        self.assertEqual(body["api"], 2)
+        self.assertEqual(body["api"], 3)
         self.assertEqual(body["device"], "cpu")
         self.assertIn("af_heart", body["voices"])
 

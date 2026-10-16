@@ -21,7 +21,8 @@ const last = atom({ plugin: 'voice-replies', key: 'last' } as const, '')
 
 const SERVER = 'http://127.0.0.1:47861'
 // The server API this module needs. An older server is restarted from the plugin's copy.
-const API = 2
+// 3: each line of a script is spoken on its own, with a pause between lines.
+const API = 3
 // Replies kept for Play while another session speaks; older ones drop off.
 const MAX_WAITING = 3
 // Per-session settings kept in the store; the oldest drop off past this.
@@ -41,16 +42,27 @@ const VOICES = [
 const SPEEDS = ['0.8', '0.9', '1.0', '1.1', '1.2', '1.3', '1.5'] as const
 const LENGTHS = ['short', 'full'] as const
 
+// How a person talks, shared by both lengths. The voice reads exactly what it gets, so the
+// script must already be written the way it is said.
+const SPOKEN_STYLE = `How it must sound:
+- Talk like a colleague giving a quick update out loud: warm, direct and plain. Use contractions (it's, I've, you'll, didn't).
+- Use short sentences and vary their length. Put commas where a speaker takes a breath.
+- Start a new line between separate topics, so the voice pauses there.
+- Do not open with filler such as "Sure", "Okay so" or "Great news". Do not use the person's name; the voice adds it.
+- Write times, dates and numbers the way people say them: "8:00 AM" is "eight in the morning", "8:30" is "eight thirty", "17:00" is "five in the afternoon", "2026-10-16" is "October sixteenth", "95%" is "ninety-five percent", "v1.5.0" is "version one point five", "3-5 min" is "three to five minutes".
+- Say symbols and abbreviations as words: "&" is "and", "e.g." is "for example", "i.e." is "that is", "~" is "about", "->" is "to", "vs" is "versus".
+- Never read code, commands, file paths, IDs or hashes character by character. Say what they are ("the config file", "a git command") instead.`
+
 const SHORT_RULES = `You turn a coding assistant's chat reply into a short script that a text-to-speech voice reads aloud to the person who asked.
 
 Rules:
 - Output plain spoken sentences only. No markdown, bullets, headings, tables, code, emojis or URLs.
 - Lead with the outcome: what was done, whether it worked, what the person needs to do next.
 - Keep it under 80 words. A short, plain reply can stay almost word for word.
-- Never read code, commands, file paths, IDs or hashes character by character. Say what they are ("the config file", "a git command") instead.
-- Say numbers, versions and counts naturally.
 - If the reply asks the person a question, end with that question.
-- Output only the script, nothing before or after it.`
+- Output only the script, nothing before or after it.
+
+${SPOKEN_STYLE}`
 
 const FULL_RULES = `You turn a coding assistant's chat reply into a script that a text-to-speech voice reads aloud, in full, to the person who asked.
 
@@ -58,10 +70,10 @@ Rules:
 - Output plain spoken sentences only. No markdown, bullets, headings, tables, code, emojis or URLs.
 - Keep every point of the reply, in the same order. Do not summarize and do not leave points out.
 - Turn lists and tables into sentences, one item or row at a time.
-- Never read code, commands, file paths, IDs or hashes character by character. Say what they are ("the config file", "a git command") instead.
-- Say numbers, versions and counts naturally.
 - If the reply asks the person a question, end with that question.
-- Output only the script, nothing before or after it.`
+- Output only the script, nothing before or after it.
+
+${SPOKEN_STYLE}`
 
 // Per length: the rules, the longest script spoken, and the Haiku call's limits.
 const LIMITS = {
@@ -81,6 +93,11 @@ type Settings = {
 
 // The longest name the voice says, for the session or for the person.
 const MAX_NAME = 40
+// The panel's width, in cells, with every control on one line: the title and its state,
+// four labelled controls and the gaps between them. Narrower bands get two rows.
+const ONE_LINE_COLUMNS = 150
+// Room for the Call me label, a short name and its save button.
+const CALL_ME_COLUMNS = 30
 
 // A speech run in flight. `runId` drops stale work; `speakerPid` lets Stop kill the Windows voice.
 let runId = 0
@@ -185,7 +202,7 @@ export const register: Register = on => {
     }
     if (word === 'call') {
       // Keep the person's own capitals; '' stops saying a name.
-      const name = rest.join(' ').trim().slice(0, MAX_NAME)
+      const name = cleanName(rest.join(' '))
       await setCallMe($, name)
       return {
         text: name === ''
@@ -300,66 +317,102 @@ export const register: Register = on => {
       : via === 'starting' ? 'starting'
       : ''
 
+    // Wide enough for everything on one line: one row. Narrower: the title, state and
+    // buttons on top, the settings below. Every item keeps its own width (flexShrink 0) and
+    // moves to the next line when it does not fit, so labels never draw over each other.
+    const isOneLine = e.props.bodyColumns >= ONE_LINE_COLUMNS
+
     return (
       <Box flexDirection="column" rowGap={1}>
         {above}
-        <Box flexDirection="row" gap={1} alignItems="center" borderStyle="round" borderDimColor paddingX={1}>
-          <Text dimColor>Voice replies</Text>
-          {held.length > 0 && (
-            <Text key="waiting">{held.length === 1 ? '1 reply waiting' : `${held.length} replies waiting`}</Text>
-          )}
-          {held.length > 0 && (
-            <Button key="play" label="Play" onPress={() => void $.clock.after(0, () => void playWaiting($))} />
-          )}
-          {held.length > 0 && (
-            <Button key="dismiss" label="Dismiss" dimColor onPress={() => update($, waiting, () => [])} />
-          )}
-          {canReplay && (
-            <Button key="replay" label="Replay" onPress={() => void $.clock.after(0, () => void replayLast($))} />
-          )}
-          <Box flexGrow={1} />
-          <Select
-            key="voice"
-            label={note === '' ? 'Voice' : `Voice (${note})`}
-            value={enabled ? chosen : OFF}
-            options={[
-              { value: OFF, label: 'Off' },
-              ...VOICES.map(v => ({ value: v, label: voiceLabel(v) })),
-            ]}
-            onSelect={(value: string) => void pickVoice($, value)}
-          />
-          {enabled && (
-            <Select
-              key="speed"
-              label="Speed"
-              value={pace}
-              options={SPEEDS.map(s => ({ value: s, label: `${s}x` }))}
-              onSelect={(value: string) => void setSpeed($, value)}
-            />
-          )}
-          {enabled && (
-            <Select
-              key="length"
-              label="Length"
-              value={size}
-              options={[
-                { value: 'short', label: 'Short' },
-                { value: 'full', label: 'Full' },
-              ]}
-              onSelect={(value: string) => void (isOneOf(LENGTHS, value) && setLength($, value))}
-            />
-          )}
-          {enabled && (
-            <Input
-              key="call"
-              label="Call me"
-              placeholder="your name"
-              value={you}
-              submitLabel="save"
-              onSubmit={(value: string) => void setCallMe($, value.trim().slice(0, MAX_NAME))}
-            />
-          )}
-          {now !== 'idle' && <Button key="stop" label="Stop" dimColor onPress={() => stopSpeaking($)} />}
+        <Box
+          flexDirection={isOneLine ? 'row' : 'column'}
+          alignItems={isOneLine ? 'center' : 'stretch'}
+          justifyContent="space-between"
+          columnGap={3}
+          rowGap={1}
+          borderStyle="round"
+          borderDimColor
+          paddingX={1}
+        >
+          <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={2} rowGap={1} flexShrink={0}>
+            <Box flexShrink={0}>
+              <Text dimColor wrap="truncate">Voice replies</Text>
+            </Box>
+            {note !== '' && (
+              <Box flexShrink={0}>
+                <Text key="note" dimColor wrap="truncate">{note}</Text>
+              </Box>
+            )}
+            {held.length > 0 && (
+              <Box flexShrink={0}>
+                <Text key="waiting" wrap="truncate">
+                  {held.length === 1 ? '1 reply waiting' : `${held.length} replies waiting`}
+                </Text>
+              </Box>
+            )}
+            {held.length > 0 && (
+              <Button key="play" label="Play" onPress={() => void $.clock.after(0, () => void playWaiting($))} />
+            )}
+            {held.length > 0 && (
+              <Button key="dismiss" label="Dismiss" dimColor onPress={() => update($, waiting, () => [])} />
+            )}
+            {canReplay && (
+              <Button key="replay" label="Replay" onPress={() => void $.clock.after(0, () => void replayLast($))} />
+            )}
+            {now !== 'idle' && <Button key="stop" label="Stop" dimColor onPress={() => stopSpeaking($)} />}
+          </Box>
+          <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={3} rowGap={1}>
+            <Box flexShrink={0}>
+              <Select
+                key="voice"
+                label="Voice"
+                value={enabled ? chosen : OFF}
+                options={[
+                  { value: OFF, label: 'Off' },
+                  ...VOICES.map(v => ({ value: v, label: voiceLabel(v) })),
+                ]}
+                onSelect={(value: string) => void pickVoice($, value)}
+              />
+            </Box>
+            {enabled && (
+              <Box flexShrink={0}>
+                <Select
+                  key="speed"
+                  label="Speed"
+                  value={pace}
+                  options={SPEEDS.map(s => ({ value: s, label: `${s}x` }))}
+                  onSelect={(value: string) => void setSpeed($, value)}
+                />
+              </Box>
+            )}
+            {enabled && (
+              <Box flexShrink={0}>
+                <Select
+                  key="length"
+                  label="Length"
+                  value={size}
+                  options={[
+                    { value: 'short', label: 'Short' },
+                    { value: 'full', label: 'Full' },
+                  ]}
+                  onSelect={(value: string) => void (isOneOf(LENGTHS, value) && setLength($, value))}
+                />
+              </Box>
+            )}
+            {enabled && (
+              <Box flexShrink={0} minWidth={CALL_ME_COLUMNS}>
+                <Input
+                  key="call"
+                  label="Call me"
+                  placeholder="your name"
+                  value={you}
+                  submitLabel="save"
+                  onSubmit={(value: string) => void setCallMe($, cleanName(value))}
+                />
+              </Box>
+            )}
+          </Box>
         </Box>
       </Box>
     )
@@ -697,8 +750,10 @@ async function playScript($: EngineInterface, script: string, id: number, when: 
     return
   }
   // The person's name goes on at play time, so a held or replayed script never says it twice.
-  const you = await read($, callMe)
-  const spoken = you === '' ? script : `${you}, ${script}`
+  // It is a line of its own: the voice server pauses between lines, as a person does after
+  // saying someone's name.
+  const you = cleanName(await read($, callMe))
+  const spoken = you === '' ? script : `${you},\n${script}`
   try {
     const outcome = await speakKokoro($, spoken, id, when)
     if (outcome === 'busy') {
@@ -743,7 +798,7 @@ async function toSpeech($: EngineInterface, answer: string): Promise<string> {
   })
   const text = reply.isAnswered ? reply.text : stripMarkdown(answer)
 
-  return clipAtSentence(text.trim(), limit.chars)
+  return clipAtSentence(speakable(text.trim()), limit.chars)
 }
 
 // Cuts a script that is too long at the end of a sentence, never in the middle of a word.
@@ -845,6 +900,110 @@ async function speakWindows($: EngineInterface, text: string, id: number): Promi
     if (started) throw err
   }
   await $.audio.speak(text)
+}
+
+const SMALL = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+]
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty']
+const ORDINAL: Record<string, string> = {
+  one: 'first', two: 'second', three: 'third', five: 'fifth', eight: 'eighth', nine: 'ninth', twelve: 'twelfth',
+}
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+// 0 to 59 in words: "seven", "forty-five".
+function numberWords(n: number): string {
+  if (n < 20) return SMALL[n] ?? String(n)
+  const ones = n % 10
+  const tens = TENS[Math.floor(n / 10)] ?? String(n)
+  return ones === 0 ? tens : `${tens}-${SMALL[ones]}`
+}
+
+// 1 to 31 as a spoken ordinal: "first", "sixteenth", "twenty-second".
+function ordinalWords(n: number): string {
+  const words = numberWords(n)
+  const parts = words.split('-')
+  const tail = parts.pop() ?? ''
+  const said = ORDINAL[tail] ?? (tail.endsWith('y') ? `${tail.slice(0, -1)}ieth` : `${tail}th`)
+  return [...parts, said].join('-')
+}
+
+// A clock time as a person says it: "eight o'clock", "eight thirty", "eight oh five in the
+// morning", "noon". `meridiem` is 'a' or 'p' when the text gave AM or PM.
+function sayTime(hour: number, minute: number, meridiem: string | undefined): string {
+  const isPm = meridiem === 'p' || (meridiem === undefined && hour > 12)
+  const isAm = meridiem === 'a' || (meridiem === undefined && hour === 0)
+  let h = hour % 12
+  if (h === 0 && (isAm || isPm || hour === 12)) h = 12
+  if (minute === 0 && h === 12 && isPm) return 'noon'
+  if (minute === 0 && h === 12 && isAm) return 'midnight'
+  const mins = minute === 0 ? '' : minute < 10 ? ` oh ${numberWords(minute)}` : ` ${numberWords(minute)}`
+  const clock = `${numberWords(h)}${mins}`
+  if (!isAm && !isPm) return minute === 0 ? `${clock} o'clock` : clock
+  const base = h === 12 ? 0 : h
+  const part = isAm
+    ? base === 0 ? 'at night' : 'in the morning'
+    : base < 6 ? 'in the afternoon' : base < 9 ? 'in the evening' : 'at night'
+  return `${clock} ${part}`
+}
+
+// Keeps a sentence's full stop when "a.m." or "p.m." ended the sentence.
+function keepStop(match: string, rest: string): string {
+  return match.endsWith('.') && (rest === '' || /^\s+[A-Z]/.test(rest)) ? '.' : ''
+}
+
+// The last pass over every script before the voice gets it: rewrites what text-to-speech
+// voices read badly ("8:00" as "eight zero zero") into the words a person would say.
+// Haiku is asked to do this too; this catches what it leaves, and the plain-text fallback.
+function speakable(text: string): string {
+  return text
+    .replace(/\p{Extended_Pictographic}️?/gu, '')
+    .replace(/[*`#]+/g, '')
+    // ISO dates: 2026-10-16 -> October sixteenth, 2026
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y: string, mo: string, d: string) => {
+      const month = MONTHS[Number(mo) - 1]
+      const day = Number(d)
+      return month === undefined || day < 1 || day > 31 ? m : `${month} ${ordinalWords(day)}, ${y}`
+    })
+    // Clock times, with or without AM / PM: 8:00 AM, 8:30, 17:45, 9:05 p.m.
+    .replace(
+      /\b([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?:\s?([AaPp])\.?\s?[Mm]\b\.?)?/g,
+      (m: string, h: string, min: string, ap: string | undefined, at: number, all: string) =>
+        sayTime(Number(h), Number(min), ap?.toLowerCase()) + keepStop(m, all.slice(at + m.length)),
+    )
+    // Whole hours with AM / PM: 8am, 8 PM, 11 p.m.
+    .replace(
+      /\b(1[0-2]|0?[1-9])\s?([AaPp])\.?\s?[Mm]\b\.?/g,
+      (m: string, h: string, ap: string, at: number, all: string) =>
+        sayTime(Number(h), 0, ap.toLowerCase()) + keepStop(m, all.slice(at + m.length)),
+    )
+    // Versions: v1.5.0 -> version 1 point 5 point 0
+    .replace(/\bv(\d+(?:\.\d+)+)\b/g, (_m, v: string) => `version ${v.split('.').join(' point ')}`)
+    .replace(/\b(\d+)\.(\d+)\.(\d+)\b/g, '$1 point $2 point $3')
+    // Ranges and amounts: 5-15 -> 5 to 15, 95% -> 95 percent, 1.2x -> 1.2 times
+    .replace(/(\d)\s?[-–]\s?(\d)/g, '$1 to $2')
+    .replace(/(\d)\s?%/g, '$1 percent')
+    .replace(/\b(\d+(?:\.\d+)?)x\b/g, '$1 times')
+    .replace(/~\s?(?=\d)/g, 'about ')
+    // Symbols and abbreviations said as words.
+    .replace(/\s&\s/g, ' and ')
+    .replace(/\s?(?:->|→|=>)\s?/g, ' to ')
+    .replace(/\be\.g\.,?/gi, 'for example,')
+    .replace(/\bi\.e\.,?/gi, 'that is,')
+    .replace(/\betc\./gi, 'and so on.')
+    .replace(/\bvs\.?(?=\s)/gi, 'versus')
+    .replace(/\bw\/(?=\s)/gi, 'with')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+// The name the voice calls the person, without the punctuation the voice adds itself.
+function cleanName(name: string): string {
+  return name.trim().replace(/[\s,.;:!?\-–—]+$/, '').slice(0, MAX_NAME)
 }
 
 function stripMarkdown(md: string): string {

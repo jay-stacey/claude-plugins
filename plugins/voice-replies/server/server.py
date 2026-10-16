@@ -7,7 +7,7 @@ Every Claude session shares this one server. Jobs play one at a time, in the ord
 arrive, and a session can stop only its own jobs.
 
 Endpoints:
-  GET  /health        -> {"ok": true, "api": 2, "device": "cuda", "voices": [...]}
+  GET  /health        -> {"ok": true, "api": 3, "device": "cuda", "voices": [...]}
   POST /speak         {"text": str, "voice": str, "speed": float,
                        "session": str, "tag": str, "when": "idle" | "queue"}
                       -> {"ok": true, "id": int, "state": "queued"}
@@ -15,6 +15,8 @@ Endpoints:
                       queued: {"ok": true, "id": null, "state": "busy", "by": tag}.
                       Returns at once; the speech plays in the background. When a job
                       plays right after a different session's, the server says its tag first.
+                      Each line of the text is spoken on its own, with a short pause between
+                      lines, so "Jay,\\nThe tests pass." pauses after the name as a person would.
   GET  /status?id=N   -> {"ok": true, "state": "queued" | "speaking" | "done" | "stopped" | "error"}
   POST /stop          {"session": str} stops that session's jobs; {} stops every job. No body
                       (plugin 1.2 and older) stops only jobs sent with no session.
@@ -47,10 +49,12 @@ from kokoro import KModel, KPipeline
 
 PORT = 47861
 # The plugin restarts a server that reports an older API.
-API_VERSION = 2
+API_VERSION = 3
 MAX_TEXT = 20000
 SAMPLE_RATE = 24000
 IDLE_EXIT_SECONDS = 2 * 60 * 60
+# The silence between two lines of a script: after the person's name, and between topics.
+PAUSE_SECONDS = 0.3
 REPO = "hexgrad/Kokoro-82M"
 
 VOICES = [
@@ -128,18 +132,33 @@ def forget_old_jobs() -> None:
         del jobs[old]
 
 
+def lines_of(text: str) -> list[str]:
+    """The lines of a script that hold words, trimmed. Each is spoken on its own."""
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
 def speak(job: int, text: str, voice: str, speed: float) -> str:
-    """Generates and plays `text`, sentence by sentence. Returns 'done' or 'stopped'."""
+    """Generates and plays `text`, line by line with a pause between lines.
+
+    Returns 'done' or 'stopped'.
+    """
     pipeline = pipelines["b" if voice.startswith("b") else "a"]
     chunks: "queue.Queue[np.ndarray | None]" = queue.Queue()
+    # Speed shortens the pause too, so a fast voice does not sound halting.
+    pause = int(SAMPLE_RATE * PAUSE_SECONDS / max(speed, 0.5))
 
     def generate() -> None:
         try:
-            for result in pipeline(text, voice=voice, speed=speed):
+            for index, line in enumerate(lines_of(text)):
                 if should_stop(job):
-                    break
-                if result.audio is not None:
-                    chunks.put(result.audio.detach().cpu().numpy().astype(np.float32))
+                    return
+                if index > 0:
+                    chunks.put(np.zeros(pause, dtype=np.float32))
+                for result in pipeline(line, voice=voice, speed=speed):
+                    if should_stop(job):
+                        return
+                    if result.audio is not None:
+                        chunks.put(result.audio.detach().cpu().numpy().astype(np.float32))
         finally:
             chunks.put(None)
 

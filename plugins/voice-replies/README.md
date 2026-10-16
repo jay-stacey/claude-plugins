@@ -46,9 +46,26 @@ The plugin starts the server hidden in the background when it first needs it. On
 
 ## Use
 
-A small **Voice replies** panel sits just above the prompt, under any other mod's panel (such as session-brief). It has three dropdowns, **Voice**, **Speed** and **Length**, and a **Call me** field. Pick **Off** in the Voice dropdown to turn voice replies off; pick any voice to turn them back on. The dropdown's label says when it is preparing, in line or speaking, or when the Windows voice stands in for Kokoro. A **Stop** button shows while it speaks.
+A small **Voice replies** panel sits just above the prompt, under any other mod's panel (such as session-brief). It has three dropdowns, **Voice**, **Speed** and **Length**, and a **Call me** field. Pick **Off** in the Voice dropdown to turn voice replies off; pick any voice to turn them back on. Next to the panel's title, a short note says when it is preparing, in line or speaking, or when the Windows voice stands in for Kokoro. A **Stop** button shows while it speaks.
+
+The panel fits its width. In a wide window everything sits on one line. In a narrower one the title and buttons go on top and the settings go below, and a setting that does not fit moves to the next line instead of drawing over its neighbour.
 
 **Length** sets how much is read. **Short** reads a summary of about 80 words. **Full** reads every point of the reply. A script that is too long (1,500 characters for Short, 12,000 for Full) ends at the last full sentence.
+
+### How it sounds
+
+Haiku writes the script the way a colleague talks: contractions, short sentences, and a new line between topics. The voice server pauses briefly at each new line.
+
+Before the voice gets the script, the plugin rewrites what voices read badly:
+
+| Written | Said |
+| --- | --- |
+| 8:00 AM, 8:05, 17:30, 12:00 PM | eight in the morning, eight oh five, five thirty in the afternoon, noon |
+| 9:00 (no AM or PM) | nine o'clock |
+| 2026-10-16 | October sixteenth, 2026 |
+| 5-10, 95%, 1.2x, ~5 | 5 to 10, 95 percent, 1.2 times, about 5 |
+| v1.5.0 | version 1 point 5 point 0 |
+| &, e.g., i.e., vs, -> | and, for example, that is, versus, to |
 
 ### Several sessions
 
@@ -65,7 +82,7 @@ Sending a new prompt stops that session's speech and drops its waiting replies. 
 
 ### What the voice calls you
 
-Type a name in the **Call me** field in the panel and press Enter, or use `/voice call <name>`. Each reply in that session then starts with it, such as "Jay, the tests pass." Clear the field, or use `/voice call` with no name, to stop. `/voice default` makes it the name for new sessions too.
+Type a name in the **Call me** field in the panel and press Enter, or use `/voice call <name>`. Each reply in that session then starts with it and a short pause, such as "Jay... the tests pass." A comma or full stop typed after the name is dropped, so it is not said twice. Clear the field, or use `/voice call` with no name, to stop. `/voice default` makes it the name for new sessions too.
 
 Missed a reply because you were in another session? The panel shows **Replay** once a reply has played. It plays that session's last reply again, after any speech already in line. The last reply is saved with the session's settings, so **Replay** still works after the session restarts.
 

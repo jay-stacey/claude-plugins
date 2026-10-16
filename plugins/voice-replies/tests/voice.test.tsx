@@ -13,9 +13,17 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } as never,
 } as const
 
+// The same band at another width, in cells.
+const bandAt = (bodyColumns: number) => ({
+  ...BAND,
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns } as never,
+})
+
 const TURN = { durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' } as const
 const START = { cwd: '.', surface: 'desktop', isInteractive: true } as const
 const SCRIPT = 'Done. All three tests pass.'
+// The script as spoken with a name: the name on a line of its own, so the server pauses after it.
+const named = (name: string) => `${name},\n${SCRIPT}`
 // What the server hears with each /speak from session s1. No tag: the voice says no
 // session name unless /voice name sets one.
 const FROM_S1 = { session: 'session:s1', tag: '' } as const
@@ -379,7 +387,7 @@ test('/voice call starts each reply with the name, for this session only', async
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
 
-  expect(fake.kokoro).toEqual([{ text: `Jay, ${SCRIPT}`, voice: 'af_heart', speed: 1, ...FROM_S1, when: 'idle' }])
+  expect(fake.kokoro).toEqual([{ text: named('Jay'), voice: 'af_heart', speed: 1, ...FROM_S1, when: 'idle' }])
   expect(fake.store.get('session:s1')).toMatchObject({ callMe: 'Jay', last: SCRIPT })
   // Only this session: the default for new sessions is untouched.
   expect(fake.store.get('callMe')).toBe(undefined)
@@ -394,7 +402,7 @@ test('the Windows voice also starts with the name', async ($, on) => {
   // The mod waits up to 60 s for the server to start, then falls back.
   for (let i = 0; i < 130; i += 1) await clock.advance(1000)
 
-  expect(fake.windows).toEqual([`Jay, ${SCRIPT}`])
+  expect(fake.windows).toEqual([named('Jay')])
 })
 
 test('the name is said once on Play and Replay, never twice', async ($, on) => {
@@ -410,7 +418,7 @@ test('the name is said once on Play and Replay, never twice', async ($, on) => {
   await ui.press({ key: 'replay' })
   await settle(clock)
 
-  expect(fake.kokoro.map(k => k.text)).toEqual([`Jay, ${SCRIPT}`, `Jay, ${SCRIPT}`])
+  expect(fake.kokoro.map(k => k.text)).toEqual([named('Jay'), named('Jay')])
   await ui.unmount()
 })
 
@@ -425,7 +433,7 @@ test('the Call me field in the band sets the name for this session', async ($, o
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
 
-  expect(fake.kokoro[0]?.text).toBe(`Boss, ${SCRIPT}`)
+  expect(fake.kokoro[0]?.text).toBe(named('Boss'))
   await ui.unmount()
 })
 
@@ -436,7 +444,7 @@ test('/voice default carries the name to new sessions; /voice call with no words
 
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
-  expect(fake.kokoro[0]?.text).toBe(`Jay, ${SCRIPT}`)
+  expect(fake.kokoro[0]?.text).toBe(named('Jay'))
 
   await $.command.run({ command: 'voice', args: 'call' } as never)
   await $.turn.complete({ ...TURN, answer: 'All good.' })
@@ -594,4 +602,101 @@ test('a failed install says why and keeps the Windows voice', async ($, on) => {
   const failed = fake.toasts.find(t => t.startsWith('Kokoro install failed')) ?? ''
   expect(failed).toContain('did not run on the CPU')
   expect(failed).toContain('install.log')
+})
+
+test('a pause follows the name, and punctuation typed after it is not said twice', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ plugin: 'voice-replies', surface: 'desktop', ...BAND })
+
+  await ui.input({ key: 'call', text: 'Jay, ' })
+  expect(fake.store.get('session:s1')).toMatchObject({ callMe: 'Jay' })
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro[0]?.text).toBe(named('Jay'))
+  await ui.unmount()
+})
+
+test('times, dates, ranges and symbols are said the way a person says them', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, {
+    modelText:
+      'The deploy runs at 8:00 AM, then at 17:30. It also ran at 8:05 and 12:00 p.m. Check back on ' +
+      '2026-10-16 at 9pm. It took ~5-10 min & passed 95% of checks, e.g. the v1.5.0 build.',
+  })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro[0]?.text).toBe(
+    'The deploy runs at eight in the morning, then at five thirty in the afternoon. It also ran at ' +
+      'eight oh five and noon. Check back on October sixteenth, 2026 at nine at night. It took about ' +
+      '5 to 10 min and passed 95 percent of checks, for example, the version 1 point 5 point 0 build.',
+  )
+})
+
+test("a clock time with no AM or PM says o'clock, and an a.m. that ends a sentence keeps its stop", async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { modelText: 'Standup is at 9:00. The job ran at 7:15 a.m. It passed.' })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro[0]?.text).toBe(
+    "Standup is at nine o'clock. The job ran at seven fifteen in the morning. It passed.",
+  )
+})
+
+type Node = { type: string; props?: Record<string, unknown>; children?: Node[] }
+
+// The bordered panel the mod draws.
+function panelOf(tree: Node): Node | undefined {
+  if (tree.props?.borderStyle === 'round') return tree
+  for (const child of tree.children ?? []) {
+    const found = panelOf(child)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+function walk(node: Node, out: Node[] = []): Node[] {
+  out.push(node)
+  for (const child of node.children ?? []) walk(child, out)
+  return out
+}
+
+test('a narrow band puts the settings on a row of their own, and no control shrinks over its neighbour', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const narrow = await $.ui.mount({
+      plugin: 'voice-replies',
+      surface,
+      ...bandAt(70),
+    })
+    const panel = panelOf((await narrow.drawn()) as Node)
+    expect(panel?.props?.flexDirection).toBe('column')
+    const nodes = walk(panel as Node)
+    // Each Select and the Input sit in a Box that keeps its width; their row wraps instead.
+    const controls = nodes.flatMap(parent =>
+      (parent.children ?? [])
+        .filter(child => child.type === 'Select' || child.type === 'Input')
+        .map(() => parent.props?.flexShrink),
+    )
+    expect(controls).toEqual([0, 0, 0, 0])
+    expect(nodes.some(n => n.props?.flexWrap === 'wrap')).toBe(true)
+    await narrow.unmount()
+
+    const wide = await $.ui.mount({
+      plugin: 'voice-replies',
+      surface,
+      ...bandAt(200),
+    })
+    expect(panelOf((await wide.drawn()) as Node)?.props?.flexDirection).toBe('row')
+    await wide.unmount()
+  }
 })
