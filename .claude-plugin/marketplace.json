@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.16.1"
+    "version": "2.17.0"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
     {
       "name": "voice-replies",
       "source": "./plugins/voice-replies",
-      "version": "1.6.0",
-      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU (or CPU). Sessions take turns instead of cutting each other off, each session keeps its own voice, and a reply that arrives while another session speaks waits for Play.",
+      "version": "1.7.0",
+      "description": "Reads the main agent's replies aloud, rewritten for speech, with Kokoro on the GPU (or CPU). Sessions take turns instead of cutting each other off, each session keeps its own voice, and a reply that arrives while another session speaks waits for Play. Stays quiet in the Chief of Staff session, which has its own voice.",
       "category": "productivity",
       "keywords": [
         "voice",
@@ -79,6 +79,21 @@
         "software-factory",
         "kanban",
         "code-review"
+      ],
+      "license": "MIT"
+    },
+    {
+      "name": "chief-of-staff",
+      "source": "./plugins/chief-of-staff",
+      "version": "0.1.0",
+      "description": "A Chief of Staff for your Claude desktop sessions. One session becomes the Chief: it watches every other session, tells you which ones wait on you, and archives or answers them when you ask, checking first when a session is still working. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice: a Hey Chief wake word and spoken replies on your GPU.",
+      "category": "productivity",
+      "keywords": [
+        "sessions",
+        "chief-of-staff",
+        "dashboard",
+        "voice",
+        "desktop"
       ],
       "license": "MIT"
     }

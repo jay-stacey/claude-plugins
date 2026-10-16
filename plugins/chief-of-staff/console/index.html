@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Chief of Staff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+<script type="module" src="/static/js/app.mjs"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div><h1>CHIEF</h1><small>OF STAFF · SESSION CONSOLE</small></div>
+  </div>
+  <span class="conn" id="conn" role="status" data-state="connecting">Connecting</span>
+  <div class="top-stats" id="stats"></div>
+</header>
+
+<div class="gate" id="gate" hidden>
+  <section class="panel gate-card">
+    <div class="panel-head"><span class="label">Access key needed</span></div>
+    <p id="gateText">This page needs its access key. Open the console from the /chief command, or from the link the server printed when it started.</p>
+  </section>
+</div>
+
+<!-- ============ CONTROL CENTER ============ -->
+<main class="console" id="console">
+  <section class="panel roster-panel" aria-label="Sessions">
+    <div class="panel-head"><span class="label">Sessions</span><span class="mono head-note" id="count"></span></div>
+    <div class="filters" id="filters" role="group" aria-label="Filter by state"></div>
+    <div class="roster" id="roster"></div>
+  </section>
+
+  <section class="panel graph-panel" aria-label="Control center">
+    <div class="panel-head">
+      <span class="label">Control center</span>
+      <span class="mono head-note" id="fresh">waiting for data</span>
+    </div>
+    <div class="graph-wrap" id="graphWrap">
+      <svg id="graph" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet" role="group" aria-label="Session graph: the Chief in the center, sessions around it, sub-sessions linked to the session that started them"></svg>
+      <div class="tip" id="tip" hidden></div>
+      <p class="graph-empty" id="graphEmpty" hidden>No sessions in view. Sessions show here when they are live or were active in the last few days.</p>
+    </div>
+    <div class="graph-foot">
+      <div class="legend">
+        <span><i class="dot st-you"></i>Waiting on you</span>
+        <span><i class="dot st-active"></i>Active</span>
+        <span><i class="dot st-wait"></i>Waiting</span>
+        <span><i class="dot st-stale"></i>Stale</span>
+      </div>
+      <span class="mono foot-note">moving dots = messages between sessions</span>
+    </div>
+  </section>
+
+  <section class="panel chief-panel" aria-label="Chief of staff">
+    <div class="panel-head"><span class="label">Chief</span><span class="mono head-note" id="chiefWho">not connected</span></div>
+    <div class="orb-zone">
+      <svg class="orb" id="orb" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" class="orb-outer"/>
+        <g class="core-spin"><circle cx="50" cy="50" r="40" class="orb-arc"/></g>
+        <g class="core-spin rev"><circle cx="50" cy="50" r="33" class="orb-dash"/></g>
+        <circle cx="50" cy="50" r="20" class="orb-core" id="orbCore"/>
+        <circle cx="50" cy="50" r="6" class="orb-dot"/>
+      </svg>
+      <div class="orb-text">
+        <div class="orb-state" id="orbState">Connecting</div>
+        <div class="mono orb-sub" id="orbSub"></div>
+        <div class="wave" aria-hidden="true" id="wave"></div>
+        <div class="partial mono" id="partial" aria-live="polite" hidden></div>
+        <div class="toggles" role="group" aria-label="Voice settings">
+          <button class="toggle" type="button" aria-pressed="false" id="tWake">Wake word</button>
+          <button class="toggle" type="button" aria-pressed="false" id="tSpeak">Speak replies</button>
+          <button class="toggle" type="button" aria-pressed="false" id="tPtt">Push to talk</button>
+          <button class="toggle stop" type="button" id="tStop" hidden>Stop talking</button>
+        </div>
+      </div>
+    </div>
+    <div class="chat" id="chat" aria-live="polite" aria-label="Conversation with the Chief"></div>
+    <form class="composer" id="composer" autocomplete="off">
+      <input id="ask" placeholder="Ask the Chief" aria-label="Message to the Chief" maxlength="4000">
+      <button class="mic" type="button" id="mic" aria-label="Hold to talk" title="Hold to talk">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </form>
+    <p class="composer-note" id="composerNote" role="status" hidden></p>
+  </section>
+</main>
+
+<!-- ============ SESSION PAGE VIEW ============ -->
+<main class="page" id="page" hidden>
+  <section class="panel page-main">
+    <div class="page-head">
+      <button class="back" type="button" id="back">← Console</button>
+      <h2 id="pTitle"></h2>
+      <span class="state-pill" id="pState"></span>
+      <div class="page-actions">
+        <button class="btn" type="button" id="pOpen">Open in app</button>
+        <button class="btn" type="button" id="pAsk">Ask Chief about it</button>
+        <button class="btn" type="button" id="pArchive">Archive</button>
+      </div>
+    </div>
+    <div class="confirm-bar" id="pConfirm" role="alertdialog" aria-labelledby="pConfirmText" hidden>
+      <p id="pConfirmText"></p>
+      <div class="confirm-actions">
+        <button class="btn primary" type="button" id="pConfirmYes">Archive anyway</button>
+        <button class="btn ghost" type="button" id="pConfirmNo">Keep it</button>
+      </div>
+    </div>
+    <p class="page-note" id="pNote" role="status" hidden></p>
+    <div class="transcript" id="transcript" tabindex="0" aria-label="Conversation history"></div>
+    <form class="reply" id="replyForm">
+      <label class="label" for="replyBox">Reply to this session</label>
+      <textarea id="replyBox" maxlength="8000" placeholder="Type a reply. It goes into this session as your next message."></textarea>
+      <div class="reply-row">
+        <span class="note" id="replyNote">Ctrl+Enter sends. Or say “Hey Chief, tell this session …”</span>
+        <button class="btn primary" type="submit" id="replySend">Send</button>
+      </div>
+    </form>
+  </section>
+  <aside class="panel">
+    <div class="panel-head"><span class="label">Session</span></div>
+    <div class="meta" id="pMeta"></div>
+  </aside>
+</main>
+
+<footer class="bottom">
+  <span class="foot-status" id="footStatus"></span>
+  <span class="hint" id="hint">Hey Chief · to talk</span>
+  <span class="mono" id="clock"></span>
+</footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

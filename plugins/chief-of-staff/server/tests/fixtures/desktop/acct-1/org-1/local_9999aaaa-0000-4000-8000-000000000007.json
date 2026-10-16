@@ -1,0 +1,13 @@
+{
+ "sessionId": "local_9999aaaa-0000-4000-8000-000000000007",
+ "cliSessionId": "cli-wait",
+ "createdAt": 1792145600000,
+ "lastActivityAt": 1792159400000,
+ "isArchived": false,
+ "title": "Chief session",
+ "postTurnSummary": {
+  "status_category": "completed",
+  "status_detail": "Greeted Jay",
+  "needs_action": ""
+ }
+}
