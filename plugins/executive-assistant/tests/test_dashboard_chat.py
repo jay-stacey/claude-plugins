@@ -26,7 +26,7 @@ class ChatCase(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"FAKE_CLAUDE_ARGS": str(self.args)})
         self.env.start()
         for key in ("FAKE_CLAUDE_EXIT", "FAKE_CLAUDE_IS_ERROR", "FAKE_CLAUDE_SLOW", "FAKE_CLAUDE_CHILD",
-                    "FAKE_CLAUDE_RESULT", "FAKE_CLAUDE_TOOLS", "FAKE_CLAUDE_SESSION"):
+                    "FAKE_CLAUDE_RESULT", "FAKE_CLAUDE_TOOLS", "FAKE_CLAUDE_SESSION", "FAKE_CLAUDE_ERROR_RESULT"):
             os.environ.pop(key, None)
         self.seed_tools()
 
@@ -74,6 +74,14 @@ class EventMappingTests(ChatCase):
         self.assertEqual([e["type"] for e in events][-2:], ["error", "done"])
         self.assertTrue(events[-1]["is_error"])
         self.assertNotIn("Traceback", events[-2]["text"])
+
+    def test_signed_out_result_says_how_to_sign_in(self):
+        os.environ["FAKE_CLAUDE_IS_ERROR"] = "1"
+        os.environ["FAKE_CLAUDE_ERROR_RESULT"] = "Failed to authenticate: OAuth session expired and could not be refreshed"
+        events = list(self.runner().stream("hi"))
+        self.assertEqual(events[-2], {"type": "error", "text": chat.SIGNED_OUT})
+        self.assertNotIn("Failed to authenticate", json.dumps(events))
+        self.assertTrue(events[-1]["is_error"])
 
     def test_non_zero_exit_is_a_plain_error(self):
         os.environ["FAKE_CLAUDE_EXIT"] = "3"
@@ -257,6 +265,30 @@ class RefreshTests(ChatCase):
         os.environ["FAKE_CLAUDE_RESULT"] = "I could not reach Google."
         out = self.runner().refresh_schedule("2026-10-13")
         self.assertEqual(out, {"ok": False, "error": "The calendar check returned no schedule."})
+
+    def test_refresh_when_signed_out_says_how_to_sign_in(self):
+        os.environ["FAKE_CLAUDE_IS_ERROR"] = "1"
+        os.environ["FAKE_CLAUDE_ERROR_RESULT"] = "Failed to authenticate: OAuth session expired and could not be refreshed"
+        out = self.runner().refresh_schedule("2026-10-13")
+        self.assertEqual(out, {"ok": False, "error": chat.SIGNED_OUT})
+
+
+class ChildEnvTests(unittest.TestCase):
+    def test_drops_a_parent_sessions_variables_and_keeps_the_rest(self):
+        env = chat.child_env({
+            "PATH": "/bin", "ANTHROPIC_API_KEY": "k", "CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH": "v",
+            "CLAUDECODE": "1", "CLAUDE_PID": "9", "CLAUDE_EFFORT": "high",
+            "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH": "1", "CLAUDE_CODE_ENTRYPOINT": "claude-desktop",
+            "CLAUDE_AGENT_SDK_VERSION": "1", "CLAUDE_CODE_GIT_BASH_PATH": "C:/git/bash.exe",
+            "CLAUDE_CODE_OAUTH_TOKEN": "t"})
+        self.assertEqual(sorted(env), ["ANTHROPIC_API_KEY", "CLAUDE_CODE_GIT_BASH_PATH", "CLAUDE_CODE_OAUTH_TOKEN",
+                                       "CLAUDE_PLUGIN_OPTION_NOTES_VAULT_PATH", "PATH"])
+
+    def test_needs_login(self):
+        self.assertTrue(chat.needs_login("Failed to authenticate: OAuth session expired"))
+        self.assertTrue(chat.needs_login("Not logged in · Please run /login"))
+        self.assertFalse(chat.needs_login("The calendar had no events."))
+        self.assertFalse(chat.needs_login(None))
 
 
 class ToolCacheTests(ChatCase):

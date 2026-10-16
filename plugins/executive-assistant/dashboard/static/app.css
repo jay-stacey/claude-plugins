@@ -267,8 +267,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing:
 .save-state.bad { color: var(--warn); }
 .conflict { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--warn) 10%, var(--panel)); font-size: 13px; }
 .conflict span { flex: 1 1 220px; }
-.ed-body { flex: 1; overflow: auto; padding: 18px 22px; min-height: 0; }
-.ed-body > textarea { width: 100%; height: 100%; min-height: 360px; resize: none; background: transparent; border: 0; outline: none; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.65; color: var(--fg); }
+.ed-body { flex: 1; overflow: auto; padding: 28px 32px; min-height: 0; }
+/* Note text sits in a centered column of readable width, like a page. */
+.ed-body > textarea { display: block; width: 100%; max-width: 76ch; margin-inline: auto; height: 100%; min-height: 360px; resize: none; background: transparent; border: 0; outline: none; font-family: var(--font-mono); font-size: 13.5px; line-height: 1.65; color: var(--fg); }
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; }
 .seg button { background: transparent; border: 0; padding: 5px 11px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .seg button[aria-pressed="true"] { background: var(--raise); color: var(--fg); }
@@ -277,7 +278,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing:
 .ed .cm-editor { font: 15px/1.65 var(--font-body); color: var(--fg); background: transparent; }
 .ed .cm-editor.cm-focused { outline: none; }
 .ed .cm-editor .cm-scroller { font-family: inherit; line-height: inherit; overflow: visible; }
-.ed .cm-editor .cm-content { padding: 0 0 30vh; caret-color: var(--accent); max-width: 72ch; }
+.ed .cm-editor .cm-content { padding: 0 0 30vh; caret-color: var(--accent); width: 100%; max-width: 76ch; margin-inline: auto; }
 .ed .cm-editor .cm-line { padding: 0; }
 .ed .cm-editor .cm-cursor { border-left: 2px solid var(--accent); }
 .ed .cm-editor .cm-selectionBackground { background: var(--sel) !important; }
@@ -352,7 +353,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing:
 
 /* drawer + modal + overlay */
 .scrim { position: fixed; inset: 0; background: rgba(4,6,9,0.6); z-index: 40; }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--bg-2); border-left: 1px solid var(--line-2); z-index: 41; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+/* The task editor: a centered dialog over a scrim, like .modal. */
+.drawer { position: fixed; z-index: 41; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(680px, calc(100% - 32px)); max-height: calc(100% - 48px); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,0.55); display: flex; flex-direction: column; overflow: hidden; }
 .drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .drawer-head h2 { font-size: 16px; }
 .drawer-body { flex: 1; overflow: auto; padding: 16px 18px; display: grid; gap: 14px; align-content: start; }
@@ -364,7 +366,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing:
 .field .hint { font-size: 11.5px; color: var(--faint); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .stored { font-family: var(--font-mono); font-size: 12px; color: var(--faint); overflow-wrap: anywhere; }
-.drawer-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
+.drawer-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 12px 18px; border-top: 1px solid var(--line); }
 .drawer-foot > div { display: flex; gap: 8px; }
 .modal { position: fixed; z-index: 42; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px)); max-height: calc(100% - 40px); overflow: auto; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 22px; }
 .steps { display: flex; gap: 6px; margin: 4px 0 16px; }
@@ -435,5 +437,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 650; letter-spacing:
   .trow .meta-r { grid-column: 2; flex-wrap: wrap; white-space: normal; }
   .toasts { right: 16px; bottom: 72px; }
   .modal { padding: 18px; }
+  .drawer { width: calc(100% - 16px); max-height: calc(100% - 16px); }
+  .ed-body { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

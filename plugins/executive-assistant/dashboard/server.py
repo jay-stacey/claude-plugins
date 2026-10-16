@@ -336,9 +336,12 @@ class App:
             return
 
         def work():
+            # The server runs detached, with no console. Without CREATE_NO_WINDOW
+            # Windows opens a new console window for python.exe on every save.
             try:
                 subprocess.run([sys.executable, str(NOTES_INDEX), "update", str(self.vault), rel],
-                               capture_output=True, timeout=30)
+                               stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             except Exception:
                 pass
         threading.Thread(target=work, daemon=True).start()

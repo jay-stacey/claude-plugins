@@ -61,6 +61,18 @@ DENIED_BUILTINS = ("NotebookEdit", "WebFetch", "CronCreate", "RemoteTrigger")
 OPTIONAL_BUILTINS = ("TodoWrite", "Task")   # only when the session has them
 SCRIPTS = ("tasks.py", "email_rules.py")
 
+# A Claude Code session sets these for its own child processes. Day Desk is
+# often started from inside one (the dashboard skill), and a `claude -p` that
+# inherits them tries to borrow that session's login (for example
+# CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH), which fails once the session ends.
+HOST_ENV_PREFIXES = ("CLAUDE_CODE_", "CLAUDE_AGENT_SDK_", "CLAUDE_PREVIEW_")
+HOST_ENV_NAMES = ("CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT")
+# User settings with the same prefixes that a run should keep.
+KEEP_ENV = ("CLAUDE_CODE_GIT_BASH_PATH", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_MAX_OUTPUT_TOKENS")
+SIGNED_OUT = ("Claude Code is signed out on this computer. Open a terminal, run claude, "
+              "type /login and sign in. Then try again.")
+
 
 class Busy(Exception):
     """A chat or refresh already runs. The server answers 409."""
@@ -242,9 +254,26 @@ def _finish(proc):
             pass
 
 
+def child_env(env=None):
+    """The environment for a claude run, without a parent session's variables."""
+    env = dict(os.environ if env is None else env)
+    for key in list(env):
+        if key in KEEP_ENV:
+            continue
+        if key in HOST_ENV_NAMES or key.startswith(HOST_ENV_PREFIXES):
+            del env[key]
+    return env
+
+
+def needs_login(text):
+    """True when a run failed because the claude command is not signed in."""
+    return bool(re.search(r"failed to authenticate|oauth|not logged in|please run /login"
+                          r"|invalid api key|authentication_error", text or "", re.I))
+
+
 def _spawn(argv, cwd, stdin_text):
     kwargs = {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
-              "cwd": str(cwd)}
+              "cwd": str(cwd), "env": child_env()}
     if os.name == "nt":
         kwargs["creationflags"] = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
                                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
@@ -557,6 +586,11 @@ class ChatRunner:
                         saw_delta = True
                         yield "text", delta["text"]
                 elif kind == "assistant":
+                    # An API failure (signed out, overloaded) comes as a fake
+                    # reply. The result event carries the same text, and the
+                    # chat turns it into a plain error there.
+                    if obj.get("is_api_error_message"):
+                        continue
                     msg = obj.get("message") or {}
                     for block in msg.get("content") or []:
                         if not isinstance(block, dict):
@@ -643,11 +677,13 @@ class ChatRunner:
                 elif kind == "result":
                     sid = payload.get("session_id") or self._session_id
                     self._set_session(sid)
-                    if not reply and isinstance(payload.get("result"), str) and payload["result"]:
-                        reply.append(payload["result"])
-                        yield {"type": "text", "delta": payload["result"]}
+                    result_text = payload.get("result") if isinstance(payload.get("result"), str) else ""
+                    signed_out = bool(payload.get("is_error")) and needs_login(result_text)
+                    if not reply and result_text and not signed_out:
+                        reply.append(result_text)
+                        yield {"type": "text", "delta": result_text}
                     if payload.get("is_error"):
-                        yield {"type": "error", "text": _result_error(payload)}
+                        yield {"type": "error", "text": SIGNED_OUT if signed_out else _result_error(payload)}
                     yield {"type": "done", "session_id": sid, "is_error": bool(payload.get("is_error"))}
                 elif kind == "fail":
                     if resume and not saw_init:
@@ -700,6 +736,9 @@ class ChatRunner:
             elif kind == "fail":
                 fail = payload
         if result is None or result.get("is_error"):
+            text = (result or {}).get("result")
+            if isinstance(text, str) and needs_login(text):
+                return {"ok": False, "error": SIGNED_OUT}
             return {"ok": False, "error": fail or "The calendar check failed. Try again later."}
         report = extract_report(result.get("result") or "")
         if not report:
