@@ -201,8 +201,46 @@ def update_voice_json(changes: dict, path: Path | None = None) -> Path:
     return path
 
 
+# ------------------------------------------------------------- the live Chief
+def _live_voice(body: dict | None = None) -> dict | None:
+    """GET (body None) or set the running Chief server's voice controls; None when no
+    server answers. Recording must not run while the Chief listens and talks back."""
+    import urllib.request
+
+    try:
+        info = json.loads((config.home() / "run" / "server.json").read_text(encoding="utf-8"))
+        port, token = int(info["port"]), str(info["token"])
+        if body is None:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/health", headers={"X-COS-Token": token})
+        else:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/voice/control", method="POST",
+                                         data=json.dumps(body).encode(),
+                                         headers={"X-COS-Token": token, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            out = json.loads(r.read() or b"{}")
+        return out.get("voice", out) if body is None else out
+    except Exception:
+        return None
+
+
 # --------------------------------------------------------------------------- main
 def run(cfg: VoiceConfig, n: int, clips_dir: str | None = None, n_neg: int | None = None) -> int:
+    if clips_dir or not cfg.wake_model_path.exists():
+        return _run(cfg, n, clips_dir, n_neg)
+    # Recording from the mic: pause the live Chief, then put its controls back. The
+    # resume stays silent, so the ENROLL line is still the last line printed.
+    before = _live_voice()
+    if before is not None:
+        _live_voice({"listen": "off", "speak": False, "stop": True})
+        say("The Chief is paused while you record, and listens again when this ends.")
+    try:
+        return _run(cfg, n, clips_dir, n_neg)
+    finally:
+        if before is not None:
+            _live_voice({"listen": before.get("listen", "wake"), "speak": bool(before.get("speak", True))})
+
+
+def _run(cfg: VoiceConfig, n: int, clips_dir: str | None = None, n_neg: int | None = None) -> int:
     from .vad import SileroVAD
 
     phrase = cfg.wake_word

@@ -169,14 +169,20 @@ def strip_wake(text: str, phrase: str = "hey chief", name: str = "") -> str:
     """Remove a leading wake phrase ("Hey Chief,") or the Chief's name from a transcript
     (the capture includes the wake word)."""
     t = text or ""
-    if " ".join(phrase.lower().split()) == "hey chief":
-        t = _WAKE_PREFIX.sub("", t, count=1)
-    else:
-        words = [re.escape(w) for w in re.findall(r"[a-z0-9']+", phrase.lower())]
-        if words:
-            t = re.sub(r"^\s*" + r"[\s,.!-]*".join(words) + r"\b[\s,.!?:;-]*", "", t, count=1, flags=re.I)
-    if name:
-        t = re.sub(r"^\s*" + re.escape(name) + r"\b[\s,.!?:;-]+", "", t, count=1, flags=re.I)
+    # Repeated wake phrases ("Hey Chief. Hey Chief, what needs me?") all go, so a
+    # capture that holds only the wake phrase ends up empty and is dropped.
+    for _ in range(4):
+        before = t
+        if " ".join(phrase.lower().split()) == "hey chief":
+            t = _WAKE_PREFIX.sub("", t, count=1)
+        else:
+            words = [re.escape(w) for w in re.findall(r"[a-z0-9']+", phrase.lower())]
+            if words:
+                t = re.sub(r"^\s*" + r"[\s,.!-]*".join(words) + r"\b[\s,.!?:;-]*", "", t, count=1, flags=re.I)
+        if name:
+            t = re.sub(r"^\s*" + re.escape(name) + r"\b[\s,.!?:;-]+", "", t, count=1, flags=re.I)
+        if t == before:
+            break
     t = t.strip()
     if t and t[0].islower():
         t = t[0].upper() + t[1:]

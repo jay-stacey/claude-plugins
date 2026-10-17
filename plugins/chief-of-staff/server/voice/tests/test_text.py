@@ -87,3 +87,19 @@ class WakeStripTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepeatedWakeTests(unittest.TestCase):
+    def test_repeated_wake_phrases_all_go(self):
+        from cosvoice.text import strip_wake
+        self.assertEqual(strip_wake("Hey Chief. Hey Chief, what needs me?"), "What needs me?")
+
+    def test_only_the_wake_phrase_is_empty(self):
+        from cosvoice.text import strip_wake
+        self.assertEqual(strip_wake("Hey, Chief."), "")
+        self.assertEqual(strip_wake("Hey Chief Hey Chief"), "")
+
+    def test_a_request_that_names_the_chief_later_keeps_it(self):
+        from cosvoice.text import strip_wake
+        self.assertEqual(strip_wake("Hey Chief, tell the chief of staff session to stop"),
+                         "Tell the chief of staff session to stop")
