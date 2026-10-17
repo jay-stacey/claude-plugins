@@ -2,9 +2,21 @@
 // (docs/contracts.md sections 4 and 5). The mod keeps no $.state values.
 
 export type ChiefInboxItem =
-  | { id: string; type: 'prompt'; text: string }
+  | { id: string; type: 'prompt'; text: string; hint?: string; jev?: JevDecision }
   | { id: string; type: 'archive'; sessionId: string; title: string; reason: string; confirmed?: boolean }
   | { id: string; type: 'reply'; sessionId: string; title: string; text: string }
+
+// Jev's advice for one request (server/cos/jev/decision.py).
+export type JevDecision = {
+  model: 'haiku' | 'sonnet' | 'opus'
+  route: 'chief' | 'new_session'
+  background: boolean
+  estimate_s: number
+  filler: 'lookup' | 'work' | 'chat'
+  source: 'rules' | 'user' | 'local' | 'hosted'
+  ms: number
+  override: boolean
+}
 
 export type ChiefConfirm = { question: string; yes: string; no: string }
 

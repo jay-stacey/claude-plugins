@@ -18,7 +18,8 @@ class Config(unittest.TestCase):
         self.assertEqual(config.defaults(), {
             "staleHours": 24, "recentDays": 3, "speakReplies": True, "listen": "wake", "voice": "auto",
             "wakeWord": "hey chief", "notify": True, "quietHours": "22:00-07:00", "chiefName": "Chief",
-            "wakeAck": "chime", "fillers": True})
+            "wakeAck": "chime", "fillers": True, "jevProvider": "auto", "jevAdapter": "", "jevModel": "",
+            "jevEndpoint": "", "jevTimeoutMs": 800, "jevKeyRef": ""})
 
     def test_sources_and_coercion(self):
         with Sandbox() as box:

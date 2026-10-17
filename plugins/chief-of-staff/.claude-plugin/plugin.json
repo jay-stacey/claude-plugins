@@ -1,6 +1,6 @@
 {
   "name": "chief-of-staff",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "A Chief of Staff for your Claude desktop sessions: one session becomes the Chief, watches every other session, tells you which ones need you, and closes or answers them when you ask. A local console on 127.0.0.1 shows a live session graph, a roster, the Chief's chat and any session's transcript, with an optional local voice (Hey Chief).",
   "author": {
     "name": "Jay Stacey"
@@ -95,6 +95,60 @@
       "title": "Quiet hours",
       "description": "No proactive notices in this local time range, like 22:00-07:00. Leave empty for none.",
       "default": "22:00-07:00"
+    },
+    "jev_provider": {
+      "type": "string",
+      "title": "Jev: how requests are sorted",
+      "description": "Jev picks the model and whether to start a new session before the Chief acts. auto: use what setup chose for this PC. rules: word rules only, no model. local: a small model on this PC. hosted: a hosted model with your API key.",
+      "options": [
+        "auto",
+        "rules",
+        "local",
+        "hosted"
+      ],
+      "default": "auto"
+    },
+    "jev_adapter": {
+      "type": "string",
+      "title": "Jev: model API style",
+      "description": "How Jev talks to its model. auto: what setup chose (openai_compat for a local model, anthropic for hosted). openai_compat: an OpenAI-style chat API such as Ollama or llama-server. anthropic: the Anthropic Messages API.",
+      "options": [
+        "auto",
+        "openai_compat",
+        "anthropic"
+      ],
+      "default": "auto"
+    },
+    "jev_model": {
+      "type": "string",
+      "title": "Jev: model name",
+      "description": "The model Jev asks. Leave empty to use what setup chose.",
+      "default": ""
+    },
+    "jev_endpoint": {
+      "type": "string",
+      "title": "Jev: model address",
+      "description": "The base URL of an OpenAI-style API, like http://127.0.0.1:11435/v1. Leave empty to use what setup chose. Plain http is allowed only on this PC.",
+      "default": ""
+    },
+    "jev_timeout_ms": {
+      "type": "number",
+      "title": "Jev: time limit (milliseconds)",
+      "description": "How long Jev waits for its model before it uses the word rules. From 100 to 5000.",
+      "default": 800
+    },
+    "jev_key_ref": {
+      "type": "string",
+      "title": "Jev: where the API key is kept",
+      "description": "wincred:<name> for a Windows Credential Manager entry, or env:<NAME> for an environment variable. Never the key itself. Leave empty if you use the API key field or a local model.",
+      "default": ""
+    },
+    "jev_api_key": {
+      "type": "string",
+      "title": "Jev: hosted API key",
+      "description": "Only for the hosted provider. Kept in your system keychain by Claude and held in memory by the server; it is never written to a file.",
+      "sensitive": true,
+      "default": ""
     }
   }
 }

@@ -163,10 +163,31 @@ function who(m) {
   return h('div', { class: 'who', text: `YOU · ${m.source || 'typed'} · ${clock(m.at)}` });
 }
 
+/** "about 10 min" from Jev's estimate in seconds. */
+export function roughTime(s) {
+  if (!(s > 0)) return '';
+  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
+  if (s < 3600) return `about ${Math.round(s / 60)} min`;
+  return `about ${Math.round(s / 360) / 10} h`;
+}
+
+/** One quiet line under Jay's message: what Jev suggested, so Jay can see and overrule it. */
+function jevEl(j) {
+  const where = j.route === 'new_session' ? 'new session' : 'Chief handles it';
+  const parts = ['Jev', j.model, where];
+  if (j.background) parts.push('background');
+  const time = roughTime(j.estimate_s);
+  if (time) parts.push(time);
+  if (j.source === 'user') parts.push('your pick');
+  return h('div', { class: 'jev', title: `Suggested by ${j.source === 'user' ? 'your words' : j.source} in ${j.ms} ms. Say "use opus" or "do it yourself" to overrule.`,
+    text: parts.join(' · ') });
+}
+
 function msgEl(m) {
   const cls = m.source === 'notice' ? 'notice' : m.role === 'chief' ? 'chief' : 'me';
   const el = h('div', { class: `msg ${cls}`, 'data-id': m.id }, who(m),
-    m.role === 'chief' ? h('div', { class: 'text md' }, md(m.text)) : h('div', { class: 'text', text: m.text }));
+    m.role === 'chief' ? h('div', { class: 'text md' }, md(m.text)) : h('div', { class: 'text', text: m.text }),
+    m.role === 'me' && m.jev ? jevEl(m.jev) : null);
   return el;
 }
 

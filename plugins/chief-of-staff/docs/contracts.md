@@ -140,7 +140,8 @@ Parse the JSONL defensively: user rows with string content are prompts; user row
 | `POST /api/mod/reply` | `{ "text": "...", "turnId": "..." }` | Adds a Chief chat message, sends it to the voice daemon if `speak` is on. |
 | `POST /api/mod/result` | `{ "actionId": "...", "ok": bool, "detail": "..." }` | Pushes an `action` SSE event. |
 | `POST /api/mod/busy` | `{ "busy": bool }` | The Chief's turn started or ended (drives the orb "Thinking"). |
-| `GET /api/voice/jobs` | `?wait=25` | Long poll for the voice daemon. `{ "jobs": [ { "id": "spk_...", "text": "...", "kind": "speak" \| "stop" \| "control" \| "ack" \| "quit" } ] }`. `control` carries any of `listen`, `speak`, `pttDown`; the server also sends one `control` job with all of `wakeWord`, `wakeAck` (`"chime"` \| `"word"` \| `"off"`), `fillers` (bool) and `chiefName`, first in the daemon's first poll and again whenever one of them changes. `ack` (no text) asks for a short spoken filler such as "On it" at once: the server queues it when a voice `final` arrives, and for a typed `POST /api/chief/say` while `speak` is on, unless `fillers` is off or the voice is not installed. `quit` makes the daemon release the mic and GPU and exit; the server sends it on stop and waits 3 s before it ends the process, because on Windows `terminate()` runs no shutdown handler. |
+| `POST /api/mod/jev-outcome` | `{ "id": "msg_...", "route": "chief" \| "new_session", "model": "claude-..." \| null }` | What the Chief did with Jev's advice for that prompt: it started a session (the mod saw `start_session`) or its turn ended without one. Appended to `HOME\jev-log.jsonl`. |
+| `GET /api/voice/jobs` | `?wait=25` | Long poll for the voice daemon. `{ "jobs": [ { "id": "spk_...", "text": "...", "kind": "speak" \| "stop" \| "control" \| "ack" \| "quit" } ] }`. `control` carries any of `listen`, `speak`, `pttDown`; the server also sends one `control` job with all of `wakeWord`, `wakeAck` (`"chime"` \| `"word"` \| `"off"`), `fillers` (bool) and `chiefName`, first in the daemon's first poll and again whenever one of them changes. `ack` (no text, plus `filler`: `"lookup"` \| `"work"` \| `"chat"` from Jev's rules) asks for a short spoken filler such as "On it" at once, one that fits the kind of request when a fitting filler is cached: the server queues it when a voice `final` arrives, and for a typed `POST /api/chief/say` while `speak` is on, unless `fillers` is off or the voice is not installed. `quit` makes the daemon release the mic and GPU and exit; the server sends it on stop and waits 3 s before it ends the process, because on Windows `terminate()` runs no shutdown handler. |
 | `POST /api/voice/event` | VoiceEvent | The voice daemon reports. |
 
 Errors are `{ "error": "plain sentence" }` with 400, 401, 403, 404, 409, 413 or 500.
@@ -149,8 +150,13 @@ Errors are `{ "error": "plain sentence" }` with 400, 401, 403, 404, 409, 413 or 
 
 ```json
 ChatMessage  { "id": "msg_...", "role": "chief" | "me", "source": "typed" | "voice" | "notice" | null, "text": "...", "at": ms,
-               "confirm": { "question": "...", "yes": "Archive anyway", "no": "Leave it running" } | null }
-InboxItem    { "id": "...", "type": "prompt", "text": "..." }
+               "confirm": { "question": "...", "yes": "Archive anyway", "no": "Leave it running" } | null,
+               "jev": JevDecision }          // Jay's messages only, once Jev has advised
+JevDecision  { "model": "haiku" | "sonnet" | "opus", "route": "chief" | "new_session", "background": bool,
+               "estimate_s": int, "filler": "lookup" | "work" | "chat", "source": "rules" | "user" | "local" | "hosted",
+               "ms": float, "override": bool }
+InboxItem    { "id": "...", "type": "prompt", "text": "...", "jev": JevDecision, "hint": "Jev suggests: ..." }
+               // jev and hint only on console and voice prompts; the mod adds hint on its own line after text
            | { "id": "act_...", "type": "archive", "sessionId": "local_...", "title": "...", "reason": "..." }
            | { "id": "act_...", "type": "reply", "sessionId": "local_...", "title": "...", "text": "..." }
 VoiceStatus  { "state": "not-installed" | "starting" | "off" | "listening" | "hearing" | "thinking" | "speaking" | "error",
@@ -200,6 +206,7 @@ Events (`event:` name, `data:` JSON). Snapshot on connect. 15 s heartbeat commen
 | `partial` | `{ "text": "close the dp1" }` |
 | `action` | `{ "actionId": "...", "ok": bool, "detail": "..." }` |
 | `notify` | `{ "id": "...", "sessionId": "local_...", "kind": "you" \| "done" \| "stale", "text": "Plan PRO-921 is waiting on your vendor name decision." }` |
+| `jev` | `{ "id": "msg_...", "decision": JevDecision }` Jev's advice for one of Jay's messages, sent when it is ready (rules at once, a model within `jevTimeoutMs`). |
 | `chief` | `{ "connected": bool, "sessionId": "local_..." \| null, "busy": bool }` sent when the Chief connects, leaves, or starts or ends a turn. The snapshot's `chief` object has the same three fields. |
 
 ### Serving the console (added after the console build)
@@ -237,3 +244,13 @@ Within one batch, a session gets one line: its latest notice, except that "chang
 ## 10. Console
 
 Build `docs/mockup.html` for real: same layout, tokens and type. Control center graph (in-view sessions; the Chief as the core; parent-child links; animated dots from `activity` events; hover card with title, state, stateReason, summary; click opens the page view). Roster with state filters and the "N older sessions" row. Chief panel (orb tied to `VoiceStatus` and `level`, toggles for wake word, speak replies and push-to-talk with a hold-to-talk button, chat with confirm buttons, typed input). Page view (`#/s/<id>`: transcript with paging, reply box that posts `/reply`, Open in app, Ask Chief about it (sends "Tell me about <title>."), Archive with the confirm flow). Toast for `notify` events. Reconnect SSE with backoff 2 s doubling to 30 s and show "Reconnecting" in the header. Respect `prefers-reduced-motion`. Works at 1280 to 2560 wide and degrades to one column under 720.
+
+## 11. Jev (server/cos/jev/)
+
+Jev advises the Chief before it acts: whether it handles a console or voice request itself or starts a new session, which model that session uses, whether the work runs in the background, and roughly how long it takes. Research and the baseline spec: issues #31 and #33.
+
+- **Flow.** `Server.say` builds a `Request` (text, source, the sessions in view without the Chief, the Chief's repo). `rules.quick` answers in under 20 ms; its `filler` goes on the `ack` job at once. One worker thread then runs `Jev.advise`, which asks the configured model within `jevTimeoutMs` (default 800) and falls back to the rules answer on any error or timeout. The prompt is queued only after that, so prompts keep their order. Words in Jay's request ("use opus", "do it yourself", "in a new session") always win and mark `override`.
+- **Providers.** `rules` (always there, and the fallback), `local` (an OpenAI-compatible server on 127.0.0.1: an existing Ollama 0.17.1 or newer that listens only on loopback, or a pinned llama.cpp `llama-server`), `hosted` (the Anthropic API, or an OpenAI-compatible service such as Groq with zero data retention, or a self-hosted server). Blocked hosted endpoints: the Gemini free tier, Mistral, OpenRouter and Cerebras.
+- **Settings.** `jevProvider` (`auto` reads `HOME\jev.json`), `jevAdapter`, `jevModel`, `jevEndpoint`, `jevTimeoutMs`, `jevKeyRef` (`wincred:<target>` or `env:<NAME>`). The hosted key is the sensitive `jev_api_key` userConfig field, kept only in server memory from the hello options, or a `jevKeyRef`. No key is written to any file, returned by any endpoint, or logged.
+- **Setup.** `server/jev_setup.py` (driven by the chief-setup skill): `scan` runs `server/jev-scan.ps1` and picks a tier; `local` downloads a pinned model file into an empty folder, checks it against `jev/models.json` (publisher allowlist, pinned commit, SHA256, license, file type), starts the runtime and runs a 10-decision speed test; `hosted` reads the key from stdin and stores it in Windows Credential Manager; `rules` turns models off. The result is `HOME\jev.json`.
+- **Log.** `HOME\jev-log.jsonl`: one line per request (text hash, first 80 characters, the rules and final answers) and one per outcome. Rotates at 5 MB. `server/jev_eval.py` scores any provider against the 50-request labeled set in `server/tests/fixtures/jev-eval.json`.

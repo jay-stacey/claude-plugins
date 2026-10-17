@@ -291,6 +291,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .msg { display: grid; gap: 4px; }
 .msg .who { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
 .msg .who b { color: var(--accent); font-weight: 500; }
+.msg .jev { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em; margin-top: 4px; }
 .msg .text { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg .text.md { white-space: normal; }
 .msg .text.md p { margin-bottom: 6px; }

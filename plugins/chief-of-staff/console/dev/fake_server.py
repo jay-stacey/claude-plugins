@@ -377,6 +377,22 @@ class Hub:
                      "waiting on you about the dark-only theme."},
         ]
 
+    def fake_jev(self, msg, text):
+        """Jev's advice a moment after the message, as the real server sends it."""
+        work = any(w in text.lower() for w in ("fix", "build", "write", "research", "design", "review"))
+        big = any(w in text.lower() for w in ("research", "design"))
+        decision = {"model": "opus" if big else "sonnet" if work else "haiku",
+                    "route": "new_session" if work else "chief", "background": work,
+                    "estimate_s": 1200 if big else 600 if work else 10, "filler": "work" if work else "lookup",
+                    "source": "rules", "ms": 0.3, "override": False}
+
+        def later():
+            time.sleep(0.15)
+            msg["jev"] = decision
+            self.emit("jev", {"id": msg["id"], "decision": decision})
+
+        threading.Thread(target=later, daemon=True).start()
+
     def add_chat(self, role, text, source=None, confirm=None):
         m = {"id": "msg_" + secrets.token_hex(5), "role": role, "source": source, "text": text, "at": now_ms(),
              "confirm": confirm}
@@ -834,6 +850,7 @@ class Handler(BaseHTTPRequestHandler):
             if not h.chief["connected"]:
                 return self.err(409, "No Chief is connected. Run /chief in a Claude session first.")
             msg = h.add_chat("me", text, source)
+            h.fake_jev(msg, text)
             h.chief_answer(text, source)
             return self.send_json(200, {"id": msg["id"]})
         if method == "POST" and path == "/api/voice/control":

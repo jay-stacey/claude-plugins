@@ -24,6 +24,7 @@ const START_TIMEOUT_MS = 30000
 const CHIEF_COMMAND = /^\/(?:chief-of-staff:)?chief(?:\s|$)/
 const CONFIRM_LINE = /^\s*\[\[\s*confirm\s*:\s*([^|\]]+?)\s*\|\s*([^\]]+?)\s*\]\]\s*$/i
 const ARCHIVE_TOOL = 'mcp__ccd_session_mgmt__archive_session'
+const START_TOOL = 'mcp__ccd_session__start_session'
 // An archive Jay confirmed in the console stays approved this long for the Chief's own call.
 const CONSOLE_APPROVAL_MS = 120000
 const HELLO_TRIES = 3
@@ -63,6 +64,10 @@ let discussed = new Set<string>()
 let asked: { ids: string[]; text: string; yes: string; no: string } | null = null
 let approved: { ids: string[]; text: string } | null = null
 const consoleApproved = new Map<string, number>()
+// The console or voice prompt Jev advised on, until the Chief starts a session for it or
+// its turn ends: what the Chief really did goes to Jev's log. A prompt that arrives while
+// another turn runs may be scored on that turn; the log is a measure, not a control.
+let jevPending: string | null = null
 const LOG_KEEP = 200
 const logLines: string[] = []
 
@@ -173,6 +178,11 @@ export const register: Register = (on, opts) => {
     if (!isChief || e.agentId !== undefined) return result
     const answer = e.reason === 'answer' && !e.isAborted ? e.answer : ''
     const turnId = e.turnId
+    if (jevPending !== null) {
+      const id = jevPending
+      jevPending = null
+      $.clock.after(0, () => void post($, '/api/mod/jev-outcome', { id, route: 'chief', model: null }))
+    }
     if (answer.trim() !== '') {
       // The reply's confirm question, if any, is what Jay's next prompt answers. A
       // reply without one (a notice in between) leaves the open question alone;
@@ -192,6 +202,19 @@ export const register: Register = (on, opts) => {
   }).catch(() => ({
     result: JSON.stringify({ error: 'The Chief of Staff tool failed. Ask Jay to run /chief again.' }),
   }))
+
+  // A session the Chief starts for a console or voice prompt is what it did with Jev's advice.
+  on('tool.call', { tool: START_TOOL }, async ($, e, next) => {
+    if (isChief && jevPending !== null) {
+      const input = e as unknown as { model?: unknown }
+      const id = jevPending
+      jevPending = null
+      await post($, '/api/mod/jev-outcome', {
+        id, route: 'new_session', model: typeof input.model === 'string' ? input.model : null,
+      })
+    }
+    return next(e)
+  })
 
   // The archive guard: in the Chief's session, archiving a session that is working, or
   // whose helper session is, needs Jay's yes first.
@@ -543,8 +566,15 @@ async function handle($: EngineInterface, item: ChiefInboxItem): Promise<void> {
     // Console and voice messages are Jay's own words. The engine does not show a
     // plugin's own $.prompt.submit to its prompt.submit hook, so note the answer here.
     if (!SERVER_PROMPT.test(item.text.trim())) noteAnswer(item.text.trim())
+    // Jev's advice rides on its own line after Jay's words, never inside them, so the
+    // yes or no check above reads only what Jay said.
+    const hint = typeof item.hint === 'string' ? item.hint.trim() : ''
+    if (item.jev !== undefined) jevPending = item.id
+    const text = hint === '' ? item.text : `${item.text}
+
+${hint}`
     // A turn of its own once the session is idle; never folded into a running turn.
-    $.prompt.submit({ text: item.text }).catch(err => log($, `prompt: ${String(err)}`))
+    $.prompt.submit({ text }).catch(err => log($, `prompt: ${String(err)}`))
     // Acknowledged, so the server does not send it again.
     await post($, '/api/mod/result', { actionId: item.id, ok: true })
     return

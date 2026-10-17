@@ -80,6 +80,15 @@ export function addChat(m) {
   emit('chat', { message: m });
 }
 
+/** Jev's advice for one of Jay's messages, which can arrive after the message itself. */
+export function setJev(d) {
+  if (!d || !d.id || !d.decision) return;
+  const m = state.chat.find((x) => x.id === d.id);
+  if (!m) return;
+  m.jev = d.decision;
+  emit('chat', { message: m });
+}
+
 function setChat(list) {
   state.chat = Array.isArray(list) ? list.slice(-100) : [];
   emit('chat', { reset: true });
@@ -118,6 +127,7 @@ function connect() {
   es.addEventListener('chat', (e) => addChat(parse(e)));
   es.addEventListener('voice', (e) => setVoice(parse(e)));
   es.addEventListener('chief', (e) => setChief(parse(e)));
+  es.addEventListener('jev', (e) => setJev(parse(e)));
   for (const t of ['activity', 'level', 'partial', 'action', 'notify', 'wake', 'nearMiss', 'barge']) {
     es.addEventListener(t, (e) => emit(t, parse(e) || {}));
   }

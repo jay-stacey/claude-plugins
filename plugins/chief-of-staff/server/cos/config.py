@@ -25,6 +25,12 @@ FIELDS = {
     "chiefName": ("chief_name", "Chief"),
     "wakeAck": ("wake_ack", "chime"),
     "fillers": ("fillers", True),
+    "jevProvider": ("jev_provider", "auto"),
+    "jevAdapter": ("jev_adapter", ""),
+    "jevModel": ("jev_model", ""),
+    "jevEndpoint": ("jev_endpoint", ""),
+    "jevTimeoutMs": ("jev_timeout_ms", 800),
+    "jevKeyRef": ("jev_key_ref", ""),
 }
 LISTEN_MODES = ("wake", "ptt", "off")
 WAKE_ACKS = ("chime", "word", "off")
@@ -32,6 +38,11 @@ NAME_RE = re.compile(r"[^A-Za-z0-9 '\-]")
 MAX_NAME = 30
 # What the voice daemon needs to know, sent as one control job.
 VOICE_KEYS = ("wakeWord", "wakeAck", "fillers", "chiefName")
+JEV_PROVIDERS = ("auto", "rules", "local", "hosted")
+JEV_ADAPTERS = ("", "openai_compat", "anthropic")
+JEV_TIMEOUT_MS = (100, 5000)
+JEV_MODEL_RE = re.compile(r"^[A-Za-z0-9._:/@+-]{1,200}$")
+JEV_ENDPOINT_RE = re.compile(r"^https?://[^\s]{1,500}$", re.I)
 QUIET_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$")
 
 
@@ -65,6 +76,12 @@ def _coerce(name, value, default):
         if text in ("false", "0", "no", "off"):
             return False
         return None
+    if name == "jevTimeoutMs":
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return int(number) if JEV_TIMEOUT_MS[0] <= number <= JEV_TIMEOUT_MS[1] else None
     if isinstance(default, int):
         try:
             number = float(value)
@@ -76,6 +93,18 @@ def _coerce(name, value, default):
         return text if text in LISTEN_MODES else None
     if name == "quietHours":
         return text if text == "" or QUIET_RE.match(text) else None
+    if name == "jevProvider":
+        return text.lower() if text.lower() in JEV_PROVIDERS else None
+    if name == "jevAdapter":
+        text = "" if text.lower() == "auto" else text.lower()
+        return text if text in JEV_ADAPTERS else None
+    if name == "jevModel":
+        return text if JEV_MODEL_RE.match(text) else None
+    if name == "jevEndpoint":
+        return text.rstrip("/") if JEV_ENDPOINT_RE.match(text) else None
+    if name == "jevKeyRef":
+        # A reference to where the key lives, never the key itself.
+        return text if text.startswith(("env:", "wincred:")) and len(text) <= 300 else None
     if name == "wakeAck":
         return text.lower() if text.lower() in WAKE_ACKS else None
     if name in ("chiefName", "wakeWord"):

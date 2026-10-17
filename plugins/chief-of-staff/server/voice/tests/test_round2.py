@@ -275,6 +275,19 @@ class DaemonRound2Test(unittest.TestCase):
         self.assertEqual(self.link.of("spoken")[-1], {"type": "spoken", "id": "ack9", "ok": False})
         d.shutdown()
 
+    def test_ack_filler_fits_the_kind_of_request(self):
+        d = self.make()
+        for i, kind in enumerate(["lookup", "work", "lookup", "work", "chat", "bogus"]):
+            d.handle_job({"id": f"ack{i}", "kind": "ack", "filler": kind})
+            self.assertTrue(d.speaker.wait_idle(2))
+            time.sleep(0.05)
+            said = d.clips._recent[-1]
+            if kind in d.clips.KINDS and any(f in d.clips._cache for f in d.clips.KINDS[kind]):
+                self.assertIn(said, d.clips.KINDS[kind])
+            else:
+                self.assertIn(said, d.clips.fillers)
+        d.shutdown()
+
     def test_barge_event(self):
         d = self.make(duplex=True, block_s=1.0)
         d.handle_job({"id": "spk_1", "kind": "speak", "text": "One. Two. Three."})
