@@ -225,6 +225,37 @@ class DaemonTest(unittest.TestCase):
         self.assertFalse(self.mic.is_open)
         d.shutdown()
 
+    def test_mic_failure_is_not_a_voice_error(self):
+        """A mic that will not open sets micError, not state "error", and speech still plays."""
+        d = self.make()
+        self.mic.fail = True
+        d.start("wake", True)
+        self.assertTrue(wait_for(lambda: self.link.of("status")
+                                 and self.link.of("status")[-1]["status"]["micError"]))
+        s = self.link.of("status")[-1]["status"]
+        self.assertEqual(s["state"], "listening")
+        self.assertIn("microphone did not open", s["micError"])
+        self.assertEqual(s["detail"], s["micError"])
+        d.handle_job({"id": "spk_m", "kind": "speak", "text": "Still talking."})
+        self.assertTrue(wait_for(lambda: self.link.of("spoken")))
+        self.assertEqual(self.link.of("spoken"), [{"type": "spoken", "id": "spk_m", "ok": True}])
+        # The mic comes back: the problem clears.
+        self.mic.fail = False
+        self.assertTrue(d._open_mic())
+        self.assertIsNone(self.link.of("status")[-1]["status"]["micError"])
+        d.shutdown()
+
+    def test_mic_failure_clears_when_listening_is_off(self):
+        d = self.make()
+        self.mic.fail = True
+        d.listen = "ptt"
+        d.handle_job({"id": "c1", "kind": "control", "pttDown": True})
+        self.assertTrue(self.link.of("status")[-1]["status"]["micError"])
+        d.handle_job({"id": "c2", "kind": "control", "pttDown": False, "listen": "off"})
+        s = self.link.of("status")[-1]["status"]
+        self.assertEqual((s["state"], s["micError"]), ("off", None))
+        d.shutdown()
+
     def test_quit_job(self):
         d = self.make()
         d.handle_job({"id": "q", "kind": "quit"})

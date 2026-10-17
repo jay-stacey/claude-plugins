@@ -124,11 +124,14 @@ class FakeSink:
 
 
 class FakeMic:
-    def __init__(self) -> None:
+    def __init__(self, fail: bool = False) -> None:
         self.is_open = False
         self.opened = 0
+        self.fail = fail                # True: start() fails like a broken Windows audio driver
 
     def start(self):
+        if self.fail:
+            raise OSError("Error opening InputStream: Unanticipated host error [PaErrorCode -9999]")
         self.is_open = True
         self.opened += 1
 

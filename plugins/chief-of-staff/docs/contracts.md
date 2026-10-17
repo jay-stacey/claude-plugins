@@ -156,7 +156,9 @@ InboxItem    { "id": "...", "type": "prompt", "text": "..." }
 VoiceStatus  { "state": "not-installed" | "starting" | "off" | "listening" | "hearing" | "thinking" | "speaking" | "error",
                "listen": "wake" | "ptt" | "off", "speak": bool, "device": "cuda" | "cpu" | null,
                "stt": "faster-whisper large-v3-turbo" | null, "tts": "chatterbox" | "kokoro" | null,
-               "wakeWord": "hey chief" | null, "detail": "plain sentence" | null }
+               "wakeWord": "hey chief" | null, "micError": "plain sentence" | null, "detail": "plain sentence" | null }
+             // "error" means nothing can be spoken. A mic that will not open sets micError only: the state
+             // stays "listening" or "off", and the server still queues speak jobs.
 VoiceEvent   { "type": "status", "status": VoiceStatus }
            | { "type": "wake" }                      // wake word heard
            | { "type": "partial", "text": "..." }   // optional live transcript

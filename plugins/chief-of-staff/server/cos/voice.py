@@ -47,6 +47,7 @@ class Voice:
             "speak": bool(settings.get("speakReplies", True)),
             "device": None, "stt": None, "tts": None,
             "wakeWord": settings.get("wakeWord") or None,
+            "micError": None,
             "detail": None if installed else "The voice is not set up. Run server/setup.ps1 to install it.",
         }
 
@@ -111,7 +112,7 @@ class Voice:
         if not isinstance(status, dict):
             return self.snapshot()
         with self.lock:
-            for key in ("state", "device", "stt", "tts", "wakeWord", "detail"):
+            for key in ("state", "device", "stt", "tts", "wakeWord", "micError", "detail"):
                 if key in status:
                     value = status[key]
                     if key == "state" and value not in STATES:

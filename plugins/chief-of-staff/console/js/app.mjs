@@ -84,6 +84,7 @@ function renderFooter() {
   else {
     item(v.listen === 'off' ? 'off' : 'ok', `Ears: ${[v.stt || 'speech to text', dev(v.device)].filter(Boolean).join(' · ')}${v.listen === 'off' ? ' (off)' : ''}`);
     item(v.speak ? 'ok' : 'off', `Voice: ${[v.tts || 'speech', dev(v.device)].filter(Boolean).join(' · ')}${v.speak ? '' : ' (muted)'}`);
+    if (v.micError) item('bad', `Mic: ${v.micError}`);
   }
   const stale = state.sessions && state.sessions.liveStale;
   item(stale ? 'bad' : state.sessions ? 'ok' : 'off', `Desktop link: ${stale ? 'behind' : state.sessions ? 'live' : 'waiting'}`);

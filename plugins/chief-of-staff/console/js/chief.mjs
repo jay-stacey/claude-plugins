@@ -247,6 +247,7 @@ export function renderVoice() {
   if (!c.connected) sub = 'type /chief in a Claude session to start one';
   else if (!installed) sub = v.detail || 'run server/setup.ps1 to add voice · typing works';
   else if (v.state === 'error') sub = v.detail || 'the voice server stopped · typing works';
+  else if (v.micError && look !== 'speaking' && look !== 'thinking') sub = v.micError;
   else if (look === 'hearing') sub = 'go ahead, I am listening';
   else if (look === 'thinking') sub = 'working on it';
   else if (look === 'speaking') sub = `say “${wake}” to interrupt`;
