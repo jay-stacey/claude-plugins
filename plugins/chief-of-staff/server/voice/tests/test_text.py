@@ -22,7 +22,7 @@ class SpeakableTest(unittest.TestCase):
 
     def test_markdown_link_keeps_label_only(self):
         out = speakable("See [PR 1216](https://github.com/o/r/pull/1216) for details.")
-        self.assertIn("See PR 1216 for details.", out)
+        self.assertIn("See pull request twelve sixteen for details.", out)
         self.assertIn(LINK_NOTE, out)
         self.assertNotIn("github", out)
 
@@ -32,7 +32,7 @@ class SpeakableTest(unittest.TestCase):
         self.assertNotIn("*", out)
         self.assertNotIn("`", out)
         self.assertNotIn(">", out)
-        self.assertIn("NEO-123 is done.", out)
+        self.assertIn("N E O one two three is done.", out)
         self.assertIn("npm test passes.", out)
 
     def test_paths_and_confirm_line_dropped(self):
@@ -47,21 +47,24 @@ class SpeakableTest(unittest.TestCase):
 
 class ClauseTest(unittest.TestCase):
     def test_sentences(self):
-        self.assertEqual(clauses("Two sessions need you. The plan is waiting on a vendor name! Is that right?"),
-                         ["Two sessions need you.", "The plan is waiting on a vendor name!", "Is that right?"])
+        # first chunk one sentence (fast first audio), then up to two sentences per chunk
+        self.assertEqual(clauses("Two sessions need you. The plan is waiting on a vendor name! Is that right? "
+                                 "Then archive it. And the last one."),
+                         ["Two sessions need you.", "The plan is waiting on a vendor name! Is that right?",
+                          "Then archive it. And the last one."])
         self.assertEqual(clauses("One thing. OK. Done."), ["One thing. OK. Done."])  # tiny tails glued
 
     def test_first_clause_is_short(self):
         text = ("The plan for PRO-921 is waiting on you, because it needs a vendor name, "
                 "and the dp1 branch is merged. Nothing else is blocked.")
         parts = clauses(text)
-        self.assertLessEqual(len(parts[0]), 70)
+        self.assertLessEqual(len(parts[0]), 90)
         self.assertEqual(" ".join(parts), text)
 
     def test_long_without_commas(self):
         text = "word " * 80
         parts = clauses(text)
-        self.assertTrue(all(len(p) <= 160 for p in parts))
+        self.assertTrue(all(len(p) <= 180 for p in parts))
         self.assertEqual(" ".join(parts).split(), text.split())
 
     def test_empty(self):

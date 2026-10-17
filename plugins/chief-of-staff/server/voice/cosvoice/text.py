@@ -74,6 +74,7 @@ def speakable(text: str) -> str:
         t = _EMPHASIS.sub(r"\2", t)
     t = t.replace("|", ", ")
     t = _EMOJI.sub("", t)
+    t = naturalize(t)
     lines = []
     for line in t.splitlines():
         line = re.sub(r"\s+", " ", line).strip(" ,")
@@ -87,37 +88,54 @@ def speakable(text: str) -> str:
     t = re.sub(r"([,;:])(?:\s*[,;:])+", r"\1", t)
     t = re.sub(r"\(\s*\)|\[\s*\]", "", t)
     t = re.sub(r"\s{2,}", " ", t).strip()
+    # A sentence that now starts with "pull request" or "for example" gets its capital back,
+    # so chunks() still sees the sentence break.
+    t = re.sub(r"(^|[.!?]\s+)(pull request|for example|that is|about|number)\b",
+               lambda m: m.group(1) + m.group(2)[0].upper() + m.group(2)[1:], t)
     for note in notes:
         if note not in t:
             t = f"{t} {note}".strip()
     return t
 
 
-def clauses(text: str, first_max: int = 70, max_len: int = 160) -> list[str]:
-    """Split into sentences, then split long ones at commas or semicolons.
+def chunks(text: str, first_max: int = 90, max_len: int = 180) -> list[str]:
+    """Speech chunks of one or two sentences.
 
-    Chatterbox has no streaming, so time to first audio is the first clause's synthesis time.
-    The first clause is kept short so speech starts sooner (Pepper speak_queue pattern).
+    Chatterbox has no streaming, so time to first audio is the first chunk's synthesis time:
+    the first chunk is one sentence (cut at a comma when long). Later chunks hold up to two
+    sentences, so there are fewer joins (each join is a short pause) and the synthesizer
+    stays ahead of playback.
     """
     text = re.sub(r"\s+", " ", text or "").strip()
     if not text:
         return []
-    sentences = re.split(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])", text)
-    out: list[str] = []
-    for s in sentences:
+    sentences: list[str] = []
+    for s in re.split(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])", text):
         s = s.strip()
-        if not s:
-            continue
-        limit = first_max if not out else max_len
-        out.extend(_split_long(s, limit, max_len))
-    # Glue tiny tails ("OK.") onto the clause before so they do not cost a synth call.
-    merged: list[str] = []
-    for c in out:
-        if merged and len(c) < 12 and len(merged[-1]) + len(c) < max_len:
-            merged[-1] = f"{merged[-1]} {c}"
+        if s:
+            sentences.extend(_split_long(s, first_max if not sentences else max_len, max_len))
+    out: list[str] = [sentences[0]]
+    count = 1  # sentences in out[-1]
+    for s in sentences[1:]:
+        tiny = len(s) < 12
+        # A chunk may grow to about 1.6 times the one before it. Synthesis takes roughly 0.6 of
+        # the audio's length (Chatterbox on the RTX 4060), so chunk n+1 is ready before chunk n
+        # ends and the join stays a short pause.
+        limit = max_len if len(out) < 2 else min(max_len, int(1.6 * len(out[-2])) + 20)
+        if len(out) > 1 and (count < 2 or tiny) and len(out[-1]) + 1 + len(s) <= limit:
+            out[-1] = f"{out[-1]} {s}"
+            count += 1
+        elif len(out) == 1 and tiny and len(out[0]) + 1 + len(s) <= first_max:
+            out[0] = f"{out[0]} {s}"
         else:
-            merged.append(c)
-    return merged
+            grow = min(max_len, int(1.6 * len(out[-1])) + 20)
+            parts = _split_long(s, grow, max_len) if len(s) > grow else [s]
+            out.extend(parts)
+            count = 1
+    return out
+
+
+clauses = chunks  # the name used before 0.1.1
 
 
 def _split_long(s: str, limit: int, max_len: int) -> list[str]:
@@ -147,9 +165,19 @@ def _split_long(s: str, limit: int, max_len: int) -> list[str]:
     return final
 
 
-def strip_wake(text: str) -> str:
-    """Remove a leading "Hey Chief," from a transcript (the capture includes the wake word)."""
-    t = _WAKE_PREFIX.sub("", text or "", count=1).strip()
+def strip_wake(text: str, phrase: str = "hey chief", name: str = "") -> str:
+    """Remove a leading wake phrase ("Hey Chief,") or the Chief's name from a transcript
+    (the capture includes the wake word)."""
+    t = text or ""
+    if " ".join(phrase.lower().split()) == "hey chief":
+        t = _WAKE_PREFIX.sub("", t, count=1)
+    else:
+        words = [re.escape(w) for w in re.findall(r"[a-z0-9']+", phrase.lower())]
+        if words:
+            t = re.sub(r"^\s*" + r"[\s,.!-]*".join(words) + r"\b[\s,.!?:;-]*", "", t, count=1, flags=re.I)
+    if name:
+        t = re.sub(r"^\s*" + re.escape(name) + r"\b[\s,.!?:;-]+", "", t, count=1, flags=re.I)
+    t = t.strip()
     if t and t[0].islower():
         t = t[0].upper() + t[1:]
     return t
@@ -159,3 +187,90 @@ def is_noise(text: str) -> bool:
     """Whisper's usual output for silence or noise."""
     t = re.sub(r"[^a-z ]", "", (text or "").lower()).strip()
     return t in {"", "you", "thank you", "thanks for watching", "thank you for watching", "bye"}
+
+
+# --------------------------------------------------------------------------- natural reading
+_ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+         "fifteen sixteen seventeen eighteen nineteen").split()
+_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+
+def two_digits(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    tens, ones = divmod(n, 10)
+    return _TENS[tens] + (f" {_ONES[ones]}" if ones else "")
+
+
+def say_number(n: int) -> str:
+    """How a person reads a pull request or issue number: 24 "twenty four",
+    216 "two sixteen", 1205 "twelve oh five", 1737 "seventeen thirty seven"."""
+    if n < 100:
+        return two_digits(n)
+    if n < 1000:
+        h, r = divmod(n, 100)
+        if r == 0:
+            return f"{_ONES[h]} hundred"
+        return f"{_ONES[h]} " + (f"oh {_ONES[r]}" if r < 10 else two_digits(r))
+    if n < 10000:
+        h, r = divmod(n, 100)
+        if n % 1000 == 0:
+            return f"{_ONES[n // 1000]} thousand"
+        if r == 0:
+            return f"{two_digits(h)} hundred"
+        return f"{two_digits(h)} " + (f"oh {_ONES[r]}" if r < 10 else two_digits(r))
+    return " ".join(_ONES[int(d)] for d in str(n))
+
+
+def spell(s: str) -> str:
+    """Letters one by one, digits as words: "DP1" -> "D P one"."""
+    return " ".join(_ONES[int(c)] if c.isdigit() else c.upper() for c in s if c.isalnum())
+
+
+_PR = re.compile(r"\b(?:PRs?|[Pp]ull [Rr]equest)[\s-]*#?\s*(\d{1,5})\b")
+_PRS = re.compile(r"\bPRs\b")
+_PR_WORD = re.compile(r"\bPR\b")
+# Ticket keys: 2 to 5 capitals or digits starting with a capital, a dash, 1 to 5 digits (DP1-676, NEO-123).
+_TICKET = re.compile(r"\b([A-Z][A-Z0-9]{1,4})-(\d{1,5})\b")
+_TIME = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)(?:\s*([AaPp])\.?[Mm]\.?)?(?![\d:])")
+_HASH_NUM = re.compile(r"(?<![\w&])#(\d{1,6})\b")
+
+
+def _time(m: re.Match) -> str:
+    h, mm, ampm = int(m.group(1)), int(m.group(2)), m.group(3)
+    words = two_digits(h)
+    if mm == 0:
+        words += "" if ampm else " o'clock"
+    else:
+        words += f" oh {_ONES[mm]}" if mm < 10 else f" {two_digits(mm)}"
+    if ampm:
+        words += f" {ampm.upper()} M"
+    return words
+
+
+def naturalize(t: str) -> str:
+    """Make leftover symbols, ticket keys, pull request numbers and times read naturally.
+    Conservative: anything it does not recognise is left as it is."""
+    t = _TIME.sub(_time, t)
+    t = _PR.sub(lambda m: f"pull request {say_number(int(m.group(1)))}", t)
+    t = _PRS.sub("pull requests", t)
+    t = _PR_WORD.sub("pull request", t)
+    t = _TICKET.sub(lambda m: f"{spell(m.group(1))} {spell(m.group(2))}", t)
+    t = _HASH_NUM.sub(lambda m: f"number {say_number(int(m.group(1)))}", t)
+    t = re.sub(r"\s*(?:->|=>|→|⇒)\s*", " to ", t)
+    t = re.sub(r"\s*(?:<-|←)\s*", " from ", t)
+    t = re.sub(r"(?<=\w)\s*&\s*(?=\w)", " and ", t)
+    t = t.replace("&", " and ")
+    t = re.sub(r"(\d)\s*%", r"\1 percent", t)
+    t = re.sub(r"(?<=\d)\s*\+(?=\s|$|[.,;])", " plus", t)
+    t = re.sub(r"(?<![\w~])~\s*(?=\d)", "about ", t)
+    t = re.sub(r"\s+=\s+", " equals ", t)
+    t = re.sub(r"\be\.g\.,?", "for example", t)
+    t = re.sub(r"\bi\.e\.,?", "that is", t)
+    t = re.sub(r"\betc\.", "and so on.", t)
+    t = re.sub(r"\bvs\.?(?=\s)", "versus", t)
+    t = re.sub(r"(?<=[A-Za-z])/(?=[A-Za-z])", " or ", t)
+    t = re.sub(r"(?<=\w)_(?=\w)", " ", t)          # snake_case -> snake case
+    t = re.sub(r"[*_`#\\^{}<>\[\]~]+", " ", t)     # leftover markdown or code symbols
+    t = re.sub(r"(?<=\s)/(?=\s)|^/|/$", " ", t)
+    return re.sub(r"[ \t]{2,}", " ", t)

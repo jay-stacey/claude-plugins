@@ -50,7 +50,9 @@ class SpeakerTest(unittest.TestCase):
         self.assertLess(time.monotonic() - t0, 0.3)  # fast cancel
         by_id = {p["id"]: p["ok"] for p in self.spoken()}
         self.assertEqual(by_id, {"spk_1": False, "spk_2": False})
-        self.assertNotIn("Never spoken.", tts.texts)
+        time.sleep(0.6)
+        self.assertEqual(len(sink.played), 0)  # spk_2 may be synthesized ahead, never played
+        self.assertFalse(s.is_busy)
         s.close()
 
     def test_empty_text_is_ok(self):
@@ -68,7 +70,7 @@ class SpeakerTest(unittest.TestCase):
             s.start()
             s.submit("spk_w", "Hello there. This is a test.")
             self.assertTrue(wait_for(lambda: self.spoken()))
-            self.assertTrue((Path(d) / "spk_w.wav").exists())
+            self.assertTrue(wait_for(lambda: (Path(d) / "spk_w.wav").exists()))
             self.assertTrue((Path(d) / "spk_w-01.wav").exists())
             s.close()
 

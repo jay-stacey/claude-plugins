@@ -11,7 +11,7 @@ from . import config
 LOG = logging.getLogger("cosvoice")
 
 
-def setup(to_stderr: bool = False, level: int = logging.INFO) -> logging.Logger:
+def setup(to_stderr: bool = False, level: int = logging.INFO, name: str = "voice.log") -> logging.Logger:
     LOG.setLevel(level)
     LOG.propagate = False
     for h in list(LOG.handlers):
@@ -21,7 +21,7 @@ def setup(to_stderr: bool = False, level: int = logging.INFO) -> logging.Logger:
         d = config.logs_dir()
         d.mkdir(parents=True, exist_ok=True)
         fh = logging.handlers.RotatingFileHandler(
-            d / "voice.log", maxBytes=5 * 1024 * 1024, backupCount=2, encoding="utf-8", delay=True)
+            d / name, maxBytes=5 * 1024 * 1024, backupCount=2, encoding="utf-8", delay=True)
         fh.setFormatter(fmt)
         LOG.addHandler(fh)
     except OSError:

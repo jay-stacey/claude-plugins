@@ -263,7 +263,19 @@ foreach ($name in $KokoroFiles.Keys) {
     }
 }
 
-# sherpa-onnx keyword spotter for "hey chief" (used when HOME\models\hey_chief.onnx is missing).
+# The "hey chief" openWakeWord model ships with the plugin (server\voice\models). Install it
+# into HOME\models when it is not there yet; a model already there (retrained) is kept.
+$shipped = Join-Path $ServerDir 'voice\models'
+foreach ($name in 'hey_chief.onnx', 'hey_chief.json') {
+    $src = Join-Path $shipped $name
+    $dest = Join-Path $models $name
+    if ((Test-Path $src) -and -not (Test-Path $dest)) {
+        Step "Installing the wake word model $name"
+        Copy-Item $src $dest -Force
+    }
+}
+
+# sherpa-onnx keyword spotter: runs beside openWakeWord, and alone for a wake word with no model.
 $kwsDir = Join-Path $models "kws\$KwsName"
 if (-not (Test-Path (Join-Path $kwsDir 'tokens.txt'))) {
     Step 'Downloading the sherpa-onnx keyword spotter (about 20 MB)'
@@ -297,6 +309,13 @@ function Save-Config([string]$DeviceName, [string]$Reason) {
             if ($t -gt 0 -and $t -lt 1) { $wakeThreshold = $t }
         } catch { }
     }
+    # Keep what voiced.py --enroll and the user set: the per-user threshold and voice verifier,
+    # and any key this script does not manage.
+    $voiceJson = Join-Path $Target 'voice.json'
+    $old = $null
+    if (Test-Path $voiceJson) { try { $old = Get-Content $voiceJson -Raw | ConvertFrom-Json } catch { } }
+    $enrolled = $old -and $old.wakeVerifier -or (Test-Path (Join-Path $models 'hey_chief.enroll.json'))
+    if ($enrolled -and $old -and $old.wakeThreshold) { $wakeThreshold = [double]$old.wakeThreshold }
     $config = [ordered]@{
         device       = $DeviceName
         reason       = $Reason
@@ -312,9 +331,14 @@ function Save-Config([string]$DeviceName, [string]$Reason) {
         cpu          = $cpuName
         checked      = (Get-Date).ToString('s')
     }
+    if ($old) {
+        foreach ($prop in $old.PSObject.Properties) {
+            if (-not $config.Contains($prop.Name)) { $config[$prop.Name] = $prop.Value }
+        }
+    }
     # Without a byte order mark, so Python's json module reads it.
     $utf8 = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllText((Join-Path $Target 'voice.json'), ($config | ConvertTo-Json), $utf8)
+    [System.IO.File]::WriteAllText($voiceJson, ($config | ConvertTo-Json), $utf8)
 }
 
 function Test-Voice([string]$DeviceName) {

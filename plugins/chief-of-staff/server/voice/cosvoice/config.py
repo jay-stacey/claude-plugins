@@ -17,6 +17,10 @@ CHUNK = 512  # Silero VAD frame at 16 kHz (32 ms)
 CHUNK_MS = CHUNK * 1000 / SAMPLE_RATE
 WAKE_PHRASE = "hey chief"
 KWS_DIRNAME = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+PLUGIN_MODELS = Path(__file__).resolve().parent.parent / "models"  # shipped with the plugin
+DEFAULT_FILLERS = ["On it.", "One sec.", "Let me check.", "Sure, give me a moment.", "Checking now.",
+                   "Looking into it.", "Give me a second.", "Let me look.", "Okay, checking.",
+                   "Just a moment."]
 
 
 def home() -> Path:
@@ -51,8 +55,15 @@ class VoiceConfig:
     chatterbox_ref_wav: str = ""         # optional voice to clone (over 5 s)
     min_free_vram_mib: int = 3584        # below this, Kokoro is the main voice
     # Wake word
-    wake_model: str = ""                 # openWakeWord .onnx; default HOME\models\hey_chief.onnx
+    wake_word: str = WAKE_PHRASE
+    chief_name: str = ""                 # also stripped from the start of a transcript
+    wake_model: str = ""                 # openWakeWord .onnx; default HOME\models\<phrase>.onnx
     wake_threshold: float = 0.5
+    wake_verifier: str = ""              # per-user custom verifier (.pkl) from voiced.py --enroll
+    wake_verifier_gate: float = 0.1      # base score that runs the verifier
+    near_miss_ratio: float = 0.6         # log scores at or above this share of the threshold
+    wake_ack: str = "chime"              # chime | word | off
+    fillers: list = field(default_factory=lambda: list(DEFAULT_FILLERS))
     wake_speaking_threshold: float = 0.7  # half duplex: our own voice is on the mic
     kws_dir: str = ""
     kws_threshold: float = 0.25
@@ -67,6 +78,9 @@ class VoiceConfig:
     echo_cancel: bool = True
     aec_delay_ms: int = 80
     speaking_tail_ms: int = 300
+    barge_vad: float = 0.8               # full duplex: this VAD level ...
+    barge_ms: int = 350                  # ... held this long stops the speech
+    chunk_pause_ms: int = 70             # added silence between speech chunks (paragraphs too)
     input_device: str | int | None = None
     output_device: str | int | None = None
     # Server
@@ -75,8 +89,18 @@ class VoiceConfig:
     extra: dict = field(default_factory=dict)
 
     @property
+    def wake_slug(self) -> str:
+        return slug(self.wake_word)
+
+    @property
     def wake_model_path(self) -> Path:
-        return Path(self.wake_model) if self.wake_model else models_dir() / "hey_chief.onnx"
+        """The openWakeWord model for the current wake word: voice.json's wakeModel when it is
+        the same phrase, else HOME\\models\\<slug>.onnx, else the one shipped with the plugin."""
+        if self.wake_model and Path(self.wake_model).stem == self.wake_slug:
+            return Path(self.wake_model)
+        home = models_dir() / f"{self.wake_slug}.onnx"
+        shipped = PLUGIN_MODELS / f"{self.wake_slug}.onnx"
+        return home if home.exists() or not shipped.exists() else shipped
 
     @property
     def kws_path(self) -> Path:
@@ -95,9 +119,19 @@ _ALIASES = {
     "minFreeVramMiB": "min_free_vram_mib", "wakeModel": "wake_model", "wakeThreshold": "wake_threshold",
     "wakeSpeakingThreshold": "wake_speaking_threshold", "kwsDir": "kws_dir",
     "kwsThreshold": "kws_threshold", "kwsScore": "kws_score", "echoCancel": "echo_cancel",
+    "wakeWord": "wake_word", "chiefName": "chief_name", "wakeVerifier": "wake_verifier",
+    "wakeVerifierGate": "wake_verifier_gate", "wakeAck": "wake_ack", "bargeVad": "barge_vad",
+    "bargeMs": "barge_ms", "chunkPauseMs": "chunk_pause_ms", "nearMissRatio": "near_miss_ratio",
     "inputDevice": "input_device", "outputDevice": "output_device",
     "trailingSilenceMs": "trailing_silence_ms", "prerollMs": "preroll_ms",
 }
+
+
+def slug(phrase: str) -> str:
+    """ "Hey Chief" -> "hey_chief" (model and keyword file names)."""
+    import re
+
+    return "_".join(re.findall(r"[a-z0-9]+", (phrase or "").lower())) or "hey_chief"
 
 
 def load(path: Path | None = None, **overrides) -> VoiceConfig:

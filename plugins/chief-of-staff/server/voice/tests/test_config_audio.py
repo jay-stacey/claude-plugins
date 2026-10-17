@@ -25,7 +25,13 @@ class ConfigTest(unittest.TestCase):
                 self.assertEqual((cfg.device, cfg.tts, cfg.fallback_tts, cfg.stt_model), ("cpu", "kokoro", "chatterbox", "small.en"))
                 self.assertEqual(cfg.wake_threshold, 0.4)
                 self.assertEqual(cfg.extra, {"unknownKey": 1})
+                # no HOME copy yet: the model shipped with the plugin; then the HOME copy wins
+                self.assertEqual(cfg.wake_model_path, config.PLUGIN_MODELS / "hey_chief.onnx")
+                (Path(d) / "models").mkdir()
+                (Path(d) / "models" / "hey_chief.onnx").write_bytes(b"x")
                 self.assertEqual(cfg.wake_model_path, Path(d) / "models" / "hey_chief.onnx")
+                cfg.wake_word = "hey jarvis"
+                self.assertEqual(cfg.wake_model_path, Path(d) / "models" / "hey_jarvis.onnx")
                 (Path(d) / "run").mkdir()
                 (Path(d) / "run" / "server.json").write_text('{"port": 47870, "token": "t"}', encoding="utf-8")
                 self.assertEqual(config.read_server_info()["port"], 47870)

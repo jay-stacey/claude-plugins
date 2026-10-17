@@ -7,16 +7,17 @@ playback), jobs (long poll), events (posts to the server), main (waits for stop)
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 
 import numpy as np
 
 from .audio import MicCapture, Rechunker, level
-from .config import CHUNK, WAKE_PHRASE, VoiceConfig
+from .config import CHUNK, VoiceConfig
 from .duplex import FRAME, EchoCanceller, RenderReference
 from .pipeline import Pipeline
-from .playback import Speaker, SpeakerSink
+from .playback import Speaker, SpeakerSink, chime, trim_edges
 
 LOG = logging.getLogger("cosvoice")
 
@@ -59,6 +60,74 @@ def load_models(cfg: VoiceConfig, on_progress=lambda detail: None) -> Models:
     return Models(v, w, t, manager, device, reason)
 
 
+class Clips:
+    """Short sounds cached in the current voice so they play with no delay: the "Yes?" wake
+    acknowledgment and the filler acknowledgments. Rebuilt in the background at start and
+    after the voice engine changes."""
+
+    YES = "Yes?"
+
+    def __init__(self, tts, fillers: list[str]) -> None:
+        self.tts = tts
+        self.fillers = [f for f in fillers if isinstance(f, str) and f.strip()]
+        self._cache: dict[str, tuple] = {}
+        self._engine = None
+        self._gen = 0
+        self._lock = threading.Lock()
+        self._recent: list[str] = []
+
+    def rebuild(self, fillers: list[str] | None = None, wait: bool = False) -> None:
+        with self._lock:
+            if fillers is not None:
+                self.fillers = [f for f in fillers if isinstance(f, str) and f.strip()][:20]
+            self._gen += 1
+            gen = self._gen
+            self._cache = {k: v for k, v in self._cache.items() if self._engine == getattr(self.tts, "name", None)
+                           and (k == self.YES or k in self.fillers)}
+
+        def run():
+            engine = getattr(self.tts, "name", None)
+            for text in [self.YES] + list(self.fillers):
+                if gen != self._gen:
+                    return
+                if text in self._cache and self._engine == engine:
+                    continue
+                try:
+                    audio, sr = self.tts.synthesize(text)
+                except Exception:
+                    LOG.exception("caching %r failed", text)
+                    continue
+                with self._lock:
+                    if gen == self._gen:
+                        self._cache[text] = (trim_edges(audio, sr), sr)
+            self._engine = engine
+            LOG.info("cached %d short clips in the %s voice", len(self._cache), engine)
+
+        t = threading.Thread(target=run, name="clips", daemon=True)
+        t.start()
+        if wait:
+            t.join(120)
+
+    def engine_changed(self) -> None:
+        if getattr(self.tts, "name", None) != self._engine:
+            self.rebuild()
+
+    def get(self, text: str):
+        with self._lock:
+            return self._cache.get(text)
+
+    def pick_filler(self):
+        """A cached filler that is not one of the last two played."""
+        with self._lock:
+            ready = [f for f in self.fillers if f in self._cache]
+            fresh = [f for f in ready if f not in self._recent[-2:]] or ready
+            if not fresh:
+                return None, None
+            text = random.choice(fresh)
+            self._recent = (self._recent + [text])[-2:]
+            return text, self._cache[text]
+
+
 class Daemon:
     def __init__(self, cfg: VoiceConfig, link, models: Models, mic=None, sink=None, echo=None) -> None:
         self.cfg = cfg
@@ -69,7 +138,10 @@ class Daemon:
         self.echo = echo if echo is not None else EchoCanceller(cfg.echo_cancel, cfg.aec_delay_ms)
         self.mic = mic if mic is not None else MicCapture(chunk_samples=FRAME, device=cfg.input_device)
         self.sink = sink if sink is not None else SpeakerSink(cfg.output_device, self.ref)
-        self.speaker = Speaker(models.tts.synthesize, self.sink, self._on_speaker, cfg.speaking_tail_ms)
+        self.speaker = Speaker(models.tts.synthesize, self.sink, self._on_speaker, cfg.speaking_tail_ms,
+                               pause_ms=cfg.chunk_pause_ms)
+        self.clips = Clips(models.tts, list(cfg.fillers))
+        self.wake_ack = cfg.wake_ack if cfg.wake_ack in ("chime", "word", "off") else "chime"
         self.pipeline = Pipeline(cfg, models.vad, models.wake, models.stt, self._on_pipeline,
                                  is_speaking=lambda: self.speaker.is_speaking,
                                  full_duplex=lambda: self.echo.available, on_state=self.publish)
@@ -82,7 +154,11 @@ class Daemon:
         self._rechunk = Rechunker(CHUNK)
         self._threads: list[threading.Thread] = []
         if models.tts is not None and hasattr(models.tts, "on_change"):
-            models.tts.on_change = lambda name: self.publish()
+            models.tts.on_change = self._engine_changed
+
+    def _engine_changed(self, name=None) -> None:
+        self.clips.engine_changed()
+        self.publish()
 
     # --------------------------------------------------------------- status
     def ready_detail(self) -> str:
@@ -101,12 +177,12 @@ class Daemon:
     def status(self) -> dict:
         if self.error:
             state = "error"
-        elif self.speaker.is_busy:
-            state = "speaking"
         elif self.pipeline.state == "capturing":
             state = "hearing"
         elif self.pipeline.state == "transcribing":
             state = "thinking"
+        elif self.speaker.is_busy:
+            state = "speaking"
         elif self.listen == "off":
             state = "off"
         else:
@@ -114,7 +190,7 @@ class Daemon:
         return {
             "state": state, "listen": self.listen, "speak": self.speak, "device": self.m.device,
             "stt": getattr(self.m.stt, "label", None), "tts": getattr(self.m.tts, "name", None),
-            "wakeWord": WAKE_PHRASE if self.m.wake is not None else None,
+            "wakeWord": self.cfg.wake_word if self.m.wake is not None else None,
             "detail": self.error or self.notice or self.ready_detail(),
         }
 
@@ -128,6 +204,40 @@ class Daemon:
         self.link.post({"type": "status", "status": s})
 
     # ----------------------------------------------------------------- jobs
+    def apply_settings(self, job: dict) -> None:
+        """wakeWord, wakeAck, fillers and chiefName from a control job (sent at first poll and
+        after a change). A new wake word loads in the background; the old one works until then."""
+        ack = job.get("wakeAck")
+        if ack in ("chime", "word", "off"):
+            self.wake_ack = ack
+        fillers = job.get("fillers")
+        if isinstance(fillers, list) and fillers != self.clips.fillers:
+            self.clips.rebuild([str(f)[:80] for f in fillers if isinstance(f, str)])
+        name = job.get("chiefName")
+        if isinstance(name, str):
+            self.cfg.chief_name = name.strip()[:40]
+            self.pipeline.set_wake(self.pipeline._wake, None, self.cfg.chief_name)
+        word = job.get("wakeWord")
+        if isinstance(word, str) and word.strip():
+            phrase = " ".join(word.lower().split())[:40]
+            if phrase != " ".join(self.cfg.wake_word.lower().split()) or self.m.wake is None:
+                threading.Thread(target=self._load_wake, args=(phrase,), name="wake-load", daemon=True).start()
+
+    def _load_wake(self, phrase: str) -> None:
+        from . import wake
+
+        LOG.info("loading the wake word %r", phrase)
+        w, reason = wake.choose(self.cfg, phrase)
+        if w is None:
+            self.notice = f"The wake word {phrase!r} did not load ({reason}). The old one still works."
+            self.publish()
+            return
+        self.cfg.wake_word = phrase
+        self.m.wake, self.m.wake_reason = w, reason
+        self.pipeline.set_wake(w, phrase)
+        self.notice = None
+        self.publish()
+
     def apply_control(self, listen=None, speak=None, ptt=None) -> None:
         if listen in ("wake", "ptt", "off"):
             if listen == "wake" and self.m.wake is None:
@@ -159,20 +269,51 @@ class Daemon:
         elif kind == "stop":
             self.speaker.stop("stop")
         elif kind == "control":
+            self.apply_settings(job)
             self.apply_control(job.get("listen"), job.get("speak"), job.get("pttDown"))
+        elif kind == "ack":
+            self.ack(job.get("id"))
         elif kind in ("quit", "shutdown"):
             LOG.info("quit job from the server")
             self.stop_event.set()
         else:
             LOG.warning("unknown job kind %r", kind)
 
+    def ack(self, job_id=None) -> bool:
+        """A short filler ("On it.") right away, unless something is already playing."""
+        played = False
+        if self.speak and not self.speaker.is_busy and not self.speaker.is_speaking:
+            text, clip = self.clips.pick_filler()
+            if clip is not None:
+                played = self.speaker.play_clip(*clip)
+                LOG.info("filler %r%s", text, "" if played else " skipped")
+        if job_id:
+            self.link.post({"type": "spoken", "id": job_id, "ok": played})
+        return played
+
+    def wake_acknowledge(self) -> None:
+        if self.wake_ack == "off":
+            return
+        clip = self.clips.get(Clips.YES) if self.wake_ack == "word" else None
+        audio, sr = clip if clip is not None else (chime(), 24000)
+        self.speaker.play_clip(audio, sr)
+
     # --------------------------------------------------------------- events
     def _on_pipeline(self, kind: str, payload: dict) -> None:
         if kind == "wake":
-            self.link.post({"type": "wake"})
+            self.link.post({"type": "wake", "score": payload.get("score"), "source": payload.get("source")})
             if payload.get("barge") or self.speaker.is_busy:
-                LOG.info("barge-in: stopping speech")
+                LOG.info("barge-in by the wake word: stopping speech")
                 self.speaker.stop("barge-in")
+            self.wake_acknowledge()
+            self.publish()
+        elif kind == "barge":
+            LOG.info("barge-in by speech: stopping speech")
+            self.speaker.stop("barge-in")
+            self.link.post({"type": "barge"})
+            self.publish()
+        elif kind == "nearMiss":
+            self.link.post({"type": "nearMiss", "score": payload.get("score")})
         elif kind == "final":
             LOG.info("final: %r", payload["text"])
             self.link.post({"type": "final", "text": payload["text"]})
@@ -183,6 +324,7 @@ class Daemon:
     def _on_speaker(self, kind: str, payload: dict) -> None:
         if kind == "spoken":
             self.link.post({"type": "spoken", "id": payload["id"], "ok": bool(payload["ok"])})
+        elif kind == "idle":
             self.ref.clear()
         self.publish()
 
@@ -246,6 +388,7 @@ class Daemon:
     # ------------------------------------------------------------------ run
     def start(self, listen: str = "wake", speak: bool = True) -> None:
         self.speaker.start()
+        self.clips.rebuild()
         self.listen = listen if listen in ("wake", "ptt", "off") else "wake"
         self.speak = bool(speak)
         self.pipeline.set_mode(self.listen)

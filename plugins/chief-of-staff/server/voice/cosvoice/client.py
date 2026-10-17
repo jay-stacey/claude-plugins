@@ -156,6 +156,11 @@ class ServerLink:
                 return
             except Unauthorized:
                 self.refresh()
+            except urllib.error.HTTPError as e:
+                if 400 <= e.code < 500:  # the server refuses this event (an older server); no retry
+                    LOG.info("server refused event %s (%s)", event.get("type"), e.code)
+                    return
+                LOG.debug("event %s failed: %s", event.get("type"), e)
             except Exception as e:
                 LOG.debug("event %s failed: %s", event.get("type"), e)
             if self._stop.wait(delay):

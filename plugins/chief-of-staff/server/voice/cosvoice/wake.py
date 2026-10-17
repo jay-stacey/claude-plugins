@@ -1,10 +1,12 @@
-"""Wake word "hey chief". Two backends, picked at start:
+"""Wake word. Two detectors run side by side, and either one fires the wake:
 
-1. openWakeWord with a trained model file (HOME\\models\\hey_chief.onnx). Ported from Pepper wake.py.
-2. sherpa-onnx keyword spotting for the phrase "hey chief" (no training needed), used when
-   no model file exists.
+1. openWakeWord with a trained model file (HOME\\models\\<phrase>.onnx, or the hey_chief.onnx
+   shipped in server/voice/models). Optional per-user custom verifier from voiced.py --enroll.
+   Ported from Pepper wake.py.
+2. sherpa-onnx keyword spotting for the phrase itself (no training needed), so any wake word
+   works and a quiet "hey chief" that openWakeWord scores just under its threshold still counts.
 
-Each backend takes 512-sample float32 chunks at 16 kHz and returns (fired, score).
+Each detector takes 512-sample float32 chunks at 16 kHz and returns (fired, score).
 """
 
 from __future__ import annotations
@@ -14,17 +16,21 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import WAKE_PHRASE, VoiceConfig
+from .config import WAKE_PHRASE, VoiceConfig, slug
 
 LOG = logging.getLogger("cosvoice")
 
 
 class OpenWakeWord:
     name = "openwakeword"
+    scored = True  # gives a continuous score (sherpa-onnx only says yes or no)
 
-    def __init__(self, model_path: str | Path, threshold: float = 0.5) -> None:
+    def __init__(self, model_path: str | Path, threshold: float = 0.5, verifier: str | Path | None = None,
+                 verifier_gate: float = 0.1) -> None:
         self.model_path = str(model_path)
         self.threshold = threshold
+        self.verifier = str(verifier) if verifier and Path(verifier).exists() else None
+        self.verifier_gate = verifier_gate
         self._model = None
         self._key = None
         self._buf = np.zeros(0, dtype=np.int16)
@@ -32,7 +38,7 @@ class OpenWakeWord:
 
     @property
     def label(self) -> str:
-        return f"openWakeWord ({Path(self.model_path).name})"
+        return f"openWakeWord ({Path(self.model_path).name}{', your voice' if self.verifier else ''})"
 
     def load(self) -> None:
         if self._model is not None:
@@ -44,9 +50,15 @@ class OpenWakeWord:
         ensure_oww_base_models()
         from openwakeword.model import Model
 
-        self._model = Model(wakeword_models=[self.model_path], inference_framework="onnx")
+        key = Path(self.model_path).stem
+        kwargs = {}
+        if self.verifier:
+            kwargs = {"custom_verifier_models": {key: self.verifier},
+                      "custom_verifier_threshold": self.verifier_gate}
+        self._model = Model(wakeword_models=[self.model_path], inference_framework="onnx", **kwargs)
         self._key = list(self._model.models.keys())[0]
-        LOG.info("wake model loaded: %s (key=%s, threshold=%.2f)", self.model_path, self._key, self.threshold)
+        LOG.info("wake model loaded: %s (key=%s, threshold=%.2f, verifier=%s)",
+                 self.model_path, self._key, self.threshold, self.verifier)
 
     def reset(self) -> None:
         self._buf = np.zeros(0, dtype=np.int16)
@@ -71,7 +83,7 @@ class OpenWakeWord:
 
 def keyword_line(phrase: str, bpe_model: Path, tokens_file: Path, score: float, threshold: float) -> str:
     """One sherpa-onnx keywords line: '<bpe tokens> :<boost> #<threshold> @<NAME>'."""
-    text = phrase.upper()
+    text = " ".join(phrase.upper().split())
     pieces = None
     try:
         import sentencepiece as spm
@@ -94,6 +106,7 @@ def keyword_line(phrase: str, bpe_model: Path, tokens_file: Path, score: float, 
 
 class SherpaKws:
     name = "sherpa-onnx"
+    scored = False
 
     def __init__(self, model_dir: str | Path, phrase: str = WAKE_PHRASE, score: float = 1.5,
                  threshold: float = 0.25) -> None:
@@ -125,7 +138,7 @@ class SherpaKws:
         tokens = self.model_dir / "tokens.txt"
         bpe = self.model_dir / "bpe.model"
         line = keyword_line(self.phrase, bpe, tokens, self.score_boost, self.kws_threshold)
-        kw_file = self.model_dir / "keywords-hey-chief.txt"
+        kw_file = self.model_dir / f"keywords-{slug(self.phrase).replace('_', '-')}.txt"
         if not kw_file.exists() or kw_file.read_text(encoding="utf-8").strip() != line:
             kw_file.write_text(line + "\n", encoding="utf-8")
         self._kws = sherpa_onnx.KeywordSpotter(
@@ -155,29 +168,93 @@ class SherpaKws:
         return fired, 1.0 if fired else 0.0
 
 
-def choose(cfg: VoiceConfig):
-    """The best wake backend that loads, or (None, reason)."""
-    reasons = []
-    model = cfg.wake_model_path
+class CombinedWake:
+    """Runs every detector on every chunk; any one of them fires the wake.
+
+    score is the best continuous score (openWakeWord), for near-miss logging; source says
+    which detector fired last."""
+
+    def __init__(self, detectors: list, phrase: str = WAKE_PHRASE) -> None:
+        self.detectors = list(detectors)
+        self.phrase = phrase
+        self.source: str | None = None
+        self.score = 0.0
+
+    @property
+    def label(self) -> str:
+        return " + ".join(d.label for d in self.detectors)
+
+    @property
+    def threshold(self) -> float:
+        scored = [d.threshold for d in self.detectors if getattr(d, "scored", False)]
+        return scored[0] if scored else 0.5
+
+    @property
+    def scored(self) -> bool:
+        return any(getattr(d, "scored", False) for d in self.detectors)
+
+    def reset(self) -> None:
+        for d in self.detectors:
+            try:
+                d.reset()
+            except Exception:
+                LOG.exception("wake reset failed (%s)", getattr(d, "name", d))
+
+    def __call__(self, chunk: np.ndarray, threshold: float | None = None) -> tuple[bool, float]:
+        fired_by = None
+        best = 0.0
+        for d in list(self.detectors):
+            try:
+                fired, score = d(chunk, threshold)
+            except Exception:
+                LOG.exception("wake detector %s failed; dropping it", getattr(d, "name", d))
+                self.detectors.remove(d)
+                continue
+            if getattr(d, "scored", False):
+                best = max(best, score)
+            if fired and fired_by is None:
+                fired_by = d.name
+        self.score = best
+        if fired_by:
+            self.source = fired_by
+            return True, best if best else 1.0
+        return False, best
+
+
+def choose(cfg: VoiceConfig, phrase: str | None = None):
+    """Every detector that loads for the phrase, combined; or (None, reason)."""
+    from .config import PLUGIN_MODELS, models_dir
+
+    phrase = " ".join((phrase or cfg.wake_word or WAKE_PHRASE).lower().split())
+    detectors, reasons = [], []
+    key = slug(phrase)
+    if key == cfg.wake_slug:
+        model = cfg.wake_model_path
+    else:
+        cands = [models_dir() / f"{key}.onnx", PLUGIN_MODELS / f"{key}.onnx"]
+        model = next((c for c in cands if c.exists()), cands[0])
     if model.exists():
         try:
-            w = OpenWakeWord(model, cfg.wake_threshold)
+            verifier = cfg.wake_verifier if cfg.wake_verifier and Path(cfg.wake_verifier).name.startswith(key) else None
+            w = OpenWakeWord(model, cfg.wake_threshold, verifier, cfg.wake_verifier_gate)
             w.load()
-            return w, None
+            detectors.append(w)
         except Exception as e:
             LOG.exception("openWakeWord failed to load")
             reasons.append(f"openWakeWord failed ({e.__class__.__name__})")
     else:
-        reasons.append(f"no wake model at {model}")
+        reasons.append(f"no openWakeWord model for {phrase!r}")
     kdir = cfg.kws_path
     if (kdir / "tokens.txt").exists():
         try:
-            w = SherpaKws(kdir, WAKE_PHRASE, cfg.kws_score, cfg.kws_threshold)
+            w = SherpaKws(kdir, phrase, cfg.kws_score, cfg.kws_threshold)
             w.load()
-            return w, None
+            detectors.append(w)
         except Exception as e:
             LOG.exception("sherpa-onnx keyword spotting failed to load")
             reasons.append(f"sherpa-onnx failed ({e.__class__.__name__})")
     else:
         reasons.append(f"no keyword spotter at {kdir}")
-    return None, "; ".join(reasons)
+    if not detectors:
+        return None, "; ".join(reasons)
+    return CombinedWake(detectors, phrase), ("; ".join(reasons) or None)
