@@ -95,6 +95,13 @@ class StateRules(unittest.TestCase):
         counts = counts_of(sessions)
         self.assertEqual(sum(counts.values()), len(sessions) - 1)
 
+    def test_chief_is_marked_by_its_cli_id_before_its_desktop_id_is_known(self):
+        desktop = DesktopSource(FIXTURES / "desktop").scan()
+        rows = json.loads((FIXTURES / "agents.json").read_text(encoding="utf-8"))
+        sessions = build_sessions(desktop, rows, config.defaults(), FIXTURE_NOW, None, chief_cli="cli-wait")
+        self.assertEqual([s["id"] for s in sessions if s["isChief"]], [CHIEF])
+        self.assertEqual(sum(counts_of(sessions).values()), len(sessions) - 1)
+
     def test_stale_hours_setting_is_used(self):
         settings = dict(config.defaults(), staleHours=1)
         self.assertEqual(fixture_sessions(settings=settings)[EEE]["state"], "you")

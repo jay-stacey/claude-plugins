@@ -166,7 +166,7 @@ class App:
     # ----------------------------------------------------------- sessions --
     def rebuild(self):
         with self.build_lock:
-            sessions = self.reader.build(self.settings, self.chief["sessionId"])
+            sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"])
             snap = self.reader.snapshot()
             body = json.dumps(snap["sessions"], sort_keys=True) + json.dumps(snap["liveStale"])
             now = self.clock()
@@ -591,6 +591,9 @@ class App:
             self.rebuild()
             self.publish_chief()
             return {"ok": True, "sessionId": None, "settings": self.settings}
+        holder = self.other_chief(cli)
+        if holder is not None:
+            raise HttpError(409, "Another session is already the Chief.", refused=True, chief=holder)
         local = self.reader.local_id_for(cli)
         with self.lock:
             new_chief = self.chief["cliId"] != cli
@@ -610,6 +613,21 @@ class App:
         self.publish_chief()
         self.hub.publish("voice", self.voice_status())
         return {"ok": True, "sessionId": local, "settings": self.settings}
+
+    def other_chief(self, cli):
+        """The session that holds the Chief role, when it is not `cli` and still holds it.
+
+        One Chief runs on a machine, and a second /chief is refused, not a take-over. The
+        role is free again once its session stops polling (closed for CHIEF_TIMEOUT_S) or
+        is archived."""
+        with self.lock:
+            if not self.chief["cliId"] or self.chief["cliId"] == cli or not self.chief_connected():
+                return None
+            sid = self.chief["sessionId"]
+        s = self.reader.get(sid) if sid else None
+        if sid and s is None:
+            return None
+        return {"sessionId": sid, "title": s["title"] if s else None}
 
     def mod_reply(self, body):
         text = body.get("text")

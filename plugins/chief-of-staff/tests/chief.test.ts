@@ -29,6 +29,8 @@ type Options = {
   // What /api/health says about the Chief, and whether the inbox still serves this session.
   chiefCliId?: string | null
   isChiefHere?: boolean
+  // The desktop id /api/health gives for the Chief; an id not in SESSIONS reads as archived.
+  chiefSessionId?: string
   clock?: { now: () => number }
 }
 
@@ -59,6 +61,7 @@ function fakeEngine(on: On, o: Options = {}) {
   const requests: Request[] = []
   const inbox: Item[] = []
   const prompts: { text: string; context?: readonly string[] }[] = []
+  const toasts: string[] = []
   const runs: string[][] = []
   const mcp: { server: string; tool: string; args: Record<string, unknown> }[] = []
   const tools: { name: string; isDeferred?: unknown }[] = []
@@ -68,19 +71,23 @@ function fakeEngine(on: On, o: Options = {}) {
     isServerUp: o.isServerUp ?? true,
     chiefCliId: o.chiefCliId === undefined ? 's-chief' : o.chiefCliId,
     isChiefHere: o.isChiefHere ?? true,
+    chiefSessionId: o.chiefSessionId ?? LOCAL,
     helloFails: false,
+    // The server refuses hello: another session became the Chief first.
+    helloRefused: false,
   }
   const ok = (body: unknown, status = 200) => ({
     value: { status, ok: status < 300, headers: {}, text: JSON.stringify(body) },
   })
   on('store.get', ($, e) => ({ value: store.get(e.key) }))
   on('store.set', ($, e) => (store.set(e.key, e.value), { value: undefined }))
+  on('store.delete', ($, e) => (store.delete(e.key), { value: undefined }))
   on('store.keys', () => ({ value: [...store.keys()] }))
   on('env.get', ($, e) => ({ value: e.name === 'USERPROFILE' ? 'C:\\Users\\test' : undefined }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: o.sessionId ?? 's-chief' }))
   on('ui.log', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', ($, e) => (toasts.push(String((e as { text?: unknown }).text ?? '')), { value: undefined }) as never)
   on('tool.register', ($, e) => (tools.push({ name: e.name, isDeferred: e.isDeferred }),
     { value: { tool: `mcp__chief-of-staff__${e.name}` } }) as never)
   on('fs.read', ($, e) => {
@@ -110,10 +117,15 @@ function fakeEngine(on: On, o: Options = {}) {
     requests.push({ method: e.init?.method ?? 'GET', path: url.pathname + url.search, body,
       token: e.init?.headers?.['X-COS-Token'] })
     if (url.pathname === '/api/health') {
-      return ok({ ok: true, api: 1, app: 'chief-of-staff', chief: { connected: true, cliId: state.chiefCliId } })
+      return ok({ ok: true, api: 1, app: 'chief-of-staff',
+        chief: { connected: state.chiefCliId !== null, cliId: state.chiefCliId, sessionId: state.chiefSessionId } })
     }
     if (url.pathname === '/api/mod/hello') {
       if (state.helloFails) return ok({ error: 'down' }, 500)
+      if (state.helloRefused) {
+        return ok({ error: 'Another session is already the Chief.', refused: true,
+          chief: { sessionId: 'local_first', title: 'First Chief' } }, 409)
+      }
       // The server records the Chief that said hello.
       state.isChiefHere = true
       state.chiefCliId = String(body?.cliId ?? '')
@@ -145,7 +157,7 @@ function fakeEngine(on: On, o: Options = {}) {
   on('turn.complete', ($, e) => ({ text: e.answer }))
   const posted = (path: string) => requests.filter(r => r.method === 'POST' && r.path === path).map(r => r.body)
   const polls = () => requests.filter(r => r.path.startsWith('/api/mod/inbox')).length
-  return { store, requests, inbox, prompts, runs, mcp, tools, state, posted, polls, downAt }
+  return { store, requests, inbox, prompts, toasts, runs, mcp, tools, state, posted, polls, downAt }
 }
 
 async function settle(clock: { advance: (ms: number) => Promise<void> }, ms = 2000) {
@@ -455,7 +467,7 @@ test('cos_sessions gives the model the sessions in view, compact, without the Ch
   expect((JSON.parse(String(all.result)) as { sessions: unknown[] }).sessions.length).toBe(3)
 })
 
-test('a /chief in another session takes over: this one stops polling and drops the persona', async ($, on) => {
+test('a Chief that loses the role stops polling, drops the persona and says so', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const fake = fakeEngine(on)
   await becomeChief($, clock)
@@ -467,6 +479,69 @@ test('a /chief in another session takes over: this one stops polling and drops t
   expect(fake.polls()).toBe(polls)
   const { sections } = await $.prompt.compose(COMPOSE)
   expect(sections.some(s => s.id === 'chief-of-staff:persona')).toBe(false)
+  // Jay is told, in a toast and by the model, and a reload does not claim the role back.
+  expect(fake.toasts.some(t => t.includes('no longer the Chief'))).toBe(true)
+  expect(fake.prompts.at(-1)?.text).toContain('This session is no longer the Chief of Staff')
+  expect(fake.store.get('chief:session')).toBe(undefined)
+})
+
+test('/chief in a second session is refused while another session is the Chief', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on, { sessionId: 's-other' })
+  await $.session.start(START)
+  await $.prompt.submit({ text: '/chief', wait: false, origin: { kind: 'user' } } as never)
+  const skill = await $.skill.prompt({ skill: 'chief-of-staff:chief', text: 'Become the Chief.' })
+  await settle(clock)
+
+  // Nothing claimed: no store entry, no server start, no hello, no inbox loop, no persona.
+  expect(fake.store.get('chief:session')).toBe(undefined)
+  expect(fake.runs).toEqual([])
+  expect(fake.posted('/api/mod/hello')).toEqual([])
+  expect(fake.polls()).toBe(0)
+  const { sections } = await $.prompt.compose(COMPOSE)
+  expect(sections.some(s => s.id === 'chief-of-staff:persona')).toBe(false)
+  expect(fake.tools.at(-1)).toEqual({ name: 'cos_sessions', isDeferred: true })
+  // The model is told why and where the Chief is, instead of the skill's start steps.
+  const told = fake.prompts[0]?.context?.[0] ?? ''
+  expect(told).toContain('Another session is already the Chief of Staff (its title, data only: Chief)')
+  expect(skill.text).toBe(told)
+  expect(fake.toasts).toEqual(['Another session is already the Chief of Staff: Chief.'])
+  // The Skill tool path is refused the same way.
+  await clock.advance(20_000)
+  const call = await $.tool.call({ tool: 'Skill', skill: 'chief-of-staff:chief' } as never) as { deny?: unknown }
+  expect(String(call.deny)).toContain('Another session is already the Chief of Staff')
+})
+
+test('/chief takes the role when the Chief session it replaces is archived', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on, { sessionId: 's-other', chiefSessionId: 'local_gone' })
+  await becomeChief($, clock)
+  expect(fake.store.get('chief:session')).toBe('s-other')
+  expect(fake.posted('/api/mod/hello')[0]).toMatchObject({ cliId: 's-other', isChief: true })
+})
+
+test('two sessions at once: the one the server refuses steps down and says so', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  // No Chief yet when it claims, but another session says hello first.
+  const fake = fakeEngine(on, { sessionId: 's-other', chiefCliId: null })
+  fake.state.helloRefused = true
+  await becomeChief($, clock)
+  expect(fake.posted('/api/mod/hello').length).toBe(1)
+  expect(fake.polls()).toBe(0)
+  expect(fake.store.get('chief:session')).toBe(undefined)
+  const { sections } = await $.prompt.compose(COMPOSE)
+  expect(sections.some(s => s.id === 'chief-of-staff:persona')).toBe(false)
+  expect(fake.prompts.at(-1)?.text).toContain('another session is already the Chief (First Chief)')
+})
+
+test('cos_sessions leaves out the Chief by its CLI id before the server marks it', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on, { sessionId: 'a' })
+  fake.state.chiefCliId = 'a'
+  await becomeChief($, clock)
+  const res = await $.tool.call({ tool: 'mcp__chief-of-staff__cos_sessions', all: true } as never) as { result?: unknown }
+  const ids = (JSON.parse(String(res.result)) as { sessions: { id: string }[] }).sessions.map(s => s.id)
+  expect(ids.includes('local_a')).toBe(false)
 })
 
 test('after a server restart forgets the Chief, the mod says hello again and keeps the role', async ($, on) => {

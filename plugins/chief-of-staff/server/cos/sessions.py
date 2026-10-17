@@ -328,12 +328,14 @@ def ago(ms):
 
 
 def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript_info=None, grew=None,
-                   background=None):
+                   background=None, chief_cli=None):
     """Pure: joins the sources into the contract's Session list.
 
     desktop: {local_id: record}; agent_rows: `claude agents --json` rows;
     transcript_info: {cliId: mtime_ms}; grew: {cliId: ms of last growth};
     background: {cliId: [start ms of background work not seen to finish]}.
+    chief_id / chief_cli: the Chief's desktop id and CLI id. Either one marks its session,
+    so the Chief is never listed as a session of its own before its desktop id is known.
     """
     transcript_info = transcript_info or {}
     grew = grew or {}
@@ -350,13 +352,13 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
         row = by_cli.get(cli) if cli else None
         if row:
             used.add(cli)
-        sessions.append(_session(local_id, cli, rec, row, transcript_info, chief_id))
+        sessions.append(_session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli))
     for cli, row in by_cli.items():
         if cli in used:
             continue
         kind = "background" if row.get("kind") == "background" else "interactive"
         local_id = ("bg_" if kind == "background" else "cli_") + re.sub(r"[^A-Za-z0-9-]", "", cli)[:80]
-        sessions.append(_session(local_id, cli, {}, row, transcript_info, chief_id))
+        sessions.append(_session(local_id, cli, {}, row, transcript_info, chief_id, chief_cli))
 
     by_id = {s["id"]: s for s in sessions}
     for s in sessions:
@@ -386,7 +388,7 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
     return sessions
 
 
-def _session(local_id, cli, rec, row, transcript_info, chief_id):
+def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None):
     row = row or {}
     kind = "background" if row.get("kind") == "background" else "interactive"
     live = bool(row)
@@ -426,7 +428,7 @@ def _session(local_id, cli, rec, row, transcript_info, chief_id):
         "summary": summary_of(rec),
         "needsAction": _text(pts.get("needs_action")),
         "appStatus": _text(pts.get("status_category")),
-        "isChief": bool(chief_id and local_id == chief_id),
+        "isChief": bool((chief_id and local_id == chief_id) or (chief_cli and cli == chief_cli)),
         "link": LINK.format(local_id) if local_id.startswith("local_") else None,
         "_bgState": bg_state,
     }
@@ -497,14 +499,15 @@ class SessionReader:
             self.grew[cli] = at
             self.mtimes[cli] = max(self.mtimes.get(cli, 0), at)
 
-    def build(self, settings, chief_id=None, now=None):
+    def build(self, settings, chief_id=None, now=None, chief_cli=None):
         now = now or now_ms()
         with self.lock:
             desktop = dict(self.desktop)
             mtimes = dict(self.mtimes)
             grew = dict(self.grew)
             background = dict(self.background)
-        sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew, background)
+        sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew, background,
+                                  chief_cli)
         with self.lock:
             self.sessions = sessions
             self.generated_at = now

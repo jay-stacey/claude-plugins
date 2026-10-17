@@ -154,12 +154,23 @@ class Api(unittest.TestCase):
         sessions = {s["id"]: s for s in self.call("GET", "/api/sessions")[1]["sessions"]}
         self.assertTrue(sessions[CHIEF]["isChief"])
 
-    def test_only_the_chief_gets_inbox_items_and_a_new_chief_takes_over(self):
+    def test_only_the_chief_gets_inbox_items_and_a_second_chief_is_refused(self):
         self.hello()
         self.call("POST", "/api/chief/say", {"text": "one"})
         status, other = self.call("GET", f"/api/mod/inbox?wait=0&session={BBB}&cli=cli-needs")
         self.assertEqual(other, {"items": [], "isChief": False})
-        self.hello("cli-needs")
+        # While the Chief still polls, a second session's hello is refused and told where it is.
+        status, refused = self.hello("cli-needs")
+        self.assertEqual(status, 409)
+        self.assertTrue(refused["refused"])
+        self.assertEqual(refused["chief"]["sessionId"], CHIEF)
+        self.assertEqual(self.call("GET", "/api/health")[1]["chief"]["sessionId"], CHIEF)
+        # Its own hello again is fine: a reload of the Chief session.
+        self.assertEqual(self.hello()[0], 200)
+        # Once the Chief has stopped polling for a minute, the role is free.
+        with self.app.lock:
+            self.app.chief_poll_at = time.time() - 120
+        self.assertEqual(self.hello("cli-needs")[0], 200)
         health = self.call("GET", "/api/health")[1]
         self.assertEqual(health["chief"]["sessionId"], BBB)
         status, mine = self.call("GET", f"/api/mod/inbox?wait=1&session={BBB}&cli=cli-needs")
