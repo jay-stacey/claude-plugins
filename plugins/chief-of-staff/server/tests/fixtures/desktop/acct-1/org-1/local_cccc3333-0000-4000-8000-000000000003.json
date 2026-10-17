@@ -1,0 +1,12 @@
+{
+ "sessionId": "local_cccc3333-0000-4000-8000-000000000003",
+ "cliSessionId": "cli-merged",
+ "cwd": "C:\\work",
+ "originCwd": "C:\\work\\repos\\dealerpull-api",
+ "createdAt": 1792052000000,
+ "lastActivityAt": 1792149200000,
+ "isArchived": false,
+ "title": "API fix",
+ "prNumber": 1608,
+ "prState": "MERGED"
+}

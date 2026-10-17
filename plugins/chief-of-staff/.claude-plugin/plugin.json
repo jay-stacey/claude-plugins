@@ -1,0 +1,100 @@
+{
+  "name": "chief-of-staff",
+  "version": "0.1.0",
+  "description": "A Chief of Staff for your Claude desktop sessions: one session becomes the Chief, watches every other session, tells you which ones need you, and closes or answers them when you ask. A local console on 127.0.0.1 shows a live session graph, a roster, the Chief's chat and any session's transcript, with an optional local voice (Hey Chief).",
+  "author": {
+    "name": "Jay Stacey"
+  },
+  "license": "MIT",
+  "keywords": [
+    "sessions",
+    "chief-of-staff",
+    "dashboard",
+    "voice",
+    "desktop"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stale_hours": {
+      "type": "number",
+      "title": "Stale after (hours)",
+      "description": "A session with no activity for this many hours counts as stale.",
+      "default": 24
+    },
+    "recent_days": {
+      "type": "number",
+      "title": "Show sessions active in the last (days)",
+      "description": "The graph and roster show live sessions and sessions active in this many days; older ones collapse into one row.",
+      "default": 3
+    },
+    "speak_replies": {
+      "type": "boolean",
+      "title": "Speak the Chief's replies",
+      "description": "Read each Chief reply aloud through the local voice, when it is installed.",
+      "default": true
+    },
+    "listen": {
+      "type": "string",
+      "title": "Listening mode",
+      "description": "wake: always listening for the wake word. ptt: only while push-to-talk is held. off: no microphone.",
+      "options": [
+        "wake",
+        "ptt",
+        "off"
+      ],
+      "default": "wake"
+    },
+    "voice": {
+      "type": "string",
+      "title": "Voice",
+      "description": "auto uses what voice setup picked for this PC (Chatterbox on a GPU, Kokoro on a CPU). chatterbox or kokoro forces one; the other is the fallback.",
+      "options": [
+        "auto",
+        "chatterbox",
+        "kokoro"
+      ],
+      "default": "auto"
+    },
+    "chief_name": {
+      "type": "string",
+      "title": "Chief's name",
+      "description": "What you call your Chief. It answers to this name and uses it for itself. Letters, digits, spaces, apostrophes and hyphens, up to 30.",
+      "default": "Chief"
+    },
+    "wake_word": {
+      "type": "string",
+      "title": "Wake word",
+      "description": "The phrase that starts listening in wake mode, usually hey plus the Chief's name. Run the setup's wake-word enrollment after changing it.",
+      "default": "hey chief"
+    },
+    "wake_ack": {
+      "type": "string",
+      "title": "Wake acknowledgment",
+      "description": "What you hear when the wake word is heard. chime: a short tone. word: the Chief says a word such as yes. off: nothing.",
+      "options": [
+        "chime",
+        "word",
+        "off"
+      ],
+      "default": "chime"
+    },
+    "fillers": {
+      "type": "boolean",
+      "title": "Quick acknowledgments",
+      "description": "The voice says a short filler such as on it as soon as you ask something, before the Chief's full answer.",
+      "default": true
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Proactive notices",
+      "description": "Let the Chief speak up when a session starts waiting on you, finishes, or goes stale.",
+      "default": true
+    },
+    "quiet_hours": {
+      "type": "string",
+      "title": "Quiet hours",
+      "description": "No proactive notices in this local time range, like 22:00-07:00. Leave empty for none.",
+      "default": "22:00-07:00"
+    }
+  }
+}

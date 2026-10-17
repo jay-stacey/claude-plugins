@@ -275,6 +275,8 @@ export const register: Register = on => {
     // Stay silent where nobody is watching: `claude -p` runs, scheduled tasks, agents
     // driven over the SDK with no app attached.
     if ((await $.session.surfaces()).length === 0) return result
+    // The Chief of Staff's own session speaks through its own voice daemon.
+    if (await isChiefSession($)) return result
 
     // Speaking outlasts the hook's 10 s budget, so it runs on a timer of its own.
     const answer = e.answer
@@ -417,6 +419,25 @@ export const register: Register = on => {
       </Box>
     )
   })
+}
+
+// True when this session is the chief-of-staff plugin's Chief: its server.json names this
+// session's CLI id as chiefCliId and that server still answers, so a server that crashed
+// and left server.json behind never silences the session. Any failure means no.
+async function isChiefSession($: EngineInterface): Promise<boolean> {
+  try {
+    const home = await $.env.get('USERPROFILE')
+    if (home === undefined) return false
+    const raw = await $.fs.read(`${home}\\.claude\\chief-of-staff\\run\\server.json`)
+    const info = JSON.parse(typeof raw === 'string' ? raw : '{}') as { chiefCliId?: unknown; port?: unknown }
+    if (typeof info.chiefCliId !== 'string' || info.chiefCliId !== (await $.session.id())) return false
+    if (typeof info.port !== 'number') return false
+    const res = await $.http.fetch(`http://127.0.0.1:${info.port}/api/health`)
+    const health = JSON.parse(res.text) as { app?: unknown }
+    return res.ok && health.app === 'chief-of-staff'
+  } catch {
+    return false
+  }
 }
 
 // Settings: the store's top-level keys are the defaults for new sessions (and what 1.2 saved);

@@ -1,0 +1,48 @@
+[
+ {
+  "pid": 1,
+  "cwd": "C:\\work",
+  "kind": "interactive",
+  "startedAt": 1791980000000,
+  "sessionId": "cli-busy",
+  "name": "DP1-676",
+  "status": "busy"
+ },
+ {
+  "pid": 2,
+  "cwd": "C:\\work",
+  "kind": "interactive",
+  "startedAt": 1792145600000,
+  "sessionId": "cli-wait",
+  "name": "Chief session",
+  "status": "idle"
+ },
+ {
+  "pid": 3,
+  "cwd": "C:\\work",
+  "kind": "interactive",
+  "startedAt": 1792152800000,
+  "sessionId": "cli-child",
+  "name": "Helper",
+  "status": "waiting",
+  "waitingFor": "permission prompt"
+ },
+ {
+  "id": "c8d8",
+  "cwd": "C:\\work\\repos\\dp-web-ui",
+  "kind": "background",
+  "startedAt": 1792088000000,
+  "sessionId": "bg-blocked",
+  "name": "slack integration",
+  "state": "blocked"
+ },
+ {
+  "id": "0d10",
+  "cwd": "C:\\work",
+  "kind": "background",
+  "startedAt": 1792156400000,
+  "sessionId": "bg-working",
+  "name": "nightly import",
+  "state": "working"
+ }
+]

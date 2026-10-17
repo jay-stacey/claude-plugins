@@ -1,0 +1,660 @@
+<meta charset="utf-8">
+<title>Chief of Staff Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: HUD console. Left = session roster, center = live session graph around the Chief core, right = Chief voice + chat. Dark only, by request. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0605;          /* near-black with an ember bias */
+  --panel: #110a08;
+  --panel-2: #170d0a;
+  --line: rgba(255, 98, 46, 0.16);
+  --line-strong: rgba(255, 98, 46, 0.38);
+  --fg: #ecd9cf;
+  --muted: #9a7d70;
+  --faint: #5e4a42;
+  --accent: #ff5a1f;      /* dark orange, the one bold color */
+  --accent-deep: #b8401a;
+  --accent-glow: rgba(255, 90, 31, 0.35);
+  /* session states */
+  --s-you: #ff4b2b;       /* waiting on you */
+  --s-active: #ffa24a;    /* working now */
+  --s-wait: #c9824f;      /* waiting on something else */
+  --s-stale: #6b5850;     /* stale or outdated */
+  --font-display: "Chakra Petch", "Bahnschrift", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --r: 6px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(1200px 700px at 50% 45%, rgba(255, 90, 31, 0.07), transparent 60%),
+    linear-gradient(rgba(255, 98, 46, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 98, 46, 0.035) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-inline: 16px;
+  padding-block: 12px;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- top bar ---------- */
+.top {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding-block: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark { width: 3px; height: 30px; background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+.brand h1 {
+  margin: 0; font-family: var(--font-display); font-weight: 700;
+  font-size: 20px; letter-spacing: 0.32em; color: var(--accent);
+}
+.brand small { display: block; font-family: var(--font-mono); font-size: 10px; color: var(--faint); letter-spacing: 0.12em; }
+.top-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.stat {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 4px 12px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--panel); font-family: var(--font-display); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.stat b { font-family: var(--font-mono); font-size: 16px; font-weight: 500; color: var(--fg); }
+.stat.you b { color: var(--s-you); }
+.stat.active b { color: var(--s-active); }
+.stat.wait b { color: var(--s-wait); }
+.stat.stale b { color: var(--s-stale); }
+.mock-tag {
+  font-family: var(--font-mono); font-size: 10px; color: var(--accent);
+  border: 1px dashed var(--line-strong); padding: 2px 8px; border-radius: 3px;
+}
+
+/* ---------- main grid ---------- */
+.console {
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(290px, 360px);
+  gap: 12px;
+  height: calc(100% - 118px);
+  min-height: 620px;
+}
+.panel {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  position: relative;
+  min-width: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.panel::before, .panel::after {   /* HUD corner ticks */
+  content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none;
+  border-color: var(--accent); border-style: solid; opacity: 0.6;
+}
+.panel::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.panel::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.panel-head .label { color: var(--fg); }
+.panel-head .label::before { content: "// "; color: var(--accent); }
+
+/* ---------- roster ---------- */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.chip {
+  border: 1px solid var(--line); background: transparent; border-radius: 999px;
+  padding: 2px 10px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); display: inline-flex; align-items: center; gap: 6px;
+}
+.chip[aria-pressed="true"] { border-color: var(--line-strong); color: var(--fg); background: rgba(255, 90, 31, 0.08); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.roster { overflow-y: auto; padding: 6px 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.group-title { padding: 10px 6px 4px; }
+.row {
+  display: grid; grid-template-columns: 3px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  text-align: left; width: 100%; padding: 8px 8px 8px 0; border: 1px solid transparent;
+  border-radius: 4px; background: transparent;
+}
+.row:hover, .row.hl { border-color: var(--line); background: rgba(255, 90, 31, 0.05); }
+.row .stripe { align-self: stretch; border-radius: 2px; }
+.row .t { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .s { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .age { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+.row.child { padding-left: 14px; }
+.row.child .t::before { content: "└ "; color: var(--faint); }
+
+/* ---------- graph ---------- */
+.graph-wrap { position: relative; flex: 1; min-height: 0; }
+.graph-wrap svg { width: 100%; height: 100%; display: block; }
+.graph-foot {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  padding: 8px 14px; border-top: 1px solid var(--line);
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.link { fill: none; stroke: var(--line-strong); stroke-width: 1; }
+.link.core { stroke: rgba(255, 98, 46, 0.12); stroke-dasharray: 2 5; }
+.link.live { stroke: rgba(255, 140, 70, 0.55); }
+.packet { fill: var(--s-active); filter: drop-shadow(0 0 4px var(--s-active)); }
+.node { cursor: pointer; }
+.node .halo { fill: none; stroke-width: 1; opacity: 0.5; }
+.node .body { fill: #140b08; stroke-width: 1.5; }
+.node .glyph { font-family: var(--font-display); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-anchor: middle; dominant-baseline: central; }
+.node .name { font-family: var(--font-mono); font-size: 12px; fill: var(--muted); text-anchor: middle; }
+.node:hover .body, .node.hl .body { fill: #24120b; }
+.node:hover .name, .node.hl .name { fill: var(--fg); }
+.node.you .halo { animation: pulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.7); opacity: 0; } }
+.core-spin { transform-box: view-box; animation: spin 14s linear infinite; }
+.core-spin.rev { animation-duration: 22s; animation-direction: reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tip {
+  position: absolute; pointer-events: none; z-index: 5; min-width: 200px; max-width: 280px;
+  background: rgba(14, 8, 6, 0.96); border: 1px solid var(--line-strong); border-radius: 4px;
+  padding: 10px 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+.tip .tt { font-weight: 600; margin-bottom: 4px; }
+.tip .ts { display: flex; align-items: center; gap: 6px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.tip .td { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- chief panel ---------- */
+.orb-zone { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: center; padding: 14px; border-bottom: 1px solid var(--line); }
+.orb { width: 96px; height: 96px; }
+.orb-state { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }
+.wave { display: flex; gap: 3px; align-items: center; height: 26px; margin-top: 6px; }
+.wave i { display: block; width: 3px; border-radius: 2px; background: var(--accent); opacity: 0.8; height: 6px; animation: bar 1.1s ease-in-out infinite; }
+@keyframes bar { 50% { height: 24px; } }
+.toggles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.toggle {
+  border: 1px solid var(--line); border-radius: 4px; background: transparent; padding: 3px 8px;
+  font-family: var(--font-display); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.toggle[aria-pressed="true"] { color: var(--fg); border-color: var(--line-strong); }
+.toggle[aria-pressed="true"]::before { content: "● "; color: var(--accent); }
+.chat { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.msg { display: grid; gap: 4px; }
+.msg .who { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); letter-spacing: 0.06em; }
+.msg .who b { color: var(--accent); font-weight: 500; }
+.msg .text { font-size: 13.5px; line-height: 1.55; }
+.msg.me .text { color: var(--muted); border-left: 2px solid var(--faint); padding-left: 10px; }
+.msg.chief .text { border-left: 2px solid var(--accent); padding-left: 10px; }
+.confirm { display: flex; gap: 8px; flex-wrap: wrap; padding-left: 12px; margin-top: 4px; }
+.btn {
+  border: 1px solid var(--line-strong); background: rgba(255, 90, 31, 0.06); border-radius: 4px;
+  padding: 5px 12px; font-family: var(--font-display); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a0703; font-weight: 600; }
+.btn:hover { border-color: var(--accent); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); align-items: center; }
+.composer input {
+  flex: 1; min-width: 0; background: #0c0705; border: 1px solid var(--line); border-radius: 4px;
+  color: var(--fg); padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.mic {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--accent); background: rgba(255, 90, 31, 0.12);
+  display: grid; place-items: center; flex: none;
+}
+
+/* ---------- bottom bar ---------- */
+.bottom {
+  display: flex; gap: 18px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--line); margin-top: 12px; padding-top: 8px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--faint);
+}
+.bottom .hint { font-family: var(--font-display); letter-spacing: 0.24em; text-transform: uppercase; color: var(--accent-deep); }
+.bottom .ok::before { content: "● "; color: #7fae6a; }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; top: calc(100px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 20; max-width: 340px;
+  background: rgba(20, 9, 6, 0.97); border: 1px solid var(--s-you); border-radius: var(--r);
+  padding: 10px 14px; box-shadow: 0 0 24px rgba(255, 75, 43, 0.25); display: grid; gap: 4px;
+}
+.toast .label { color: var(--s-you); }
+.toast p { margin: 0; font-size: 13px; }
+.toast .x { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); }
+
+/* ---------- session page view ---------- */
+.page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 12px; height: calc(100% - 118px); min-height: 620px; }
+.page-head { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.page-head h2 { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: 0.04em; text-wrap: balance; }
+.state-pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 999px; padding: 1px 10px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+.back { border: 1px solid var(--line); background: transparent; border-radius: 4px; padding: 4px 10px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.page-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.transcript { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.turn { max-width: 75ch; display: grid; gap: 4px; }
+.turn .who { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+.turn.user .body2 { background: rgba(255, 90, 31, 0.06); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; }
+.turn.tool { font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-left: 12px; border-left: 1px dashed var(--faint); }
+.turn.tool b { color: var(--s-wait); font-weight: 500; }
+.reply { display: grid; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.reply textarea {
+  width: 100%; min-height: 70px; resize: vertical; background: #0c0705; border: 1px solid var(--line); border-radius: 4px;
+  color: var(--fg); padding: 10px; font: inherit; font-size: 13.5px;
+}
+.reply-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.reply-row .note { font-size: 12px; color: var(--muted); margin-right: auto; }
+.meta { padding: 14px; display: grid; gap: 12px; overflow-y: auto; }
+.meta dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; font-size: 12.5px; }
+.meta dt { color: var(--muted); font-family: var(--font-display); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding-top: 1px; }
+.meta dd { margin: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.summary-box { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; background: rgba(255, 75, 43, 0.06); font-size: 13px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .console { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); height: auto; }
+  .roster-panel { grid-column: 1 / -1; max-height: 320px; order: 3; }
+  .graph-panel { min-height: 520px; }
+  .page { grid-template-columns: minmax(0, 1fr); height: auto; }
+}
+@media (max-width: 720px) {
+  .console { grid-template-columns: minmax(0, 1fr); }
+  .graph-panel { min-height: 420px; }
+  .chief-panel { min-height: 520px; }
+  .top-stats { margin-left: 0; }
+  .toast { left: 16px; right: 16px; max-width: none; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
+</style>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div><h1>CHIEF</h1><small>OF STAFF · SESSION CONSOLE</small></div>
+  </div>
+  <span class="mock-tag">MOCKUP · SAMPLE DATA</span>
+  <div class="top-stats" id="stats"></div>
+</header>
+
+<!-- ============ CONTROL CENTER ============ -->
+<main class="console" id="console">
+  <section class="panel roster-panel" aria-label="Sessions">
+    <div class="panel-head"><span class="label">Sessions</span><span class="mono" style="font-size:11px;color:var(--faint)" id="count"></span></div>
+    <div class="filters" id="filters"></div>
+    <div class="roster" id="roster"></div>
+  </section>
+
+  <section class="panel graph-panel" aria-label="Control center">
+    <div class="panel-head">
+      <span class="label">Control center</span>
+      <span class="mono" style="font-size:11px;color:var(--muted)">live · refreshed 2s ago</span>
+    </div>
+    <div class="graph-wrap" id="graphWrap">
+      <svg id="graph" viewBox="0 0 1000 700" role="img" aria-label="Session graph: the Chief in the center, sessions around it, sub-sessions linked to the session that started them"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="graph-foot">
+      <div class="legend">
+        <span><i class="dot" style="background:var(--s-you)"></i>Waiting on you</span>
+        <span><i class="dot" style="background:var(--s-active)"></i>Active</span>
+        <span><i class="dot" style="background:var(--s-wait)"></i>Waiting</span>
+        <span><i class="dot" style="background:var(--s-stale)"></i>Stale</span>
+      </div>
+      <span class="mono" style="font-size:11px;color:var(--faint);margin-left:auto">moving dots = messages between sessions</span>
+    </div>
+  </section>
+
+  <section class="panel chief-panel" aria-label="Chief of staff">
+    <div class="panel-head"><span class="label">Chief</span><span class="mono" style="font-size:11px;color:var(--muted)">Opus · this desk</span></div>
+    <div class="orb-zone">
+      <svg class="orb" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,98,46,.25)"/>
+        <g class="core-spin" style="transform-origin:50px 50px"><circle cx="50" cy="50" r="40" fill="none" stroke="#ff5a1f" stroke-width="1.5" stroke-dasharray="60 190"/></g>
+        <g class="core-spin rev" style="transform-origin:50px 50px"><circle cx="50" cy="50" r="33" fill="none" stroke="rgba(255,140,70,.6)" stroke-dasharray="4 6"/></g>
+        <circle cx="50" cy="50" r="20" fill="rgba(255,90,31,.15)" stroke="#ff5a1f"/>
+        <circle cx="50" cy="50" r="6" fill="#ff5a1f"/>
+      </svg>
+      <div>
+        <div class="orb-state" id="orbState">Listening</div>
+        <div class="mono" style="font-size:11px;color:var(--muted)">say “Hey Chief” to talk</div>
+        <div class="wave" aria-hidden="true" id="wave"></div>
+        <div class="toggles">
+          <button class="toggle" aria-pressed="true" id="tWake">Wake word</button>
+          <button class="toggle" aria-pressed="true" id="tVoice">Speak replies</button>
+          <button class="toggle" aria-pressed="false" id="tPtt">Push to talk</button>
+        </div>
+      </div>
+    </div>
+    <div class="chat" id="chat" aria-live="polite">
+      <div class="msg chief"><div class="who"><b>CHIEF</b> · 9:02</div>
+        <div class="text">Morning, Jay. Two things need you. The PRO-921 plan is stuck on your vendor name call, and the spec review wants a yes on the story split. DP1-676 is still building, so leave that one alone for now.</div></div>
+      <div class="msg me"><div class="who">YOU · voice · 9:04</div>
+        <div class="text">Close the DP1-676 session.</div></div>
+      <div class="msg chief"><div class="who"><b>CHIEF</b> · 9:04</div>
+        <div class="text">Heads up, DP1-676 is active right now. It's halfway through the inventory form fix and has one helper running. Want me to archive it anyway?</div>
+        <div class="confirm" id="confirm">
+          <button class="btn primary" data-act="archive">Archive anyway</button>
+          <button class="btn ghost" data-act="keep">Leave it running</button>
+        </div></div>
+    </div>
+    <form class="composer" id="composer">
+      <input id="ask" placeholder="Ask the Chief, or say “Hey Chief”" autocomplete="off">
+      <button class="mic" type="button" aria-label="Talk now" title="Talk now">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5a1f" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </form>
+  </section>
+</main>
+
+<!-- ============ SESSION PAGE VIEW ============ -->
+<main class="page" id="page" hidden>
+  <section class="panel">
+    <div class="page-head">
+      <button class="back" id="back">← Console</button>
+      <h2 id="pTitle"></h2>
+      <span class="state-pill" id="pState"></span>
+      <div class="page-actions">
+        <button class="btn">Open in app</button>
+        <button class="btn">Ask Chief about it</button>
+        <button class="btn">Archive</button>
+      </div>
+    </div>
+    <div class="transcript" id="transcript"></div>
+    <form class="reply" id="replyForm">
+      <label class="label" for="replyBox">Reply to this session</label>
+      <textarea id="replyBox" placeholder="Type a reply. It goes straight into this session as your next message."></textarea>
+      <div class="reply-row">
+        <span class="note">Or say “Hey Chief, tell this session …”</span>
+        <button class="btn ghost" type="button">Dictate</button>
+        <button class="btn primary" type="submit">Send</button>
+      </div>
+    </form>
+  </section>
+  <aside class="panel">
+    <div class="panel-head"><span class="label">Session</span></div>
+    <div class="meta" id="pMeta"></div>
+  </aside>
+</main>
+
+<footer class="bottom">
+  <span><span class="ok">Ears: faster-whisper · GPU</span> &nbsp; <span class="ok">Voice: Kokoro · GPU</span> &nbsp; <span class="ok">Desktop link: live</span></span>
+  <span class="hint">Hey Chief · to talk</span>
+  <span class="mono" id="clock">09:04:12</span>
+</footer>
+
+<div class="toast" id="toast" role="status">
+  <button class="x" aria-label="Dismiss" id="toastX">×</button>
+  <span class="label">Waiting on you</span>
+  <p>Plan PRO-921 is stuck on your vendor name decision.</p>
+</div>
+
+<script>
+const STATES = {
+  you:    { label: "Waiting on you", color: "var(--s-you)" },
+  active: { label: "Active",         color: "var(--s-active)" },
+  wait:   { label: "Waiting",        color: "var(--s-wait)" },
+  stale:  { label: "Stale",          color: "var(--s-stale)" },
+};
+// Sample data shaped like the desktop's own session records (title, state, parent, last activity, wrap-up note).
+const S = [
+  { id: "spec",  title: "Dealerpull product spec review", short: "Spec review", state: "you", age: "4m", where: "C:\\Dealerpull", note: "Wants a yes on splitting PRO-994 into 3 stories." },
+  { id: "p921",  title: "Plan PRO-921 into engineering stories", short: "PRO-921 plan", parent: "spec", state: "you", age: "11m", where: "C:\\Dealerpull", note: "Blocked: your call on the vendor name switch.", talk: true },
+  { id: "p994",  title: "PRO-994 spec gate", short: "PRO-994 gate", parent: "spec", state: "wait", age: "9m", where: "C:\\Dealerpull", note: "Done its check. Waiting for the parent session to read it." },
+  { id: "dp676", title: "DP1-676", short: "DP1-676", state: "active", age: "now", where: "dp-web-ui · DP/dp1-676-ab438c", note: "Fixing the inventory form save bug. 17 turns in." },
+  { id: "dp676v", title: "DP1-676 local verifier", short: "verifier", parent: "dp676", state: "active", age: "now", where: "dp-web-ui", note: "Running the browser test matrix.", talk: true },
+  { id: "apipr", title: "API PR review session", short: "API PR review", state: "wait", age: "2m", where: "dealerpull-api · PR 1216", note: "PR 1216 merged. Safe to archive." },
+  { id: "web",   title: "Website editor browser performance", short: "Editor perf", state: "wait", age: "6m", where: "C:\\Dealerpull", note: "Waiting on a profile run you started." },
+  { id: "cos",   title: "Chief of staff plugin build", short: "COS build", state: "active", age: "now", where: "claude-plugins · DP/chief-of-staff-plugin", note: "Drafting the mockup you are looking at." },
+  { id: "cosr",  title: "Voice stack research", short: "research", parent: "cos", state: "active", age: "now", where: "claude-plugins", note: "Comparing wake word and speech models.", talk: true },
+  { id: "neo",   title: "NEO-412 inventory grid filters", short: "NEO-412", state: "stale", age: "3d", where: "project-neo", note: "No activity for 3 days. Branch is 41 commits behind." },
+  { id: "dd",    title: "Day Desk dashboard fix", short: "Day Desk fix", state: "stale", age: "1d", where: "claude-plugins", note: "PR 24 merged yesterday. Safe to archive." },
+];
+const byId = Object.fromEntries(S.map(s => [s.id, s]));
+let filter = null;
+
+/* ---------- stats + filters ---------- */
+function counts() { const c = { you: 0, active: 0, wait: 0, stale: 0 }; S.forEach(s => c[s.state]++); return c; }
+function renderStats() {
+  const c = counts();
+  document.getElementById("stats").innerHTML = ["you", "active", "wait", "stale"].map(k =>
+    `<span class="stat ${k}">${STATES[k].label}<b>${c[k]}</b></span>`).join("");
+  document.getElementById("count").textContent = S.length + " open";
+  document.getElementById("filters").innerHTML = ["you", "active", "wait", "stale"].map(k =>
+    `<button class="chip" data-f="${k}" aria-pressed="${filter === k}"><i class="dot" style="background:${STATES[k].color}"></i>${STATES[k].label} ${c[k]}</button>`).join("");
+}
+document.getElementById("filters").addEventListener("click", e => {
+  const b = e.target.closest("[data-f]"); if (!b) return;
+  filter = filter === b.dataset.f ? null : b.dataset.f; renderStats(); renderRoster();
+});
+
+/* ---------- roster ---------- */
+function rowHtml(s, child) {
+  return `<button class="row${child ? " child" : ""}" data-id="${s.id}">
+    <span class="stripe" style="background:${STATES[s.state].color}"></span>
+    <span style="min-width:0"><div class="t">${s.title}</div><div class="s">${s.where}</div></span>
+    <span class="age">${s.age}</span></button>`;
+}
+function renderRoster() {
+  const order = ["you", "active", "wait", "stale"];
+  let html = "";
+  order.filter(k => !filter || filter === k).forEach(k => {
+    const top = S.filter(s => s.state === k && (!s.parent || byId[s.parent].state !== k));
+    if (!top.length) return;
+    html += `<div class="group-title label">${STATES[k].label}</div>`;
+    top.forEach(s => {
+      html += rowHtml(s, !!s.parent && byId[s.parent].state !== k);
+      S.filter(c => c.parent === s.id && c.state === k).forEach(c => html += rowHtml(c, true));
+    });
+  });
+  document.getElementById("roster").innerHTML = html;
+}
+const roster = document.getElementById("roster");
+roster.addEventListener("click", e => { const r = e.target.closest(".row"); if (r) openPage(r.dataset.id); });
+roster.addEventListener("mouseover", e => { const r = e.target.closest(".row"); highlight(r ? r.dataset.id : null); });
+roster.addEventListener("mouseleave", () => highlight(null));
+
+/* ---------- graph ---------- */
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("graph");
+const CX = 500, CY = 350;
+const pos = {};
+function layout() {
+  const tops = S.filter(s => !s.parent);
+  tops.forEach((s, i) => {
+    const a = -Math.PI / 2 + (i / tops.length) * Math.PI * 2;
+    pos[s.id] = { x: CX + Math.cos(a) * 205, y: CY + Math.sin(a) * 190, a };
+    const kids = S.filter(c => c.parent === s.id);
+    kids.forEach((c, j) => {
+      const spread = 0.42, ca = a + (j - (kids.length - 1) / 2) * spread;
+      pos[c.id] = { x: CX + Math.cos(ca) * 330, y: CY + Math.sin(ca) * 290, a: ca };
+    });
+  });
+}
+function el(tag, attrs, parent) { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; }
+function curve(a, b) { const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; const dx = b.x - a.x, dy = b.y - a.y; return `M${a.x},${a.y} Q${mx - dy * 0.12},${my + dx * 0.12} ${b.x},${b.y}`; }
+const livePaths = [];
+function renderGraph() {
+  layout();
+  svg.innerHTML = "";
+  // core rings
+  const core = el("g", {}, svg);
+  el("circle", { cx: CX, cy: CY, r: 150, fill: "none", stroke: "rgba(255,98,46,.07)" }, core);
+  el("circle", { cx: CX, cy: CY, r: 92, fill: "none", stroke: "rgba(255,98,46,.18)" }, core);
+  const spin = el("g", { class: "core-spin", style: `transform-origin:${CX}px ${CY}px` }, core);
+  el("circle", { cx: CX, cy: CY, r: 78, fill: "none", stroke: "#ff5a1f", "stroke-width": 1.5, "stroke-dasharray": "120 370", opacity: .9 }, spin);
+  const spin2 = el("g", { class: "core-spin rev", style: `transform-origin:${CX}px ${CY}px` }, core);
+  el("circle", { cx: CX, cy: CY, r: 64, fill: "none", stroke: "rgba(255,140,70,.45)", "stroke-dasharray": "3 7" }, spin2);
+  el("circle", { cx: CX, cy: CY, r: 46, fill: "rgba(255,90,31,.10)", stroke: "rgba(255,90,31,.6)" }, core);
+  const t1 = el("text", { x: CX, y: CY - 4, "text-anchor": "middle", fill: "#ff5a1f", "font-family": "Chakra Petch, sans-serif", "font-size": 16, "font-weight": 700, "letter-spacing": 4 }, core); t1.textContent = "CHIEF";
+  const t2 = el("text", { x: CX, y: CY + 14, "text-anchor": "middle", fill: "#9a7d70", "font-family": "IBM Plex Mono, monospace", "font-size": 9.5, "letter-spacing": 1 }, core); t2.textContent = "LISTENING";
+  // links
+  const links = el("g", {}, svg);
+  livePaths.length = 0;
+  S.forEach(s => {
+    const from = s.parent ? pos[s.parent] : { x: CX, y: CY };
+    const to = pos[s.id];
+    const live = s.talk;
+    const p = el("path", { d: curve(from, to), class: "link" + (s.parent ? "" : " core") + (live ? " live" : "") }, links);
+    if (live) livePaths.push({ p, both: true });
+  });
+  // the Chief is reading the session that is waiting on you
+  livePaths.push({ p: [...links.children][S.findIndex(s => s.id === "spec")], both: false, slow: true });
+  // packets layer
+  el("g", { id: "packets" }, svg);
+  // nodes
+  const nodes = el("g", {}, svg);
+  S.forEach(s => {
+    const p = pos[s.id], r = s.parent ? 21 : 30, col = STATES[s.state].color;
+    const g = el("g", { class: `node ${s.state}`, "data-id": s.id, tabindex: 0, role: "button", "aria-label": `${s.title}, ${STATES[s.state].label}` }, nodes);
+    el("circle", { cx: p.x, cy: p.y, r: r + 7, class: "halo", stroke: col }, g);
+    el("circle", { cx: p.x, cy: p.y, r, class: "body", stroke: col }, g);
+    const glyph = el("text", { x: p.x, y: p.y, class: "glyph", fill: col }, g);
+    glyph.textContent = s.short.replace(/[^A-Za-z0-9]/g, "").slice(0, s.parent ? 2 : 3).toUpperCase();
+    const below = p.y >= CY - 40;
+    const nm = el("text", { x: p.x, y: below ? p.y + r + 20 : p.y - r - 12, class: "name" }, g);
+    nm.textContent = s.short;
+  });
+}
+// moving packets along live links
+const packets = [];
+function spawnPackets(t) {
+  livePaths.forEach(l => {
+    l.next = l.next ?? t + Math.random() * 800;
+    if (t >= l.next) {
+      packets.push({ path: l.p, start: t, dur: l.slow ? 2600 : 1500, rev: l.both && Math.random() < 0.5 });
+      l.next = t + (l.slow ? 2400 : 900 + Math.random() * 900);
+    }
+  });
+}
+function tick(t) {
+  const layer = document.getElementById("packets");
+  if (layer) {
+    spawnPackets(t);
+    layer.innerHTML = "";
+    for (let i = packets.length - 1; i >= 0; i--) {
+      const k = (t - packets[i].start) / packets[i].dur;
+      if (k >= 1) { packets.splice(i, 1); continue; }
+      const len = packets[i].path.getTotalLength();
+      const pt = packets[i].path.getPointAtLength((packets[i].rev ? 1 - k : k) * len);
+      el("circle", { cx: pt.x, cy: pt.y, r: 2.6, class: "packet" }, layer);
+    }
+  }
+  requestAnimationFrame(tick);
+}
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- tooltip + highlight ---------- */
+const tip = document.getElementById("tip"), wrap = document.getElementById("graphWrap");
+svg.addEventListener("mousemove", e => {
+  const g = e.target.closest(".node");
+  if (!g) { tip.hidden = true; highlight(null); return; }
+  const s = byId[g.dataset.id];
+  tip.innerHTML = `<div class="tt">${s.title}</div>
+    <div class="ts" style="color:${STATES[s.state].color}"><i class="dot" style="background:${STATES[s.state].color}"></i>${STATES[s.state].label} · ${s.age}</div>
+    <div class="td">${s.note}</div>${s.parent ? `<div class="td">Started by: ${byId[s.parent].title}</div>` : ""}`;
+  const b = wrap.getBoundingClientRect();
+  let x = e.clientX - b.left + 16, y = e.clientY - b.top + 16;
+  tip.hidden = false;
+  if (x + tip.offsetWidth > b.width - 8) x = e.clientX - b.left - tip.offsetWidth - 16;
+  if (y + tip.offsetHeight > b.height - 8) y = e.clientY - b.top - tip.offsetHeight - 16;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+  highlight(s.id);
+});
+svg.addEventListener("mouseleave", () => { tip.hidden = true; highlight(null); });
+svg.addEventListener("click", e => { const g = e.target.closest(".node"); if (g) openPage(g.dataset.id); });
+svg.addEventListener("keydown", e => { const g = e.target.closest(".node"); if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openPage(g.dataset.id); } });
+function highlight(id) {
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("hl", n.dataset.id === id));
+  document.querySelectorAll(".row").forEach(n => n.classList.toggle("hl", n.dataset.id === id));
+}
+
+/* ---------- page view ---------- */
+const TRANSCRIPT = [
+  { k: "user", who: "YOU · 8:31", t: "Pick up DP1-676. The inventory form loses the stock number when you save twice." },
+  { k: "asst", who: "CLAUDE · 8:32", t: "Found it. The save handler resets the form before the second request comes back, so the stock number is cleared. I will hold the reset until the save finishes, then add a test for the double save." },
+  { k: "tool", t: "<b>Edit</b> src/app/inventory/inventory-form.component.ts" },
+  { k: "tool", t: "<b>Bash</b> npm test -- inventory-form · 42 passed" },
+  { k: "tool", t: "<b>Agent</b> started DP1-676 local verifier" },
+  { k: "asst", who: "CLAUDE · 9:01", t: "Unit tests pass. The verifier is now running the save twice in the browser on the local stack. I will report back when it finishes." },
+];
+function openPage(id) {
+  const s = byId[id];
+  document.getElementById("console").hidden = true;
+  document.getElementById("page").hidden = false;
+  tip.hidden = true; document.getElementById("toast").hidden = true;
+  document.getElementById("pTitle").textContent = s.title;
+  const pill = document.getElementById("pState");
+  pill.style.color = STATES[s.state].color; pill.innerHTML = `<i class="dot" style="background:${STATES[s.state].color}"></i>${STATES[s.state].label}`;
+  document.getElementById("transcript").innerHTML = TRANSCRIPT.map(m => m.k === "tool"
+    ? `<div class="turn tool">${m.t}</div>`
+    : `<div class="turn ${m.k}"><div class="who">${m.who}</div><div class="body2">${m.t}</div></div>`).join("");
+  const kids = S.filter(c => c.parent === s.id).map(c => c.title).join(", ") || "None";
+  document.getElementById("pMeta").innerHTML = `
+    <div class="summary-box"><span class="label" style="color:${STATES[s.state].color}">Where it stands</span><br>${s.note}</div>
+    <dl>
+      <dt>Last</dt><dd>${s.age === "now" ? "working now" : s.age + " ago"}</dd>
+      <dt>Where</dt><dd>${s.where}</dd>
+      <dt>Model</dt><dd>Sonnet 5.5 · high</dd>
+      <dt>Mode</dt><dd>auto</dd>
+      <dt>Parent</dt><dd>${s.parent ? byId[s.parent].title : "None"}</dd>
+      <dt>Helpers</dt><dd>${kids}</dd>
+    </dl>
+    <span class="label">Chief's take</span>
+    <div style="font-size:13px">${s.state === "stale" ? "Nothing has moved here in a while. I'd archive it." : s.state === "you" ? "This one is waiting on you. A short answer unblocks it." : s.state === "active" ? "Working. No need to step in yet." : "Parked until something else finishes. Nothing for you yet."}</div>`;
+  window.scrollTo(0, 0);
+}
+document.getElementById("back").addEventListener("click", () => {
+  document.getElementById("page").hidden = true;
+  document.getElementById("console").hidden = false;
+});
+document.getElementById("replyForm").addEventListener("submit", e => { e.preventDefault(); const b = document.getElementById("replyBox"); if (b.value.trim()) { b.value = ""; b.placeholder = "Sent. (Mockup: nothing was really sent.)"; } });
+
+/* ---------- chief chat demo ---------- */
+const chat = document.getElementById("chat");
+function say(cls, who, text) {
+  const d = document.createElement("div"); d.className = "msg " + cls;
+  d.innerHTML = `<div class="who">${who}</div><div class="text"></div>`;
+  d.querySelector(".text").textContent = text; chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+}
+document.getElementById("confirm").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  document.getElementById("confirm").remove();
+  if (b.dataset.act === "archive") {
+    say("me", "YOU · 9:05", "Archive anyway.");
+    say("chief", "<b>CHIEF</b> · 9:05", "Done. DP1-676 and its verifier are archived. You can bring them back from the Archived list if you need them.");
+    const i = S.findIndex(s => s.id === "dp676"); S.splice(i, 1); S.splice(S.findIndex(s => s.id === "dp676v"), 1);
+    delete byId.dp676; delete byId.dp676v;
+    renderStats(); renderRoster(); renderGraph();
+  } else {
+    say("me", "YOU · 9:05", "Leave it running.");
+    say("chief", "<b>CHIEF</b> · 9:05", "Okay, leaving it. I'll tell you when it finishes, and ask again then.");
+  }
+});
+document.getElementById("composer").addEventListener("submit", e => {
+  e.preventDefault(); const i = document.getElementById("ask"); const v = i.value.trim(); if (!v) return;
+  say("me", "YOU · typed", v); i.value = "";
+  setTimeout(() => say("chief", "<b>CHIEF</b>", "Got it. (In the real build I answer here and out loud.)"), 500);
+});
+document.querySelectorAll(".toggle").forEach(t => t.addEventListener("click", () => t.setAttribute("aria-pressed", t.getAttribute("aria-pressed") !== "true")));
+document.getElementById("toastX").addEventListener("click", () => document.getElementById("toast").hidden = true);
+document.getElementById("wave").innerHTML = Array.from({ length: 22 }, (_, i) => `<i style="animation-delay:${(i * 0.07).toFixed(2)}s"></i>`).join("");
+
+/* ---------- clock ---------- */
+setInterval(() => { document.getElementById("clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
+
+renderStats(); renderRoster(); renderGraph();
+if (!reduce) requestAnimationFrame(tick);
+</script>
