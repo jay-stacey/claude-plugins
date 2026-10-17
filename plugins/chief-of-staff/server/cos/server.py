@@ -22,7 +22,7 @@ from . import API, APP, config, paths
 from .events import Hub, Mailbox, frame
 from .notices import Notices, public
 from .sessions import ID_RE, SessionReader, now_ms
-from .transcripts import Tail, Transcript
+from .transcripts import BackgroundWork, Tail, Transcript
 from .voice import Voice
 
 MAX_BODY = 64 * 1024
@@ -101,6 +101,7 @@ class App:
         self.voice_poll_at = 0.0
         self.last_level_at = 0.0
         self.tails = {}
+        self.bg_work = {}       # cliId -> BackgroundWork, for live sessions
         self.pulse_lock = threading.Lock()
         self.transcripts = OrderedDict()
         self.last_public = None
@@ -295,6 +296,16 @@ class App:
         for s in live:
             cli = s["cliId"]
             seen.add(cli)
+            work = self.bg_work.get(cli)
+            if work is None:
+                path = self.reader.transcript_path(cli)
+                if path:
+                    work = self.bg_work[cli] = BackgroundWork(path)
+            if work is not None:
+                started = work.poll()
+                if started != self.reader.background.get(cli, []):
+                    self.reader.set_background(cli, started)
+                    grew_any = True
             tail = self.tails.get(cli)
             if tail is None:
                 path = self.reader.transcript_path(cli)
@@ -312,6 +323,11 @@ class App:
         for cli in list(self.tails):
             if cli not in seen:
                 del self.tails[cli]
+        for cli in list(self.bg_work):
+            if cli not in seen:
+                del self.bg_work[cli]
+                self.reader.set_background(cli, [])
+                grew_any = True
         return grew_any
 
     def transcript(self, cli):

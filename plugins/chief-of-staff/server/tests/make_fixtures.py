@@ -127,6 +127,7 @@ def main():
             fh.write(json.dumps(r) + "\n")
         fh.write('{"type": "assistant", "uuid": "broken"\n')
     write_tools(PROJ / "cli-tools.jsonl")
+    write_background(PROJ / "cli-bg.jsonl")
     with open(PROJ / "cli-needs.jsonl", "w", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps({"type": "user", "uuid": "n-1", "timestamp": iso(NOW - 2 * H),
                              "message": {"role": "user", "content": [{"type": "text", "text": "Plan PRO-921"}]}}) + "\n")
@@ -181,6 +182,69 @@ def write_tools(path):
     ]
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         for r in rows:
+            fh.write(json.dumps(r) + "\n")
+
+
+def background_rows(now):
+    """Background work in every state, as the CLI writes it (shapes from a real session).
+    Only bg2 is still running at the end."""
+    def use(uuid, at, tid, name, tool_input):
+        return {"type": "assistant", "uuid": uuid, "timestamp": iso(now - at),
+                "message": {"role": "assistant", "content": [
+                    {"type": "tool_use", "id": tid, "name": name, "input": tool_input}]}}
+
+    def result(uuid, at, tid, text, record, is_error=None):
+        block = {"type": "tool_result", "tool_use_id": tid, "content": text}
+        if is_error is not None:
+            block["is_error"] = is_error
+        return {"type": "user", "uuid": uuid, "timestamp": iso(now - at), "toolUseResult": record,
+                "message": {"role": "user", "content": [block]}}
+
+    def note(task, tool=None):
+        tool_line = f"<tool-use-id>{tool}</tool-use-id>\n" if tool else ""
+        return (f"<task-notification>\n<task-id>{task}</task-id>\n{tool_line}"
+                "<status>completed</status>\n<summary>Background command finished</summary>\n</task-notification>")
+
+    started = "Command running in background with ID: {}. You will be notified when it completes."
+    return [
+        # bg1: finished, its notification names the tool use.
+        use("b-1", 600000, "tu_bg1", "Bash", {"command": "sleep 60", "run_in_background": True}),
+        result("b-2", 599000, "tu_bg1", started.format("b1"), {"stdout": "", "backgroundTaskId": "b1"}),
+        {"type": "user", "uuid": "b-3", "timestamp": iso(now - 540000),
+         "origin": {"kind": "task-notification", "producer": "session-task"},
+         "message": {"role": "user", "content": note("b1", "tu_bg1")}},
+        # bg2: started five minutes ago and still running.
+        use("b-4", 300000, "tu_bg2", "Bash", {"command": "sleep 180", "run_in_background": True}),
+        result("b-5", 299000, "tu_bg2", started.format("b2"), {"stdout": "", "backgroundTaskId": "b2"}),
+        # bg3: a background agent, finished by a queued notification naming only its task.
+        use("b-6", 280000, "tu_bg3", "Agent", {"description": "Investigate", "prompt": "x", "run_in_background": True}),
+        result("b-7", 279000, "tu_bg3", "Async agent launched.", {"isAsync": True, "status": "async_launched",
+                                                                  "agentId": "ag3"}),
+        {"type": "queue-operation", "operation": "enqueue", "timestamp": iso(now - 200000), "content": note("ag3")},
+        # bg4: the start failed.
+        use("b-8", 260000, "tu_bg4", "Bash", {"command": "sleep 999", "run_in_background": True}),
+        result("b-9", 259000, "tu_bg4", "<tool_use_error>Blocked</tool_use_error>", "Error: Blocked", is_error=True),
+        # bg5: a background agent that handed back its report.
+        use("b-10", 250000, "tu_bg5", "Agent", {"description": "Review", "prompt": "x", "run_in_background": True}),
+        result("b-11", 249000, "tu_bg5", "Async agent launched.", {"isAsync": True, "status": "async_launched",
+                                                                    "agentId": "ag5"}),
+        {"type": "user", "uuid": "b-12", "isMeta": True, "timestamp": iso(now - 150000),
+         "origin": {"kind": "peer", "from": "ag5", "handback": True},
+         "message": {"role": "user", "content": "[Subagent hand-back] Report follows."}},
+        # bg6: stopped with a stop tool.
+        use("b-13", 140000, "tu_bg6", "Bash", {"command": "npm run dev", "run_in_background": True}),
+        result("b-14", 139000, "tu_bg6", started.format("b6"), {"stdout": "", "backgroundTaskId": "b6"}),
+        use("b-15", 130000, "tu_stop", "KillShell", {"shell_id": "b6"}),
+        # A foreground Bash call is no background work.
+        use("b-16", 120000, "tu_fg", "Bash", {"command": "ls"}),
+        {"type": "assistant", "uuid": "b-17", "timestamp": iso(now - 100000),
+         "message": {"role": "assistant", "content": [{"type": "text", "text": "Waiting on the test run."}]}},
+    ]
+
+
+def write_background(path, now=NOW):
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        for r in background_rows(now):
             fh.write(json.dumps(r) + "\n")
 
 

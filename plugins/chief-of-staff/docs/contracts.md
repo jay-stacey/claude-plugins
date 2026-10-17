@@ -77,14 +77,21 @@ Read, every 2 s for live status and every 10 s for files:
 
 First match wins:
 
-| State | Rule |
-|---|---|
-| `you` | live and `status == "waiting"`; or background `state` in `blocked`, `failed`; or not busy and (`appStatus` in `blocked`, `review_ready` or `needsAction` is set) |
-| `active` | live and `status == "busy"`; or background `state == "working"`; or the transcript grew in the last 30 s |
-| `stale` | `prState` in `MERGED`, `CLOSED` and not live; or `lastActivityAt` older than `stale_hours` (default 24) |
-| `wait` | everything else (idle, finished, waiting on a helper, CI or a background task) |
+| # | State | Rule |
+|---|---|---|
+| 1 | `you` | live and `status == "waiting"` (a prompt on screen) |
+| 2 | `active` | live and has unfinished background work started less than 2 hours ago (stateReason "Running background work"), whatever `appStatus` says |
+| 3 | `you` | background job `state` in `blocked`, `failed` |
+| 4 | `active` | live and `status == "busy"`; or background `state == "working"` |
+| 5 | `stale` | not live, and `prState` in `MERGED`, `CLOSED` or `lastActivityAt` older than `stale_hours` (default 24); this beats an old `appStatus` or `needsAction` |
+| 6 | `you` | `appStatus` in `blocked`, `review_ready`, or `needsAction` is set |
+| 7 | `active` | the transcript grew in the last 30 s |
+| 8 | `stale` | live and `lastActivityAt` older than `stale_hours` |
+| 9 | `wait` | everything else (idle, finished, waiting on a helper, CI or a background task) |
 
-`stateReason` examples: "Waiting for a permission prompt", "Needs your decision: <needsAction>", "Working now", "PR 1216 merged", "No activity for 3 days", "Idle, finished its last turn".
+Unfinished background work (rule 2) comes from the live session's transcript: a `Bash` or `Agent` `tool_use` with `run_in_background: true`, whose `tool_result` was not an error, and that no later record closes. A record closes it when it is a `<task-notification>` naming its `<tool-use-id>` or its task id (`toolUseResult.backgroundTaskId` or `agentId`), in a user row or a queued `queue-operation` row; a sub-agent hand-back (`origin.kind == "peer"`, `handback: true`, `from` = the agent id); or a `KillShell`/`TaskStop` call on its task id. The scan reads at most the last 16 MB of the transcript, then only appended lines.
+
+`stateReason` examples: "Waiting for a permission prompt", "Running background work", "Needs your decision: <needsAction>", "Working now", "PR 1216 merged", "No activity for 3 days", "Idle, finished its last turn".
 
 The Chief's own session has `isChief: true` and is drawn as the core, not as a node.
 

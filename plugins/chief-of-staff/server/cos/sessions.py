@@ -19,6 +19,7 @@ from .transcripts import clip
 DAY_MS = 86_400_000
 HOUR_MS = 3_600_000
 GREW_WINDOW_MS = 30_000
+BACKGROUND_MAX_AGE_MS = 2 * HOUR_MS     # older unfinished background work is ignored
 MAX_SUMMARY = 400
 ID_RE = re.compile(r"^(local|bg|cli)_[A-Za-z0-9-]{1,80}$")
 LINK = "claude://claude.ai/epitaxy/{}"
@@ -257,17 +258,21 @@ BG_LIVE = {"working": "busy", "blocked": "waiting", "failed": "waiting"}
 def classify(s, now, stale_hours, grew_at=None):
     """(state, stateReason), first match wins.
 
-    A live session waiting on a prompt and a blocked or failed background job
-    are `you`. Then work in progress is `active`. A session that is not running
-    and has a merged or closed pull request, or no activity for stale_hours, is
-    `stale` even when the app's old note still asks for Jay. Then the app's
-    note (`needs_action`, blocked, review ready) makes it `you`."""
+    A live session waiting on a prompt is `you`. A live session with background
+    work it started less than 2 hours ago and has not seen finish is `active`,
+    whatever the app's note says. A blocked or failed background job is `you`.
+    Then work in progress is `active`. A session that is not running and has a
+    merged or closed pull request, or no activity for stale_hours, is `stale`
+    even when the app's old note still asks for Jay. Then the app's note
+    (`needs_action`, blocked, review ready) makes it `you`."""
     live, status, bg = s["live"], s["liveStatus"], s.get("_bgState")
     busy = live and status == "busy"
     last = s.get("lastActivityAt") or s.get("createdAt") or 0
     aged = now - last > stale_hours * HOUR_MS
     if live and s["kind"] == "interactive" and status == "waiting":
         return "you", waiting_reason(s.get("waitingFor"))
+    if live and any(now - at <= BACKGROUND_MAX_AGE_MS for at in s.get("_background") or []):
+        return "active", "Running background work"
     if bg in ("blocked", "failed"):
         return "you", "Background job is blocked" if bg == "blocked" else "Background job failed"
     if busy:
@@ -322,14 +327,17 @@ def ago(ms):
     return f"{n} days"
 
 
-def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript_info=None, grew=None):
+def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript_info=None, grew=None,
+                   background=None):
     """Pure: joins the sources into the contract's Session list.
 
     desktop: {local_id: record}; agent_rows: `claude agents --json` rows;
-    transcript_info: {cliId: mtime_ms}; grew: {cliId: ms of last growth}.
+    transcript_info: {cliId: mtime_ms}; grew: {cliId: ms of last growth};
+    background: {cliId: [start ms of background work not seen to finish]}.
     """
     transcript_info = transcript_info or {}
     grew = grew or {}
+    background = background or {}
     by_cli = {}
     for row in agent_rows:
         sid = row.get("sessionId")
@@ -360,6 +368,7 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
     stale_hours = float(settings.get("staleHours") or 24)
     recent_ms = float(settings.get("recentDays") or 3) * DAY_MS
     for s in sessions:
+        s["_background"] = background.get(s["cliId"]) or []
         s["state"], s["stateReason"] = classify(s, now, stale_hours, grew.get(s["cliId"]))
         s["inView"] = bool(s["live"] or now - (s["lastActivityAt"] or 0) <= recent_ms)
     # Parents and children of in-view sessions are in view too.
@@ -372,6 +381,7 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
                 queue.append(other)
     for s in sessions:
         s.pop("_bgState", None)
+        s.pop("_background", None)
     sessions.sort(key=lambda s: -(s["lastActivityAt"] or 0))
     return sessions
 
@@ -443,6 +453,7 @@ class SessionReader:
         self.desktop = {}
         self.mtimes = {}
         self.grew = {}
+        self.background = {}
         self.sessions = []
         self.generated_at = 0
 
@@ -474,6 +485,13 @@ class SessionReader:
                         pass
         return rows
 
+    def set_background(self, cli, started):
+        with self.lock:
+            if started:
+                self.background[cli] = list(started)
+            else:
+                self.background.pop(cli, None)
+
     def mark_grew(self, cli, at):
         with self.lock:
             self.grew[cli] = at
@@ -485,7 +503,8 @@ class SessionReader:
             desktop = dict(self.desktop)
             mtimes = dict(self.mtimes)
             grew = dict(self.grew)
-        sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew)
+            background = dict(self.background)
+        sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew, background)
         with self.lock:
             self.sessions = sessions
             self.generated_at = now

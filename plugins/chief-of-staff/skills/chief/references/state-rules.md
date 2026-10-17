@@ -8,13 +8,15 @@ The server reads three sources, read only. It never writes them.
 
 The first rule that matches wins.
 
-1. `you`: live and waiting (a permission prompt or a question), or a background job blocked or failed.
-2. `active`: live and busy, or a background job working.
-3. `stale`, for a session that is not running: its pull request merged or closed, or no activity for `stale_hours` (24 by default). This beats the app's old note on its last turn.
-4. `you`: the app marked it blocked, ready for review, or needing Jay's action.
-5. `active`: its transcript grew in the last 30 seconds.
-6. `stale`: a running session with no activity for `stale_hours`.
-7. `wait`: everything else, such as idle, finished its last turn, or waiting on a helper, CI or a background task.
+1. `you`: live and waiting (a permission prompt or a question).
+2. `active`: live and still running background work it started less than 2 hours ago (a background Bash command or agent with no completion record yet). The stateReason is "Running background work".
+3. `you`: a background job blocked or failed.
+4. `active`: live and busy, or a background job working.
+5. `stale`, for a session that is not running: its pull request merged or closed, or no activity for `stale_hours` (24 by default). This beats the app's old note on its last turn.
+6. `you`: the app marked it blocked, ready for review, or needing Jay's action.
+7. `active`: its transcript grew in the last 30 seconds.
+8. `stale`: a running session with no activity for `stale_hours`.
+9. `wait`: everything else, such as idle, finished its last turn, or waiting on a helper, CI or a background task.
 
 `stateReason` says why in a few words, for example "Waiting for a permission prompt", "Needs your decision: ...", "PR 1216 merged" or "No activity for 3 days".
 

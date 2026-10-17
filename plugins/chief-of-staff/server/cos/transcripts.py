@@ -8,6 +8,7 @@ import json
 import os
 import re
 import threading
+import time
 
 MAX_TEXT = 4000
 MAX_SUMMARY = 120
@@ -335,6 +336,108 @@ def parse_line_full(line: bytes):
         return turns, peer, tool_results(row)
     except Exception:
         return [], None, []
+
+
+# ------------------------------------------------------- background work ---
+
+BACKGROUND_TOOLS = ("Bash", "Agent", "Task")
+STOP_TOOLS = ("KillShell", "KillBash", "TaskStop")
+BACKGROUND_FIRST_READ = 16 * 1024 * 1024
+# Lines worth a JSON parse for this scan; every other line is skipped unread.
+BACKGROUND_MARKS = (b"run_in_background", b"task-notification", b"handback", b"KillShell", b"KillBash", b"TaskStop")
+NOTE_TOOL_RE = re.compile(r"<tool-use-id>\s*([^<\s]+)\s*</tool-use-id>")
+NOTE_TASK_RE = re.compile(r"<task-id>\s*([^<\s]+)\s*</task-id>")
+
+
+class BackgroundWork:
+    """Background work a session started and has not seen finish: a Bash call or an
+    Agent run with run_in_background true, until its <task-notification> (in a user
+    row or a queued one), a sub-agent's hand-back, or a stop tool names it.
+    Read incrementally, from the last 16 MB on the first read."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.offset = 0
+        self.partial = b""
+        self.open = {}          # tool_use id -> {"at": ms, "taskId": str | None}
+
+    def poll(self):
+        try:
+            size = os.path.getsize(self.path)
+        except OSError:
+            return self.started()
+        if size < self.offset:
+            self.offset, self.partial, self.open = 0, b"", {}
+        if size == self.offset:
+            return self.started()
+        start = self.offset
+        if start == 0 and size > BACKGROUND_FIRST_READ:
+            start = size - BACKGROUND_FIRST_READ
+        try:
+            with open(self.path, "rb") as fh:
+                fh.seek(start)
+                data = fh.read(size - start)
+        except OSError:
+            return self.started()
+        if start != self.offset:
+            data = data.split(b"\n", 1)[1] if b"\n" in data else b""
+        self.offset = size
+        lines = (self.partial + data).split(b"\n")
+        self.partial = lines.pop()
+        for line in lines:
+            if not any(m in line for m in BACKGROUND_MARKS) and not (self.open and b"tool_result" in line):
+                continue
+            try:
+                self.read_row(json.loads(line.decode("utf-8", errors="replace")))
+            except Exception:
+                continue
+        return self.started()
+
+    def started(self):
+        """Start times (ms) of the work still open."""
+        return [w["at"] for w in self.open.values()]
+
+    def finish(self, tool_ids=(), task_ids=()):
+        for tid in list(self.open):
+            if tid in tool_ids or (self.open[tid]["taskId"] and self.open[tid]["taskId"] in task_ids):
+                del self.open[tid]
+
+    def read_row(self, row):
+        if not isinstance(row, dict) or row.get("isSidechain"):
+            return
+        kind = row.get("type")
+        msg = row.get("message") if isinstance(row.get("message"), dict) else {}
+        content = msg.get("content")
+        if kind == "queue-operation":
+            content = row.get("content")
+        text = block_text(content)
+        if "<task-notification>" in text:
+            self.finish(set(NOTE_TOOL_RE.findall(text)), set(NOTE_TASK_RE.findall(text)))
+        origin = row.get("origin") if isinstance(row.get("origin"), dict) else {}
+        if origin.get("kind") == "peer" and origin.get("handback") and isinstance(origin.get("from"), str):
+            self.finish(task_ids={origin["from"]})
+        if not isinstance(content, list):
+            return
+        at = to_ms(row.get("timestamp")) or int(time.time() * 1000)
+        record = row.get("toolUseResult") if isinstance(row.get("toolUseResult"), dict) else {}
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if kind == "assistant" and b.get("type") == "tool_use" and isinstance(b.get("id"), str):
+                tool_input = b.get("input") if isinstance(b.get("input"), dict) else {}
+                if b.get("name") in BACKGROUND_TOOLS and tool_input.get("run_in_background") is True:
+                    self.open[b["id"]] = {"at": at, "taskId": None}
+                elif b.get("name") in STOP_TOOLS:
+                    ids = {v for k, v in tool_input.items() if k in ("shell_id", "task_id", "bash_id") and isinstance(v, str)}
+                    self.finish(task_ids=ids)
+            elif kind == "user" and b.get("type") == "tool_result" and b.get("tool_use_id") in self.open:
+                tid = b["tool_use_id"]
+                if b.get("is_error") is True or record.get("status") == "completed":
+                    del self.open[tid]          # it never started, or ran to the end in the foreground
+                    continue
+                task = record.get("backgroundTaskId") or record.get("agentId") or record.get("shellId")
+                if isinstance(task, str):
+                    self.open[tid]["taskId"] = task
 
 
 class Tail:
