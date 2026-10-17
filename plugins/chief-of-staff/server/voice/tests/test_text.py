@@ -103,3 +103,18 @@ class RepeatedWakeTests(unittest.TestCase):
         from cosvoice.text import strip_wake
         self.assertEqual(strip_wake("Hey Chief, tell the chief of staff session to stop"),
                          "Tell the chief of staff session to stop")
+
+
+class SelfCheckPhraseTest(unittest.TestCase):
+    def test_close_transcripts_pass(self):
+        from cosvoice.text import heard_self_check
+        for heard in ("Chief of Staff voice check.", "Chief of Staff Voice Track",  # small.en on CPU, 2026-10-17
+                      "chief of staff, voice check", "Chiefs of staff voice chuck", "voice check",
+                      "Cheap of Staf voice check"):
+            self.assertTrue(heard_self_check(heard), heard)
+
+    def test_empty_or_unrelated_transcripts_fail(self):
+        from cosvoice.text import heard_self_check
+        for heard in ("", None, "   ", "...", "Thank you.", "The weather is nice today",
+                      "you", "Check", "Chief"):
+            self.assertFalse(heard_self_check(heard), heard)

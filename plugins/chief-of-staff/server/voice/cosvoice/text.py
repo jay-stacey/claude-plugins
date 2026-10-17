@@ -280,3 +280,29 @@ def naturalize(t: str) -> str:
     t = re.sub(r"[*_`#\\^{}<>\[\]~]+", " ", t)     # leftover markdown or code symbols
     t = re.sub(r"(?<=\s)/(?=\s)|^/|/$", " ", t)
     return re.sub(r"[ \t]{2,}", " ", t)
+
+
+SELF_CHECK_PHRASE = "Chief of Staff voice check."
+_SELF_CHECK_WORDS = ("chief", "staff", "voice", "check")
+
+
+def heard_self_check(transcript: str) -> bool:
+    """True when speech to text heard the self-check phrase closely enough.
+
+    The words do not have to be exact: faster-whisper small.en on the CPU hears
+    "Chief of Staff Voice Track". It passes when at least 2 of chief, staff, voice, check are
+    there (a word counts when it is at least 80% like one, so "chiefs" counts), or when the whole
+    transcript is at least 70% like the phrase. An empty or unrelated transcript fails."""
+    words = re.findall(r"[a-z]+", (transcript or "").lower())
+    if not words:
+        return False
+    from difflib import SequenceMatcher
+
+    def like(a: str, b: str) -> float:
+        return SequenceMatcher(None, a, b).ratio()
+
+    hits = sum(1 for key in _SELF_CHECK_WORDS if any(like(w, key) >= 0.8 for w in words))
+    if hits >= 2:
+        return True
+    phrase = " ".join(re.findall(r"[a-z]+", SELF_CHECK_PHRASE.lower()))
+    return like(" ".join(words), phrase) >= 0.7
