@@ -33,9 +33,9 @@ Type `/chief` in a Claude desktop session. That session becomes the Chief: the s
 - A reply you dictate for another session is read back to you before it is sent.
 - It speaks up on its own when a session starts waiting on you, finishes, or goes stale (not in quiet hours).
 - `/chief status` says whether the server runs. `/chief stop` stops the server and the voice.
-- `/chief` in another session moves the Chief there.
+- `/chief` in another session is refused while the Chief is live. That session tells you which session is the Chief. To move the Chief, archive its session, then run `/chief` in the new one.
 
-Only one Chief runs at a time. The console stays at `http://127.0.0.1:47870` (or the next free port); `/chief` opens it again.
+Only one Chief runs on a computer, and it never lists itself among your sessions. The console stays at `http://127.0.0.1:47870` (or the next free port); `/chief` opens it again.
 
 ## Voice
 

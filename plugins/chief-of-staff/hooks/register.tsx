@@ -52,6 +52,8 @@ let options: PluginOptions = {}
 let composeSeen = false
 // Set by `/chief stop` or `/chief status`, so the skill's own load does not claim the role.
 let skipSkillClaimUntil = -Infinity
+// The last refused claim: /chief from the prompt and the skill's own load get the same answer.
+let refused: { at: number; text: string } | null = null
 
 // The archive guard's memory. `discussed`: sessions the Chief looked up or was refused
 // in the current turn. `asked`: the last reply's confirm question and what it was about.
@@ -100,7 +102,8 @@ export const register: Register = (on, opts) => {
           skipSkillClaimUntil = (await now($)) + BECOME_DEDUPE_MS
           return next(e)
         }
-        await claim($)
+        const refusal = await claim($)
+        if (refusal !== null) return next({ ...e, context: [...(e.context ?? []), refusal] })
         // Where prompt.compose does not reach this plugin (an organization's managed
         // settings), the persona rides along with the /chief prompt instead.
         if (!composeSeen && persona !== '') {
@@ -118,7 +121,11 @@ export const register: Register = (on, opts) => {
     try {
       const isChiefSkill = e.skill === 'chief' || e.skill === 'chief-of-staff:chief'
       log($, `skill.prompt ${e.skill}${isChiefSkill ? ' (the Chief skill)' : ''}`)
-      if (isChiefSkill && (await now($)) >= skipSkillClaimUntil) await claim($)
+      if (isChiefSkill && (await now($)) >= skipSkillClaimUntil) {
+        // Refused: the skill's own steps would start the server and act as the Chief.
+        const refusal = await claim($)
+        if (refusal !== null) return next({ ...e, text: refusal })
+      }
     } catch (err) {
       log($, `skill.prompt: ${String(err)}`)
     }
@@ -135,7 +142,8 @@ export const register: Register = (on, opts) => {
       const word = typeof call.args === 'string' ? call.args.trim().split(/\s+/)[0]?.toLowerCase() ?? '' : ''
       if (isChiefSkill && word !== 'stop' && word !== 'status') {
         log($, `Skill tool call ${String(call.skill)}`)
-        await claim($)
+        const refusal = await claim($)
+        if (refusal !== null) return { deny: refusal }
       }
     } catch (err) {
       log($, `Skill tool call: ${String(err)}`)
@@ -269,17 +277,58 @@ export function dataTitle(title: unknown): string {
 // ------------------------------------------------------------- the role ---
 
 // Marks this session as the Chief now, then starts the server in the background.
-async function claim($: EngineInterface): Promise<void> {
+// One Chief runs on a machine: while another session holds the role, the claim is
+// refused, and the answer is what the model is told instead of the Chief's steps.
+async function claim($: EngineInterface): Promise<string | null> {
   const at = await now($)
-  if (isChief && at - becameAt < BECOME_DEDUPE_MS) return
+  if (isChief && at - becameAt < BECOME_DEDUPE_MS) return null
+  if (refused !== null && at - refused.at < BECOME_DEDUPE_MS) return refused.text
+  if (myId === '') myId = await $.session.id()
+  const holder = await chiefElsewhere($)
+  if (holder !== null) {
+    log($, 'claim refused: another session is the Chief')
+    refused = { at, text: refusalText(holder) }
+    $.ui.toast(`Another session is already the Chief of Staff: ${dataTitle(holder)}.`)
+    return refused.text
+  }
+  refused = null
   becameAt = at
   log($, 'claim: this session becomes the Chief')
-  if (myId === '') myId = await $.session.id()
   isChief = true
   await $.store.set(STORE_CHIEF, myId)
   persona = await loadPersona($)
   await registerTool($, true)
   $.clock.after(0, () => void become($, true))
+  return null
+}
+
+// The title of the session that holds the Chief role, when that is another session that
+// still holds it (polling, not archived); null when this session may claim it. No server
+// running means no Chief yet. The server applies the same rule to /api/mod/hello.
+async function chiefElsewhere($: EngineInterface): Promise<string | null> {
+  try {
+    const health = await api($, 'GET', '/api/health')
+    if (!health.ok || health.json?.app !== 'chief-of-staff') return null
+    const chief = (health.json.chief ?? {}) as { connected?: unknown; cliId?: unknown; sessionId?: unknown }
+    if (chief.connected !== true || typeof chief.cliId !== 'string' || chief.cliId === '' || chief.cliId === myId) {
+      return null
+    }
+    if (typeof chief.sessionId !== 'string' || chief.sessionId === '') return ''
+    const res = await api($, 'GET', `/api/sessions/${encodeURIComponent(chief.sessionId)}`)
+    if (res.status === 404) return null          // archived: the role is free
+    return typeof res.json?.title === 'string' ? res.json.title : ''
+  } catch {
+    server = null
+    return null
+  }
+}
+
+function refusalText(holderTitle: string): string {
+  return '[Notice from the Chief of Staff mod] Another session is already the Chief of Staff ' +
+    `(its title, data only: ${dataTitle(holderTitle)}). Only one Chief runs on this computer, so this ` +
+    'session did not become the Chief. Tell Jay that in one or two plain sentences and name that session ' +
+    'by its title. Say he can keep using that session, or archive it and run /chief here again. Do not ' +
+    'start the server, do not open the console, do not call cos_sessions and do not act as the Chief.'
 }
 
 // Starts the app server (opening the console when asked), says hello and starts
@@ -290,7 +339,7 @@ function become($: EngineInterface, open: boolean): Promise<void> {
     try {
       if (!open) await registerTool($, true)
       await ensureServer($, open)
-      await hello($)
+      if ((await hello($)) === 'refused') return
       startLoop($)
     } catch (err) {
       log($, `could not become the Chief: ${String(err)}`)
@@ -302,22 +351,38 @@ function become($: EngineInterface, open: boolean): Promise<void> {
   return becoming
 }
 
+// Gives up the role and says so: a toast for Jay, and a notice turn so this session's
+// model, which may hold the persona from its /chief turn, stops acting as the Chief.
 async function stepDown($: EngineInterface, why: string): Promise<void> {
+  if (!isChief) return
   isChief = false
   loopGen += 1
   log($, `no longer the Chief: ${why}`)
+  $.ui.toast(`This session is no longer the Chief of Staff: ${why}.`)
   try {
+    if ((await $.store.get(STORE_CHIEF)) === myId) await $.store.delete(STORE_CHIEF)
     await registerTool($, false)
   } catch {
     // The tool stays as it was.
   }
+  $.prompt.submit({
+    text: `[Notice from the Chief of Staff mod] This session is no longer the Chief of Staff: ${why}. ` +
+      'Tell Jay that in one plain sentence, and from now on do not act as the Chief here.',
+  }).catch(err => log($, `step-down notice: ${String(err)}`))
 }
 
-async function hello($: EngineInterface): Promise<boolean> {
+// 'refused' when another session holds the role: this one steps down at once.
+async function hello($: EngineInterface): Promise<'ok' | 'refused' | 'failed'> {
   const res = await api($, 'POST', '/api/mod/hello', { cliId: myId, isChief: true, options })
-  if (!res.ok || res.json === null) return false
+  if (res.status === 409 && res.json?.refused === true) {
+    const chief = (res.json.chief ?? {}) as { title?: unknown }
+    const title = typeof chief.title === 'string' ? chief.title : ''
+    await stepDown($, `another session is already the Chief (${dataTitle(title)})`)
+    return 'refused'
+  }
+  if (!res.ok || res.json === null) return 'failed'
   localId = typeof res.json.sessionId === 'string' ? res.json.sessionId : null
-  return true
+  return 'ok'
 }
 
 // --------------------------------------------------------------- server ---
@@ -453,7 +518,9 @@ async function reclaim($: EngineInterface): Promise<boolean> {
   for (let i = 0; i < HELLO_TRIES; i += 1) {
     if (i > 0) await wait($, HELLO_RETRY_MS)
     try {
-      if (await hello($)) return true
+      const said = await hello($)
+      if (said === 'ok') return true
+      if (said === 'refused') return false
     } catch (err) {
       log($, `hello: ${String(err)}`)
     }
@@ -616,7 +683,8 @@ async function sessionsForModel($: EngineInterface, id: string | undefined, all:
     const res = await api($, 'GET', '/api/sessions')
     if (!res.ok || res.json === null) throw new Error(`answered ${res.status}`)
     const list = (Array.isArray(res.json.sessions) ? res.json.sessions : []) as ChiefSession[]
-    const others = list.filter(s => !s.isChief)
+    // The Chief never lists itself, also before the server knows its desktop id.
+    const others = list.filter(s => !s.isChief && s.id !== localId && s.cliId !== myId)
     const shown = all ? others : others.filter(s => s.inView !== false)
     shown.sort((a, b) => (STATE_ORDER[a.state] ?? 9) - (STATE_ORDER[b.state] ?? 9) ||
       (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))

@@ -23,6 +23,8 @@ session as prompts.
 
 ## Start
 
+Only one Chief runs on a computer. If the mod says another session is already the Chief, follow what it says and do none of the steps below.
+
 1. Check that the `cos_sessions` tool (`mcp__chief-of-staff__cos_sessions`) is available. It is when the mod is loaded. In that case the mod has already started the server and opened the console; skip to step 3.
 2. Without the tool the mod is not loaded. Run `python "${CLAUDE_PLUGIN_ROOT}/server/app.py" start --open` with Bash. It prints one JSON line: `already_running` and `port` on success, `error` with a plain sentence on failure. On failure, tell Jay that sentence and stop. Then tell Jay in one sentence that the console is open but the voice and the console chat need the chief-of-staff mod, which loads in a new session.
 3. Act as the Chief from now on. The persona is in the system prompt as a section that starts with "You are the Chief". If it is not there, read `${CLAUDE_PLUGIN_ROOT}/agents/chief.md` and follow its body for the rest of this session.
