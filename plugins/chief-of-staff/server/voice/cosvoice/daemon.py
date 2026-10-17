@@ -147,7 +147,8 @@ class Daemon:
                                  full_duplex=lambda: self.echo.available, on_state=self.publish)
         self.listen = "off"
         self.speak = True
-        self.error: str | None = None
+        self.error: str | None = None       # the daemon or the voice itself failed: nothing can be spoken
+        self.mic_error: str | None = None   # only the mic failed: replies are still spoken
         self.notice: str | None = None
         self._last_status: dict | None = None
         self._status_lock = threading.Lock()
@@ -191,7 +192,8 @@ class Daemon:
             "state": state, "listen": self.listen, "speak": self.speak, "device": self.m.device,
             "stt": getattr(self.m.stt, "label", None), "tts": getattr(self.m.tts, "name", None),
             "wakeWord": self.cfg.wake_word if self.m.wake is not None else None,
-            "detail": self.error or self.notice or self.ready_detail(),
+            "micError": self.mic_error,
+            "detail": self.error or self.mic_error or self.notice or self.ready_detail(),
         }
 
     def publish(self) -> None:
@@ -246,6 +248,8 @@ class Daemon:
                 self.notice = None
             self.listen = listen
             self.pipeline.set_mode(listen)
+            if listen == "off":
+                self.mic_error = None           # the mic is not wanted, so its failure no longer matters
         if isinstance(speak, bool):
             self.speak = speak
             if not speak:
@@ -341,12 +345,16 @@ class Daemon:
             return True
         try:
             self.mic.start()
-            if self.error and self.error.startswith("The microphone"):
-                self.error = None
+            if self.mic_error:
+                self.mic_error = None
+                self.publish()
             return True
         except Exception as e:
             LOG.exception("microphone failed to open")
-            self.error = f"The microphone did not open ({e.__class__.__name__})."
+            # A mic failure is not a voice error: the speaker still works, so the state
+            # stays listening or off and the server keeps sending replies to speak.
+            self.mic_error = (f"The microphone did not open ({e.__class__.__name__}). "
+                              "Replies are still spoken. Type to talk to the Chief.")
             self.publish()
             return False
 

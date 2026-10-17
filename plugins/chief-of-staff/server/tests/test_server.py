@@ -247,6 +247,33 @@ class Api(unittest.TestCase):
         self.assertEqual(items[-1]["text"], "what needs me")
         self.assertEqual(self.call("POST", "/api/voice/event", {"type": "bogus"})[0], 400)
 
+    def test_mic_failure_still_speaks_replies(self):
+        """The mic failed on Jay's PC (MME error 32) and every reply went silent. A mic
+        failure arrives as micError, so replies still make speak jobs."""
+        self.app.voice.installed = True
+        self.hello()
+        self.call("GET", "/api/voice/jobs?wait=0")                  # the first poll's settings job
+        problem = "The microphone did not open (PortAudioError). Replies are still spoken. Type to talk to the Chief."
+        self.assertEqual(self.call("POST", "/api/voice/event", {"type": "status", "status": {
+            "state": "listening", "micError": problem, "detail": problem}})[0], 200)
+        self.call("POST", "/api/mod/reply", {"text": "Two sessions need you.", "turnId": "t1"})
+        jobs = self.call("GET", "/api/voice/jobs?wait=0")[1]["jobs"]
+        self.assertEqual([(j["kind"], j["text"]) for j in jobs], [("speak", "Two sessions need you.")])
+        health = self.call("GET", "/api/health")[1]["voice"]
+        self.assertEqual((health["state"], health["micError"], health["detail"]), ("listening", problem, problem))
+        # The mic opens later: the daemon clears micError.
+        self.call("POST", "/api/voice/event", {"type": "status", "status": {"state": "listening", "micError": None}})
+        self.assertIsNone(self.call("GET", "/api/health")[1]["voice"]["micError"])
+
+    def test_voice_error_still_blocks_speech(self):
+        self.app.voice.installed = True
+        self.hello()
+        self.call("GET", "/api/voice/jobs?wait=0")
+        self.call("POST", "/api/voice/event", {"type": "status", "status": {
+            "state": "error", "detail": "The voice daemon did not start (OSError)."}})
+        self.call("POST", "/api/mod/reply", {"text": "Nobody hears this.", "turnId": "t1"})
+        self.assertEqual(self.call("GET", "/api/voice/jobs?wait=0")[1]["jobs"], [])
+
     # --- SSE
     def test_stream_sends_a_snapshot_then_events(self):
         self.assertEqual(self.call("GET", "/api/stream", token=None)[0], 401)
