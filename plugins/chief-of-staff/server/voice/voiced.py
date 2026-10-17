@@ -395,10 +395,11 @@ def self_check(args) -> int:
     from cosvoice.audio import resample
     from cosvoice.daemon import load_models
     from cosvoice.duplex import EchoCanceller
+    from cosvoice.text import SELF_CHECK_PHRASE, heard_self_check
 
     logs.setup(to_stderr=True, name="voice-tools.log")
     cfg = make_config(args)
-    phrase = "Chief of Staff voice check."
+    phrase = SELF_CHECK_PHRASE
     res: dict = {"device_asked": cfg.device, "gpu_used_before_mib": gpu.used_vram_mib()}
     t0 = time.perf_counter()
     models = load_models(cfg)
@@ -427,7 +428,8 @@ def self_check(args) -> int:
     res["echo_cancel"] = EchoCanceller(True).available
     res["vad_speech"] = round(max(models.vad(c) for c in _chunks(main_audio)), 3) if main_audio is not None else None
     res["gpu_used_after_mib"] = gpu.used_vram_mib()
-    ok = main_audio is not None and "voice check" in text.lower().replace(",", "")
+    # Close is enough: small.en on the CPU hears "Chief of Staff Voice Track" (2026-10-17).
+    ok = main_audio is not None and heard_self_check(text)
     res["ok"] = ok
     res["tts_reasons"] = list(getattr(models.tts, "reasons", []))
     try:  # setup.ps1 reads this for its DONE line

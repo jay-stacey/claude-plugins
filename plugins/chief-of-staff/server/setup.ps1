@@ -167,6 +167,15 @@ $models = Join-Path $Target 'models'
 $tools = Join-Path $Target 'tools'
 $venv = Join-Path $Target 'venv'
 $python = Join-Path $venv 'Scripts\python.exe'
+# Keep uv's Python, cache, bin and tool folders in HOME, out of %APPDATA% and %LOCALAPPDATA%.
+# Run from the Claude desktop app (an MSIX package), Windows redirects writes under %APPDATA% to
+# the package's LocalCache folder. uv then makes %APPDATA%\uv\python\cpython-3.11-... as a
+# junction to a path that does not exist, and 'uv venv' fails with "Missing expected target
+# directory for Python minor version link". These are set for this process only.
+$env:UV_PYTHON_INSTALL_DIR = Join-Path $Target 'uv-python'
+$env:UV_CACHE_DIR = Join-Path $Target 'uv-cache'
+$env:UV_PYTHON_BIN_DIR = Join-Path $Target 'uv-bin'
+$env:UV_TOOL_DIR = Join-Path $Target 'uv-tools'
 New-Item -ItemType Directory -Force $logs, $models | Out-Null
 Start-Transcript -Path (Join-Path $logs 'setup.log') -Force | Out-Null
 

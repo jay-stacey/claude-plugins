@@ -1,6 +1,6 @@
 {
   "name": "chief-of-staff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Chief of Staff for your Claude desktop sessions: one session becomes the Chief, watches every other session, tells you which ones need you, and closes or answers them when you ask. A local console on 127.0.0.1 shows a live session graph, a roster, the Chief's chat and any session's transcript, with an optional local voice (Hey Chief).",
   "author": {
     "name": "Jay Stacey"

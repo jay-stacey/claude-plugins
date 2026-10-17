@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.17.0"
+    "version": "2.17.1"
   },
   "plugins": [
     {
@@ -85,7 +85,7 @@
     {
       "name": "chief-of-staff",
       "source": "./plugins/chief-of-staff",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "A Chief of Staff for your Claude desktop sessions. One session becomes the Chief: it watches every other session, tells you which ones wait on you, and archives or answers them when you ask, checking first when a session is still working. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice: a Hey Chief wake word and spoken replies on your GPU.",
       "category": "productivity",
       "keywords": [
