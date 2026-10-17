@@ -3,6 +3,7 @@
 import { say, voiceControl } from './api.mjs';
 import { $, clear, clock, h, reducedMotion } from './util.mjs';
 import { addChat, setVoice, state } from './store.mjs';
+import { md } from './md.mjs';
 
 const BARS = 22;
 const SHAPE = Array.from({ length: BARS }, (_, i) => 0.45 + 0.55 * Math.sin((Math.PI * (i + 0.5)) / BARS));
@@ -146,7 +147,8 @@ function who(m) {
 
 function msgEl(m) {
   const cls = m.source === 'notice' ? 'notice' : m.role === 'chief' ? 'chief' : 'me';
-  const el = h('div', { class: `msg ${cls}`, 'data-id': m.id }, who(m), h('div', { class: 'text', text: m.text }));
+  const el = h('div', { class: `msg ${cls}`, 'data-id': m.id }, who(m),
+    m.role === 'chief' ? h('div', { class: 'text md' }, md(m.text)) : h('div', { class: 'text', text: m.text }));
   return el;
 }
 

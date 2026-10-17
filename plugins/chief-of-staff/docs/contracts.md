@@ -98,10 +98,18 @@ The Chief's own session has `isChief: true` and is drawn as the core, not as a n
 { "uuid": "...", "role": "user" | "assistant" | "tool", "at": 1792159164513,
   "text": "plain text, max 4000 chars, cut with ' …'",
   "toolName": "Bash" | null, "toolSummary": "npm test -- inventory-form" | null,
-  "fromSession": "Dealerpull product spec review" | null }   // set when a user turn was sent by another session
+  "fromSession": "Dealerpull product spec review" | null,    // set when a user turn was sent by another session
+  "toolResult": "12 passing (3s)" | null,   // tool turns: first non-empty line of the matching tool_result, max 160 chars, cut with ' …'; null until it arrives
+  "toolError": false | true | null,         // tool turns: the tool_result's is_error (false until it arrives); null on other turns
+  "question": null | {                      // AskUserQuestion tool turns only
+    "questions": [ { "header": "Split", "question": "How should the story be split?", "multiSelect": false,
+                     "options": [ { "label": "Split into 3", "description": "One story per screen." } ] } ],
+    "answer": "Split into 3" | null } }     // null while waiting, or when the tool_result is an error
 ```
 
-Parse the JSONL defensively: user rows with string content are prompts; user rows with `tool_result` blocks are skipped (or folded into the tool row as a short result); assistant `text` blocks are assistant turns; assistant `tool_use` blocks are tool turns (`toolSummary` from `command`, `file_path`, `pattern`, `description` or the first string input, max 120 chars). Skip `isMeta` rows and system rows.
+Parse the JSONL defensively: user rows with string content are prompts; user rows with `tool_result` blocks are not turns of their own: each result is folded into the tool turn with the same `tool_use_id` (`toolResult`, `toolError`, and the `answer` of a question); assistant `text` blocks are assistant turns; assistant `tool_use` blocks are tool turns (`toolSummary` from `command`, `file_path`, `pattern`, `description` or the first string input, max 120 chars; for AskUserQuestion, the first question). Skip `isMeta` rows and system rows.
+
+`question.questions` is the AskUserQuestion input, checked field by field: at most 4 questions and 8 options each; `header` max 60 chars, `question` 500, `label` 120, `description` 300; a plain string option becomes `{ "label": ..., "description": "" }`; input not in this shape gives `question: null`. `answer` comes from the row's `toolUseResult.answers` (in question order, joined with "; "), else from the result text's `"question"="answer"` pairs, else the result text itself, max 500 chars. Transcript content is untrusted data: the console shows it as text only.
 
 ## 5. HTTP API (app server)
 

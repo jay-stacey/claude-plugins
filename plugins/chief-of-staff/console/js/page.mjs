@@ -5,6 +5,7 @@ import { $, add, ageWords, clear, clock, h, modelName, stateClass, stateLabel, w
 import { on, state } from './store.mjs';
 import { sendToChief } from './chief.mjs';
 import { toast } from './toast.mjs';
+import { inline, md } from './md.mjs';
 
 const PAGE = 60;
 let cur = null;            // { id, sess, cursor, loading, seen:Set, lastUuid, gone }
@@ -34,6 +35,9 @@ export function initPage({ home, open }) {
   });
   $('transcript').addEventListener('scroll', () => {
     if ($('transcript').scrollTop < 160) loadOlder();
+  });
+  $('transcript').addEventListener('click', (e) => {
+    if (e.target.closest('[data-open-app]')) onOpenInApp();
   });
   $('pMeta').addEventListener('click', (e) => {
     const b = e.target.closest('[data-goto]');
@@ -154,17 +158,57 @@ function renderMeta() {
 
 // ------------------------------------------------------------------ transcript
 
+const mark = (cls, glyph) => h('span', { class: `mark ${cls}`, 'aria-hidden': 'true', text: glyph });
+
+/** One turn, drawn like a Claude Code chat: › you, ● Claude, ● Tool(args) with ⎿ result. */
 function turnEl(t) {
+  const when = clock(t.at);
   if (t.role === 'tool') {
-    return h('div', { class: 'turn tool', 'data-uuid': t.uuid, title: clock(t.at) },
-      h('b', { text: t.toolName || 'Tool' }), t.toolSummary || t.text || '');
+    if (t.toolName === 'AskUserQuestion') return questionEl(t, when);
+    const args = t.toolSummary || (t.text && t.text !== t.toolName ? t.text : '');
+    return h('div', { class: `turn tool${t.toolError ? ' err' : ''}`, 'data-uuid': t.uuid, title: when },
+      mark('tool', '●'),
+      h('div', { class: 'tool-body' },
+        h('div', { class: 'tool-call' }, h('b', { text: t.toolName || 'Tool' }), args ? h('span', { class: 'args', text: `(${args})` }) : null),
+        t.toolResult ? h('div', { class: 'tool-result' }, h('span', { class: 'elbow', 'aria-hidden': 'true', text: '⎿' }), h('span', { text: t.toolResult })) : null));
   }
-  const user = t.role === 'user';
-  const whoText = user
-    ? (t.fromSession ? `FROM ${t.fromSession} · ${clock(t.at)}` : `YOU · ${clock(t.at)}`)
-    : `CLAUDE · ${clock(t.at)}`;
-  return h('div', { class: `turn ${user ? 'user' : 'asst'}${t.fromSession ? ' from' : ''}`, 'data-uuid': t.uuid },
-    h('div', { class: 'who', text: whoText }), h('div', { class: 'body2', text: t.text || '' }));
+  if (t.role === 'user') {
+    return h('div', { class: `turn user${t.fromSession ? ' from' : ''}`, 'data-uuid': t.uuid, title: when },
+      mark('you', '›'),
+      h('div', { class: 'body2' },
+        h('div', { class: 'who' }, t.fromSession ? `From ${t.fromSession}` : 'You', h('span', { class: 'when', text: when })),
+        h('div', { class: 'md' }, md(t.text))));
+  }
+  return h('div', { class: 'turn asst', 'data-uuid': t.uuid, title: when },
+    mark('claude', '●'), h('div', { class: 'body2 md' }, md(t.text)));
+}
+
+/** AskUserQuestion: the question and its options. Answers happen in the Claude app, where the
+ *  session is paused on the prompt; a typed reply here would only queue behind it. */
+function questionEl(t, when) {
+  const q = t.question && Array.isArray(t.question.questions) ? t.question : null;
+  const answered = q && q.answer;
+  const card = h('div', { class: `qcard${answered ? ' answered' : ''}` });
+  const openBtn = () => h('button', { type: 'button', class: 'linkish', 'data-open-app': '1', text: 'Open in app' });
+  if (!q) {
+    card.append(h('div', { class: 'q-text', text: 'Asked you a question.' }),
+      h('div', { class: 'q-foot' }, 'Open it in the Claude app to see and answer it. ', openBtn()));
+  } else {
+    const picked = answered ? String(q.answer).split(/,\s*/) : [];
+    for (const one of q.questions) {
+      card.appendChild(h('div', { class: 'q-one' },
+        one.header ? h('span', { class: 'q-chip', text: one.header }) : null,
+        h('div', { class: 'q-text' }, inline(one.question || '')),
+        h('ol', { class: 'q-opts' }, (one.options || []).map((o) => h('li', { class: picked.includes(o.label) ? 'picked' : null },
+          h('span', { class: 'q-label', text: o.label || '' }), o.description ? h('span', { class: 'q-desc', text: o.description }) : null))),
+        one.multiSelect ? h('div', { class: 'q-note', text: 'Pick one or more.' }) : null));
+    }
+    card.appendChild(answered
+      ? h('div', { class: 'q-foot ok', text: `Answered: ${q.answer}` })
+      : h('div', { class: 'q-foot' }, 'Waiting for your answer in the Claude app. ', openBtn()));
+  }
+  return h('div', { class: 'turn tool question', 'data-uuid': t.uuid, title: when },
+    mark('ask', '?'), h('div', { class: 'tool-body' }, h('div', { class: 'tool-call' }, h('b', { text: 'Question for you' })), card));
 }
 
 function topMarker() {

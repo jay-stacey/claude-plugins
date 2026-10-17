@@ -12,6 +12,7 @@ import threading
 MAX_TEXT = 4000
 MAX_SUMMARY = 120
 MAX_TURNS = 20000
+MAX_WAITING_RESULTS = 2000
 MAX_FIRST_READ = 64 * 1024 * 1024   # a transcript bigger than this is read from its last 64 MB
 
 PEER_RE = re.compile(r'<cross-session-message\b([^>]*)>(.*?)(?:</cross-session-message>|$)', re.S)
@@ -113,9 +114,8 @@ def parse_row(row) -> tuple[list, dict | None]:
         text = clean_prompt(raw)
         if not text:
             return [], peer
-        return [{"uuid": uuid, "role": "user", "at": at, "text": clip(text, MAX_TEXT),
-                 "toolName": None, "toolSummary": None,
-                 "fromSession": (peer or {}).get("name") or (sender if peer else None)}], peer
+        return [dict(uuid=uuid, role="user", at=at, text=clip(text, MAX_TEXT), toolName=None, toolSummary=None,
+                     fromSession=(peer or {}).get("name") or (sender if peer else None), **NO_TOOL)], peer
 
     turns = []
     blocks = content if isinstance(content, list) else ([{"type": "text", "text": content}] if isinstance(content, str) else [])
@@ -124,14 +124,124 @@ def parse_row(row) -> tuple[list, dict | None]:
             continue
         tid = uuid if not turns else f"{uuid}:{i}"
         if b.get("type") == "text" and isinstance(b.get("text"), str) and b["text"].strip():
-            turns.append({"uuid": tid, "role": "assistant", "at": at, "text": clip(b["text"], MAX_TEXT),
-                          "toolName": None, "toolSummary": None, "fromSession": None})
+            turns.append(dict(uuid=tid, role="assistant", at=at, text=clip(b["text"], MAX_TEXT), toolName=None,
+                              toolSummary=None, fromSession=None, **NO_TOOL))
         elif b.get("type") == "tool_use":
             name = b.get("name") if isinstance(b.get("name"), str) else "tool"
+            question = question_of(b.get("input")) if name == "AskUserQuestion" else None
             summary = tool_summary(b.get("input"))
-            turns.append({"uuid": tid, "role": "tool", "at": at, "text": summary or name,
-                          "toolName": name, "toolSummary": summary, "fromSession": None})
+            if summary is None and question and question["questions"]:
+                summary = clip(question["questions"][0]["question"] or question["questions"][0]["header"], MAX_SUMMARY) or None
+            turn = {"uuid": tid, "role": "tool", "at": at, "text": summary or name, "toolName": name,
+                    "toolSummary": summary, "fromSession": None, "toolResult": None, "toolError": False,
+                    "question": question}
+            if isinstance(b.get("id"), str):
+                turn["_toolUseId"] = b["id"]
+            turns.append(turn)
     return turns, None
+
+
+# The tool fields of a turn that is not a tool call.
+NO_TOOL = {"toolResult": None, "toolError": None, "question": None}
+MAX_RESULT = 160
+MAX_ANSWER = 500
+MAX_QUESTIONS = 4
+MAX_OPTIONS = 8
+ANSWER_PAIR_RE = re.compile(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"')
+
+
+def _str(value, limit):
+    return clip(value, limit) if isinstance(value, str) else ""
+
+
+def question_of(tool_input):
+    """AskUserQuestion's input in the console's shape, every field checked and clipped."""
+    if not isinstance(tool_input, dict) or not isinstance(tool_input.get("questions"), list):
+        return None
+    questions = []
+    for q in tool_input["questions"][:MAX_QUESTIONS]:
+        if not isinstance(q, dict):
+            continue
+        options = []
+        for o in (q.get("options") if isinstance(q.get("options"), list) else [])[:MAX_OPTIONS]:
+            if isinstance(o, dict):
+                options.append({"label": _str(o.get("label"), 120), "description": _str(o.get("description"), 300)})
+            elif isinstance(o, str):
+                options.append({"label": clip(o, 120), "description": ""})
+        questions.append({"header": _str(q.get("header"), 60), "question": _str(q.get("question"), 500),
+                          "multiSelect": q.get("multiSelect") is True, "options": options})
+    return {"questions": questions, "answer": None}
+
+
+def result_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content
+                         if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
+    return ""
+
+
+def short_result(text: str) -> str:
+    """The first line with words in it, cut to about 160 characters."""
+    for line in (text or "").splitlines():
+        if line.strip():
+            return clip(" ".join(line.split()), MAX_RESULT)
+    return ""
+
+
+def tool_results(row):
+    """The tool_result blocks of a user row: [{"id", "text", "isError", "answers"}]."""
+    if not isinstance(row, dict) or row.get("type") != "user" or row.get("isSidechain"):
+        return []
+    msg = row.get("message") if isinstance(row.get("message"), dict) else {}
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return []
+    record = row.get("toolUseResult") if isinstance(row.get("toolUseResult"), dict) else {}
+    answers = record.get("answers") if isinstance(record.get("answers"), dict) else None
+    out = []
+    for b in content:
+        if isinstance(b, dict) and b.get("type") == "tool_result" and isinstance(b.get("tool_use_id"), str):
+            out.append({"id": b["tool_use_id"], "text": result_text(b.get("content")),
+                        "isError": b.get("is_error") is True, "answers": answers})
+    return out
+
+
+def answer_of(question, result):
+    """The chosen answers in question order, joined by "; ", from the tool's own record,
+    else from the result text's "question"="answer" pairs, else the text itself."""
+    if result["isError"]:
+        return None
+    asked = [q["question"] for q in question["questions"]]
+    picked = []
+    if result["answers"]:
+        for q in asked:
+            a = result["answers"].get(q)
+            if isinstance(a, str) and a.strip():
+                picked.append(a.strip())
+        if not picked:
+            picked = [a.strip() for a in result["answers"].values() if isinstance(a, str) and a.strip()]
+    if not picked:
+        picked = [a for _, a in ANSWER_PAIR_RE.findall(result["text"]) if a.strip()]
+    text = "; ".join(picked) if picked else result["text"].strip()
+    return clip(text, MAX_ANSWER) or None
+
+
+def apply_result(turn, result):
+    turn["toolResult"] = short_result(result["text"]) or None
+    turn["toolError"] = result["isError"]
+    if turn.get("question") is not None:
+        turn["question"]["answer"] = answer_of(turn["question"], result)
+
+
+def public_turn(turn):
+    out = {k: v for k, v in turn.items() if not k.startswith("_")}
+    if isinstance(out.get("question"), dict):
+        q = out["question"]
+        out["question"] = {"questions": [dict(x, options=[dict(o) for o in x["options"]]) for x in q["questions"]],
+                           "answer": q["answer"]}
+    return out
 
 
 class Transcript:
@@ -142,6 +252,7 @@ class Transcript:
         self.offset = 0
         self.partial = b""
         self.turns = []
+        self.waiting = {}       # tool_use id -> the tool turn whose result has not come yet
         self.lock = threading.Lock()
 
     def refresh(self) -> tuple[list, list]:
@@ -152,7 +263,7 @@ class Transcript:
             except OSError:
                 return [], []
             if size < self.offset:          # rewritten: start over
-                self.offset, self.partial, self.turns = 0, b"", []
+                self.offset, self.partial, self.turns, self.waiting = 0, b"", [], {}
             if size == self.offset:
                 return [], []
             start = self.offset
@@ -172,10 +283,20 @@ class Transcript:
             self.partial = lines.pop()
             new_turns, peers = [], []
             for line in lines:
-                turns, peer = parse_line(line)
+                turns, peer, results = parse_line_full(line)
+                for t in turns:
+                    if t.get("_toolUseId"):
+                        self.waiting[t["_toolUseId"]] = t
                 new_turns += turns
                 if peer:
                     peers.append(peer)
+                # A tool's result comes in a later row: it fills in the call's turn.
+                for r in results:
+                    turn = self.waiting.pop(r["id"], None)
+                    if turn is not None:
+                        apply_result(turn, r)
+            while len(self.waiting) > MAX_WAITING_RESULTS:
+                self.waiting.pop(next(iter(self.waiting)))
             self.turns += new_turns
             if len(self.turns) > MAX_TURNS:
                 self.turns = self.turns[-MAX_TURNS:]
@@ -192,21 +313,28 @@ class Transcript:
             limit = max(1, min(int(limit or 60), 500))
             start = max(0, end - limit)
             chunk = turns[start:end]
-            return {"turns": [dict(t) for t in chunk], "cursor": chunk[0]["uuid"] if start > 0 and chunk else None}
+            return {"turns": [public_turn(t) for t in chunk], "cursor": chunk[0]["uuid"] if start > 0 and chunk else None}
 
 
 def parse_line(line: bytes):
+    turns, peer, _ = parse_line_full(line)
+    return turns, peer
+
+
+def parse_line_full(line: bytes):
+    """(turns, peer, tool results) of one JSONL line; a bad line gives nothing."""
     line = line.strip()
     if not line:
-        return [], None
+        return [], None, []
     try:
         row = json.loads(line.decode("utf-8", errors="replace"))
     except ValueError:
-        return [], None
+        return [], None, []
     try:
-        return parse_row(row)
+        turns, peer = parse_row(row)
+        return turns, peer, tool_results(row)
     except Exception:
-        return [], None
+        return [], None, []
 
 
 class Tail:

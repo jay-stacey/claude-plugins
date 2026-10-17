@@ -126,9 +126,62 @@ def main():
         for r in rows:
             fh.write(json.dumps(r) + "\n")
         fh.write('{"type": "assistant", "uuid": "broken"\n')
+    write_tools(PROJ / "cli-tools.jsonl")
     with open(PROJ / "cli-needs.jsonl", "w", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps({"type": "user", "uuid": "n-1", "timestamp": iso(NOW - 2 * H),
                              "message": {"role": "user", "content": [{"type": "text", "text": "Plan PRO-921"}]}}) + "\n")
+
+
+def write_tools(path):
+    """Tool calls and their results, including AskUserQuestion in every state."""
+    def use(uuid, at, tid, name, tool_input):
+        return {"type": "assistant", "uuid": uuid, "timestamp": iso(NOW - at),
+                "message": {"role": "assistant",
+                            "content": [{"type": "tool_use", "id": tid, "name": name, "input": tool_input}]}}
+
+    def result(uuid, at, tid, content, is_error=None, record=None):
+        block = {"type": "tool_result", "tool_use_id": tid, "content": content}
+        if is_error is not None:
+            block["is_error"] = is_error
+        row = {"type": "user", "uuid": uuid, "timestamp": iso(NOW - at),
+               "message": {"role": "user", "content": [block]}}
+        if record is not None:
+            row["toolUseResult"] = record
+        return row
+
+    split = {"questions": [
+        {"question": "How should the story be split?", "header": "Split", "multiSelect": False,
+         "options": [{"label": "Split into 3", "description": "One story per screen."},
+                     {"label": "Keep one story", "description": "Ship it together."}]},
+        {"question": "Who reviews it?", "header": "Reviewer", "multiSelect": True,
+         "options": [{"label": "Nick", "description": ""}, {"label": "Colin", "description": "Product"}]}]}
+    rows = [
+        use("t-1", 900000, "tu_bash", "Bash", {"command": "npm test", "description": "Run tests"}),
+        result("r-1", 890000, "tu_bash", "\n\n  12 passing (3s)  \n  0 failing\n" + "x" * 300),
+        use("t-2", 880000, "tu_read", "Read", {"file_path": "src/missing.ts"}),
+        result("r-2", 870000, "tu_read", [{"type": "text", "text": "File does not exist."}], is_error=True),
+        use("t-3", 860000, "tu_ask1", "AskUserQuestion", split),
+        result("r-3", 850000, "tu_ask1",
+               'The user answered: "How should the story be split?"="Split into 3", "Who reviews it?"="Nick". '
+               "Read the answers carefully.",
+               record={"questions": split["questions"],
+                       "answers": {"How should the story be split?": "Split into 3", "Who reviews it?": "Nick"}}),
+        use("t-4", 840000, "tu_ask2", "AskUserQuestion",
+            {"questions": [{"question": "Ship today?", "header": "Ship", "options": ["Yes", "No"]}]}),
+        result("r-4", 830000, "tu_ask2", 'The user answered: "Ship today?"="Yes". Continue.'),
+        use("t-5", 820000, "tu_ask3", "AskUserQuestion",
+            {"questions": [{"question": "Delete the branch?", "header": "Cleanup",
+                            "options": [{"label": "Delete", "description": "x" * 400}]}]}),
+        result("r-5", 810000, "tu_ask3", "The user declined to answer.", is_error=True),
+        use("t-6", 800000, "tu_ask4", "AskUserQuestion", {"questions": "not a list"}),
+        result("r-6", 790000, "tu_unknown", "A result for a call this file does not hold."),
+        use("t-7", 780000, "tu_ask5", "AskUserQuestion",
+            {"questions": [{"question": "Which vendor?", "header": "Vendor", "multiSelect": False,
+                            "options": [{"label": "A"}, {"label": "B"}, 7]}]}),
+    ]
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
 
 
 if __name__ == "__main__":

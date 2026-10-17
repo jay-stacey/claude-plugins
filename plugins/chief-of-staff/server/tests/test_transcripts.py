@@ -6,6 +6,75 @@ from helpers import FIXTURES, Sandbox
 from cos.transcripts import Tail, Transcript, clip, parse_row, tool_summary
 
 BUSY = FIXTURES / "projects" / "C--work-dp-web-ui" / "cli-busy.jsonl"
+TOOLS = FIXTURES / "projects" / "C--work-dp-web-ui" / "cli-tools.jsonl"
+
+
+class ToolResults(unittest.TestCase):
+    def turns(self):
+        return {t["uuid"]: t for t in Transcript(TOOLS).page(limit=100)["turns"]}
+
+    def test_a_tool_turn_gets_its_result_line_and_error_flag(self):
+        t = self.turns()
+        self.assertEqual((t["t-1"]["toolResult"], t["t-1"]["toolError"]), ("12 passing (3s)", False))
+        self.assertEqual((t["t-2"]["toolResult"], t["t-2"]["toolError"]), ("File does not exist.", True))
+        self.assertTrue(all(not k.startswith("_") for turn in t.values() for k in turn))
+        # Tool results are folded into their calls, never turns of their own.
+        self.assertEqual(sorted(t), ["t-1", "t-2", "t-3", "t-4", "t-5", "t-6", "t-7"])
+
+    def test_a_long_result_is_cut_like_other_text(self):
+        from cos.transcripts import short_result
+        self.assertEqual(len(short_result("y" * 500)), 160)
+        self.assertTrue(short_result("y" * 500).endswith(" …"))
+        self.assertEqual(short_result("\n \n  a   b \nc"), "a b")
+
+    def test_ask_user_question_turns_carry_the_questions_and_the_answer(self):
+        t = self.turns()
+        q = t["t-3"]["question"]
+        self.assertEqual(t["t-3"]["toolSummary"], "How should the story be split?")
+        self.assertEqual([x["header"] for x in q["questions"]], ["Split", "Reviewer"])
+        self.assertEqual(q["questions"][0]["options"][0], {"label": "Split into 3", "description": "One story per screen."})
+        self.assertIs(q["questions"][1]["multiSelect"], True)
+        self.assertEqual(q["answer"], "Split into 3; Nick")                 # from the tool's own record
+        self.assertEqual(t["t-4"]["question"]["answer"], "Yes")             # from the result text
+        self.assertEqual(t["t-4"]["question"]["questions"][0]["options"], [{"label": "Yes", "description": ""},
+                                                                           {"label": "No", "description": ""}])
+        declined = t["t-5"]
+        self.assertIsNone(declined["question"]["answer"])
+        self.assertTrue(declined["toolError"])
+        self.assertEqual(len(declined["question"]["questions"][0]["options"][0]["description"]), 300)
+        self.assertIsNone(t["t-6"]["question"])                            # input not in the expected shape
+        waiting = t["t-7"]["question"]
+        self.assertIsNone(waiting["answer"])
+        self.assertIsNone(t["t-7"]["toolResult"])
+        self.assertEqual([o["label"] for o in waiting["questions"][0]["options"]], ["A", "B"])
+
+    def test_other_turns_have_empty_tool_fields(self):
+        turn = Transcript(BUSY).page()["turns"][0]
+        self.assertEqual((turn["toolResult"], turn["toolError"], turn["question"]), (None, None, None))
+
+    def test_a_result_that_arrives_later_fills_in_its_call(self):
+        with Sandbox() as box:
+            path = box.dir / "later.jsonl"
+            call = {"type": "assistant", "uuid": "c1", "message": {"content": [
+                {"type": "tool_use", "id": "x1", "name": "Bash", "input": {"command": "ls"}}]}}
+            path.write_text(json.dumps(call) + "\n", encoding="utf-8")
+            t = Transcript(path)
+            self.assertIsNone(t.page()["turns"][0]["toolResult"])
+            done = {"type": "user", "uuid": "c2", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "x1", "content": [{"type": "text", "text": "a.txt"}]}]}}
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(done) + "\n")
+            self.assertEqual(t.page()["turns"][0]["toolResult"], "a.txt")
+
+    def test_bad_tool_rows_never_raise(self):
+        from cos.transcripts import question_of, tool_results
+        for row in ({"type": "user", "message": {"content": [{"type": "tool_result"}]}},
+                    {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": 3}]}},
+                    {"type": "user", "toolUseResult": "x", "message": {"content": [
+                        {"type": "tool_result", "tool_use_id": "a", "content": 5}]}}):
+            tool_results(row)
+        for value in (None, [], {"questions": [None, 3, {"options": "x"}]}):
+            question_of(value)
 
 
 class Parsing(unittest.TestCase):

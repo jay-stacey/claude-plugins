@@ -59,7 +59,7 @@ class VoiceConfig:
     kws_score: float = 1.5
     # Listening
     preroll_ms: int = 1500
-    trailing_silence_ms: int = 800
+    trailing_silence_ms: int = 1400       # a mid-sentence pause is often a full second
     wake_speech_timeout_ms: int = 5000
     max_utterance_ms: int = 30000
     vad_start: float = 0.5

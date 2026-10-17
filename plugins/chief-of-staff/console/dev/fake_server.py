@@ -195,16 +195,46 @@ USER_LINES = [
     "What is left before this is done?",
 ]
 ASSISTANT_LINES = [
-    "Found it. The save handler resets the form before the second request comes back, so the stock number is cleared. "
-    "I will hold the reset until the save finishes, then add a test for the double save.",
+    "Found it. The save handler resets the form **before** the second request comes back, so `stockNumber` is "
+    "cleared.\n\nPlan:\n\n1. Hold the reset until the save finishes.\n2. Add a test for the double save.\n"
+    "3. Run the verifier on the local stack.",
     "Unit tests pass. The verifier is now running the save twice in the browser on the local stack.",
-    "Two specs fail, both on the date filter. The fixture uses a UTC midnight date, so the day shifts by one.",
-    "Done. The change is 3 files and 41 lines. Next I will run the full suite.",
-    "I need one decision from you before I go on: keep the old field name, or rename it everywhere?",
+    "Two specs fail, both on the date filter. The fixture uses a UTC midnight date, so the day shifts by one:\n\n"
+    "```ts\nconst from = new Date('2026-10-01'); // UTC midnight, Sep 30 in Toronto\n"
+    "const fixed = parseLocalDate('2026-10-01');\n```\n\nI will switch the fixture to `parseLocalDate`.",
+    "## Done\n\nThe change is 3 files and 41 lines.\n\n| File | Change |\n|---|---|\n"
+    "| `inventory-form.component.ts` | hold the reset until the save returns |\n"
+    "| `inventory-form.component.spec.ts` | new double-save test |\n| `date-utils.ts` | no change |\n\n"
+    "Next I will run the full suite. See the [contract](https://code.claude.com/docs/en/plugins-reference) for details.",
+    "Status:\n\n- [x] Fix the save handler\n- [x] Unit tests\n- [ ] Browser check\n  - double save\n  - save after edit\n\n"
+    "> The verifier owns the browser check. I will *not* touch it.",
 ]
-TOOLS = [("Bash", "npm test -- inventory-form"), ("Edit", "src/app/inventory/inventory-form.component.ts"),
-         ("Read", "docs/contracts.md"), ("Grep", "stockNumber"), ("Agent", "started a local verifier"),
-         ("Bash", "dotnet test Dealerpull.Tests --filter Inventory")]
+TOOLS = [
+    ("Bash", "npm test -- inventory-form", "Tests: 42 passed, 42 total (3.1 s)", False),
+    ("Edit", "src/app/inventory/inventory-form.component.ts", "Updated with 6 additions and 2 removals", False),
+    ("Read", "docs/contracts.md", "Read 201 lines", False),
+    ("Grep", "stockNumber", "Found 7 matches in 3 files", False),
+    ("Agent", "started a local verifier", None, False),
+    ("Bash", "dotnet test Dealerpull.Tests --filter Inventory", "Failed: 2, Passed: 118. DateFilterTests.FromIsInclusive", True),
+]
+QUESTION = {
+    "questions": [{
+        "header": "Story split",
+        "question": "Split **PRO-994** into 3 stories before I write them?",
+        "multiSelect": False,
+        "options": [
+            {"label": "Split into 3", "description": "Search, filters and export as separate stories."},
+            {"label": "Keep one story", "description": "One larger story with sub-tasks."},
+        ],
+    }],
+    "answer": None,
+}
+
+
+def tool_turn(uid, at, tool):
+    name, summ, result, err = tool
+    return {"uuid": uid, "role": "tool", "at": at, "text": summ, "toolName": name, "toolSummary": summ,
+            "toolResult": result, "toolError": err, "fromSession": None}
 
 
 class Transcripts:
@@ -220,23 +250,35 @@ class Transcripts:
         turns = []
         for i in range(n):
             at = start + (end - start) * i // max(1, n - 1)
-            k = i % 4
+            k = i % 5
             uid = f"{s['id'][-8:]}-{i:05d}"
-            if k == 0:
+            if i == n - 12:
+                # an answered question, a few pages up from the newest turn
+                q = json.loads(json.dumps(QUESTION))
+                q["questions"][0]["header"] = "Field name"
+                q["questions"][0]["question"] = "Keep the old field name, or rename it everywhere?"
+                q["questions"][0]["options"] = [{"label": "Keep it", "description": "No migration needed."},
+                                                {"label": "Rename everywhere", "description": "Needs a migration."}]
+                q["answer"] = "Keep it"
+                turns.append({"uuid": uid, "role": "tool", "at": at, "text": "AskUserQuestion",
+                              "toolName": "AskUserQuestion", "toolSummary": None, "question": q, "fromSession": None})
+            elif k == 0:
                 text = rnd.choice(USER_LINES).format(t=s["title"])
-                from_s = "Chief of staff" if (i % 24 == 0 and i) else None
+                from_s = "Chief of staff" if (i % 25 == 0 and i) else None
                 if from_s:
                     text = "Jay asks: where does this stand? Reply in two sentences."
-                turns.append({"uuid": uid, "role": "user", "at": at, "text": f"[{i}] {text}", "toolName": None,
+                turns.append({"uuid": uid, "role": "user", "at": at, "text": text, "toolName": None,
                               "toolSummary": None, "fromSession": from_s})
-            elif k == 3:
-                name, summ = rnd.choice(TOOLS)
-                turns.append({"uuid": uid, "role": "tool", "at": at, "text": "", "toolName": name,
-                              "toolSummary": summ, "fromSession": None})
+            elif k in (2, 3):
+                turns.append(tool_turn(uid, at, rnd.choice(TOOLS)))
             else:
-                turns.append({"uuid": uid, "role": "assistant", "at": at,
-                              "text": f"[{i}] " + rnd.choice(ASSISTANT_LINES), "toolName": None, "toolSummary": None,
-                              "fromSession": None})
+                turns.append({"uuid": uid, "role": "assistant", "at": at, "text": rnd.choice(ASSISTANT_LINES),
+                              "toolName": None, "toolSummary": None, "fromSession": None})
+        if s.get("needsAction"):
+            # sessions waiting on a decision end on an open question
+            turns.append({"uuid": f"{s['id'][-8:]}-{n:05d}", "role": "tool", "at": end, "text": "AskUserQuestion",
+                          "toolName": "AskUserQuestion", "toolSummary": None,
+                          "question": json.loads(json.dumps(QUESTION)), "fromSession": None})
         return turns
 
     def get(self, s):
@@ -249,9 +291,10 @@ class Transcripts:
         turns = self.get(s)
         with self.lock:
             i = len(turns)
-            turns.append({"uuid": f"{s['id'][-8:]}-{i:05d}", "role": role, "at": now_ms(), "text": text,
-                          "toolName": tool[0] if tool else None, "toolSummary": tool[1] if tool else None,
-                          "fromSession": from_session})
+            uid = f"{s['id'][-8:]}-{i:05d}"
+            turns.append(tool_turn(uid, now_ms(), tool) if tool else
+                         {"uuid": uid, "role": role, "at": now_ms(), "text": text, "toolName": None,
+                          "toolSummary": None, "fromSession": from_session})
 
     def page(self, s, limit, before):
         turns = self.get(s)
@@ -478,8 +521,7 @@ def ticker(hub: Hub):
             if rnd.random() < 0.1:
                 s["lastActivityAt"] = now_ms()
                 if rnd.random() < 0.3:
-                    name, summ = rnd.choice(TOOLS)
-                    hub.transcripts.append(s, "tool", "", tool=(name, summ))
+                    hub.transcripts.append(s, "tool", "", tool=rnd.choice(TOOLS))
                 hub.emit("activity", {"kind": "pulse", "id": s["id"]})
         if now >= next_msg:
             next_msg = now + rnd.uniform(4, 8)
@@ -537,6 +579,7 @@ def fake_utterance(hub: Hub, text: str, wake=True):
             hub.emit("partial", {"text": " ".join(words[: 1 + i // 6]).lower()})
         time.sleep(0.1)
     hub.emit("level", {"rms": 0.0})
+    hub.set_voice(state="thinking")
     hub.add_chat("me", text, "voice")
     hub.chief_answer(text, "voice")
 
