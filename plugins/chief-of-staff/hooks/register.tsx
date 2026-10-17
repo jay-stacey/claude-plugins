@@ -166,9 +166,11 @@ export const register: Register = (on, opts) => {
     const answer = e.reason === 'answer' && !e.isAborted ? e.answer : ''
     const turnId = e.turnId
     if (answer.trim() !== '') {
-      // The reply's confirm question, if any, is what Jay's next prompt answers.
+      // The reply's confirm question, if any, is what Jay's next prompt answers. A
+      // reply without one (a notice in between) leaves the open question alone;
+      // Jay's next own message answers or clears it in noteAnswer.
       const { text, confirm } = splitConfirm(answer)
-      asked = confirm !== null ? { ids: [...discussed], text: text.toLowerCase(), yes: confirm.yes, no: confirm.no } : null
+      if (confirm !== null) asked = { ids: [...discussed], text: text.toLowerCase(), yes: confirm.yes, no: confirm.no }
     }
     $.clock.after(0, () => void sendReply($, answer, turnId))
     return result
@@ -471,6 +473,9 @@ function sessionRef(id: string, title: string): string {
 
 async function handle($: EngineInterface, item: ChiefInboxItem): Promise<void> {
   if (item.type === 'prompt') {
+    // Console and voice messages are Jay's own words. The engine does not show a
+    // plugin's own $.prompt.submit to its prompt.submit hook, so note the answer here.
+    if (!SERVER_PROMPT.test(item.text.trim())) noteAnswer(item.text.trim())
     // A turn of its own once the session is idle; never folded into a running turn.
     $.prompt.submit({ text: item.text }).catch(err => log($, `prompt: ${String(err)}`))
     // Acknowledged, so the server does not send it again.

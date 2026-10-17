@@ -355,6 +355,28 @@ test('a confirm reached by looking the session up first, then a spoken yes, allo
   expect(archived).toEqual(['local_a'])
 })
 
+test('a yes from the console or the voice, after a notice turn, allows the archive', async ($, on) => {
+  // The mod submits console and voice messages itself, and the engine does not show a
+  // plugin its own prompt.submit, so the answer is noted when the inbox item arrives.
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const archived: string[] = []
+  on('tool.call', { tool: ARCHIVE }, ($, e) => (archived.push(String((e as { session_id?: unknown }).session_id)),
+    { result: 'Archived.' }) as never)
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  await $.turn.start({ text: '', turnId: 't1' })
+  await $.tool.call({ tool: 'mcp__chief-of-staff__cos_sessions', id: 'local_a' } as never)
+  await $.turn.complete({ ...TURN, answer: 'That one is busy. Archive it anyway?\n[[confirm: Archive anyway | Leave it running]]' })
+  // A notice turn in between keeps the question open.
+  await $.turn.start({ text: '', turnId: 't2' })
+  await $.turn.complete({ ...TURN, turnId: 't2', answer: 'The docs session looks stale.' })
+  fake.inbox.push({ id: 'msg_1', type: 'prompt', text: 'Archive anyway' })
+  await settle(clock, 3000)
+  await $.turn.start({ text: '', turnId: 't3' })
+  expect((await archiveCall($, 'local_a')).isError).toBe(undefined)
+  expect(archived).toEqual(['local_a'])
+})
+
 test('hello is tried three times before the Chief steps down', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const fake = fakeEngine(on)
