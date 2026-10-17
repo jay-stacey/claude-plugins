@@ -20,6 +20,8 @@ Never edit a file another owner holds. Never commit. The lead commits.
 - Runtime home: `%USERPROFILE%\.claude\chief-of-staff\` (call it `HOME`).
   - `HOME\run\server.json`: `{ "api": 1, "port": 47870, "pid": 1234, "token": "...", "url": "http://127.0.0.1:47870/#<token>", "chiefSessionId": "local_..." | null, "startedAt": 1792160000000 }`. Written by the app server at start, rewritten when the chief changes. Deleted on clean stop.
   - `HOME\venv\` voice venv, `HOME\models\` model files, `HOME\logs\` logs (rotate at 5 MB, keep 2).
+  - `HOME\run\voice-state.json`: `{ "listen": "wake" | "ptt" | "off", "speak": bool }`, the console's own toggles. Written on every `/api/voice/control` change of `listen` or `speak` and read at start, so they survive a restart and win over the `listen` and `speak_replies` settings.
+  - `HOME\run\notices.json`: `{ "staleDay": "2026-10-17" | null, "youAt": { "local_...": epoch_s } }`, so a restart repeats neither the daily stale notice nor a "waiting on Jay" notice from the last 10 minutes.
 - **App server** `server/app.py`: Python 3.10+ standard library only (no venv). `python app.py start|stop|status|restart [--port N]`. Binds `127.0.0.1` only. Default port 47870; if busy, tries the next 9 ports. Start runs itself detached, waits up to 5 s on `/api/health`, writes `server.json`. Copy the Day Desk lifecycle (`plugins/executive-assistant/dashboard/server.py` `cmd_start`, `cmd_stop`, pid check by command line). Exits after 12 hours with no console client and no mod poll.
 - **Voice daemon** `server/voice/voiced.py`: runs in `HOME\venv`. The app server starts it at start if `HOME\venv` exists and voice is enabled, and stops it on stop. It reads `server.json` for port and token. If the venv is missing, the app server runs without voice and reports `voice.state = "not-installed"`.
 - **Chief mod** `hooks/register.tsx`: loads in every session; does work only in the Chief's session (section 6).
@@ -122,7 +124,7 @@ Parse the JSONL defensively: user rows with string content are prompts; user row
 
 | Method and path | Body or query | Answer |
 |---|---|---|
-| `GET /api/health` | | `{ "ok": true, "api": 1, "voice": VoiceStatus, "chief": { "connected": bool, "sessionId": "local_..." \| null } }` |
+| `GET /api/health` | | `{ "ok": true, "api": 1, "app": "chief-of-staff", "voice": VoiceStatus, "chief": { "connected": bool, "sessionId": "local_..." \| null, "cliId": "..." \| null, "busy": bool }, "settings": { "chiefName": "Chief", "wakeWord": "hey chief" } }` |
 | `GET /api/sessions` | | `{ "generatedAt": ms, "liveStale": bool, "counts": { "you": n, "active": n, "wait": n, "stale": n }, "sessions": [Session] }` |
 | `GET /api/sessions/{id}` | | `Session` |
 | `GET /api/sessions/{id}/transcript` | `?limit=60&before=<uuid>` | `{ "turns": [Turn], "cursor": "<uuid>" \| null }` oldest first |
@@ -138,7 +140,7 @@ Parse the JSONL defensively: user rows with string content are prompts; user row
 | `POST /api/mod/reply` | `{ "text": "...", "turnId": "..." }` | Adds a Chief chat message, sends it to the voice daemon if `speak` is on. |
 | `POST /api/mod/result` | `{ "actionId": "...", "ok": bool, "detail": "..." }` | Pushes an `action` SSE event. |
 | `POST /api/mod/busy` | `{ "busy": bool }` | The Chief's turn started or ended (drives the orb "Thinking"). |
-| `GET /api/voice/jobs` | `?wait=25` | Long poll for the voice daemon. `{ "jobs": [ { "id": "spk_...", "text": "...", "kind": "speak" \| "stop" \| "control" \| "quit" } ] }`. `control` carries any of `listen`, `speak`, `pttDown`. `quit` makes the daemon release the mic and GPU and exit; the server sends it on stop and waits 3 s before it ends the process, because on Windows `terminate()` runs no shutdown handler. |
+| `GET /api/voice/jobs` | `?wait=25` | Long poll for the voice daemon. `{ "jobs": [ { "id": "spk_...", "text": "...", "kind": "speak" \| "stop" \| "control" \| "ack" \| "quit" } ] }`. `control` carries any of `listen`, `speak`, `pttDown`; the server also sends one `control` job with all of `wakeWord`, `wakeAck` (`"chime"` \| `"word"` \| `"off"`), `fillers` (bool) and `chiefName`, first in the daemon's first poll and again whenever one of them changes. `ack` (no text) asks for a short spoken filler such as "On it" at once: the server queues it when a voice `final` arrives, and for a typed `POST /api/chief/say` while `speak` is on, unless `fillers` is off or the voice is not installed. `quit` makes the daemon release the mic and GPU and exit; the server sends it on stop and waits 3 s before it ends the process, because on Windows `terminate()` runs no shutdown handler. |
 | `POST /api/voice/event` | VoiceEvent | The voice daemon reports. |
 
 Errors are `{ "error": "plain sentence" }` with 400, 401, 403, 404, 409, 413 or 500.
@@ -161,7 +163,11 @@ VoiceEvent   { "type": "status", "status": VoiceStatus }
            | { "type": "final", "text": "..." }     // finished utterance -> server does POST /api/chief/say with source "voice"
            | { "type": "level", "rms": 0.0-1.0 }    // at most 10 per second, for the orb
            | { "type": "spoken", "id": "spk_...", "ok": bool }
-Settings     { "staleHours": 24, "recentDays": 3, "speakReplies": true, "listen": "wake", "voice": "auto", "wakeWord": "hey chief", "notify": true, "quietHours": "22:00-07:00" | "" }
+           | { "type": "barge" }                     // Jay talked over the Chief: the server drops queued speak and ack jobs
+           | { "type": "nearMiss", "score": 0.31 }   // a wake word that almost matched: written to the server log only
+Settings     { "staleHours": 24, "recentDays": 3, "speakReplies": true, "listen": "wake", "voice": "auto", "wakeWord": "hey chief", "notify": true, "quietHours": "22:00-07:00" | "",
+               "chiefName": "Chief", "wakeAck": "chime" | "word" | "off", "fillers": true }
+             // chiefName and wakeWord keep letters, digits, spaces, apostrophes and hyphens, max 30 chars; wakeWord is lower case
 ```
 
 Confirm buttons: when the Chief asks for a yes or no, it ends its reply with one line `[[confirm: <yes label> | <no label>]]`. The mod strips that line before it posts the reply and sends it as `confirm` beside the text. A button press in the console sends `POST /api/chief/say` with the label text (for example "Archive anyway.") as a typed message. The Chief also accepts a spoken yes.
@@ -171,7 +177,7 @@ Confirm buttons: when the Chief asks for a yes or no, it ends its reply with one
 Phase 0 proved on this machine (cos-spike mod, 2026-10-16): `$.mcp.call('ccd_session_mgmt', 'list_sessions', {...})` works with no prompt; `$.http.fetch('http://127.0.0.1:<port>/...')` works; `$.prompt.submit` from a `$.clock.after` timer starts a new turn in an idle session; `$.session.id()` returns the CLI session id. The `ccd_session_mgmt` tool names and arguments are the ones the desktop app lists (`list_sessions`, `get_session`, `list_events`, `send_message`, `archive_session`).
 
 - **Becoming the Chief.** The `/chief` skill marks the session. The mod hooks `prompt.submit`; when the text starts with `/chief` (or the skill `chief-of-staff:chief` runs), it stores `chief:session = <its session id>` in `$.store`, ensures the app server runs (`$.process.run` `python <root>/server/app.py start`), posts `/api/mod/hello`, and opens the console URL in the browser. Only one Chief: a new `/chief` in another session takes over (the server records `chiefSessionId`; the old mod sees it in `/api/health` and stops polling).
-- **Persona.** In the Chief's session the mod adds one `prompt.compose` section (scope `session`) with the body of `agents/chief.md`. The same file also works as `claude --agent chief-of-staff:chief`.
+- **Persona.** In the Chief's session the mod adds one `prompt.compose` section (scope `session`) with the body of `agents/chief.md`, every `{name}` replaced by the `chief_name` setting (cleaned as in Settings, default "Chief"). The same file also works as `claude --agent chief-of-staff:chief`, where the name is Chief.
 - **Inbox loop.** `$.clock.after` loop: long-poll `GET /api/mod/inbox?wait=25`. `prompt` -> `$.prompt.submit({ text })` (queues a turn; never folded into a running one). `archive` -> `$.mcp.call('ccd_session_mgmt', 'archive_session', { session_id, reason })`. `reply` -> `$.mcp.call('ccd_session_mgmt', 'send_message', { session_id, message })`. Report each with `/api/mod/result`. If `$.mcp.call` is refused, fall back to `$.prompt.submit` asking the Chief to do it with its own tools. Back off 2 s doubling to 30 s when the server is down.
 - **Replies.** `turn.complete` with `agentId === undefined` and `reason === 'answer'` in the Chief's session: strip the confirm line, post `/api/mod/reply`. `turn.start` and `turn.complete` post `/api/mod/busy`.
 - **Tool for the model.** Register a tool `cos_sessions` (no input, or `{ id }`) that returns `GET /api/sessions` compacted (id, title, state, stateReason, summary, needsAction, parentId, live, lastActivityAt), so the Chief answers "what needs me" without reading transcripts.
@@ -213,6 +219,8 @@ The server watches state changes. When a session moves into `you`, or `active` t
 `[Notice, not from Jay] Plan PRO-921 into engineering stories is now waiting on Jay: "Jay's decision: do the vendor code switch". Tell Jay in one or two spoken sentences.`
 
 Batch notices that arrive within 20 s into one prompt. At most one notice prompt every 2 minutes. Never notify about the Chief's own session.
+
+Within one batch, a session gets one line: its latest notice, except that "changed to waiting on Jay" wins over "finished its turn". A session that got a "waiting on Jay" notice in the last 10 minutes gets no new one (no `notify` event and no prompt line). The daily stale notice's day and these 10-minute marks are kept in `HOME\run\notices.json`.
 
 ## 9. Voice daemon
 

@@ -362,10 +362,10 @@ function drawCore(core) {
   if (!g) return;
   g.dataset.sig = JSON.stringify(core);
   clear(g);
-  g.setAttribute('class', `core${core.connected ? '' : ' off'}`);
+  g.setAttribute('class', `core${core.connected ? '' : ' off'} look-${core.look || 'none'}`);
   layers.rings.setAttribute('class', `core-rings${core.connected ? '' : ' off'}`);
   g.append(
-    s('text', { x: CX, y: CY - 4, class: 'core-name', text: 'CHIEF' }),
+    s('text', { x: CX, y: CY - 4, class: 'core-name', text: core.name || 'CHIEF' }),
     s('text', { x: CX, y: CY + 14, class: 'core-sub', text: core.label }),
   );
 }

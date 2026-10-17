@@ -2,7 +2,7 @@
 // the chat with confirm buttons, and the typed input.
 import { say, voiceControl } from './api.mjs';
 import { $, clear, clock, h, reducedMotion } from './util.mjs';
-import { addChat, setVoice, state } from './store.mjs';
+import { addChat, chiefName, chiefRef, setVoice, state, wakePhrase } from './store.mjs';
 import { md } from './md.mjs';
 
 const BARS = 22;
@@ -13,16 +13,34 @@ let held = false;
 let noteTimer = 0;
 const rendered = new Map(); // message id -> element
 
+let nearAt = 0;          // last near-miss hint, for the 10 s limit
+let nearTimer = 0;
+let wokeTimer = 0;
+
 const VOICE_WORD = {
   'not-installed': 'Voice not installed',
   starting: 'Starting',
   off: 'Mic off',
-  listening: 'Listening',
-  hearing: 'Hearing you',
-  thinking: 'Thinking',
+  hearing: 'Listening…',
+  thinking: 'Thinking…',
   speaking: 'Speaking',
   error: 'Voice error',
 };
+
+/** What the orb shows. "listening" from the daemon only means the mic waits for the wake word
+ *  (or the push-to-talk button), so it reads as a calm prompt, never as "Listening". */
+export function voiceLook() {
+  const v = state.voice || { state: 'starting', listen: 'off' };
+  const c = state.chief;
+  if (!c.connected) return { look: 'none', word: `No ${chiefName()}` };
+  if (v.state === 'hearing') return { look: 'hearing', word: VOICE_WORD.hearing };
+  if (v.state === 'speaking') return { look: 'speaking', word: VOICE_WORD.speaking };
+  if (v.state === 'thinking' || c.busy) return { look: 'thinking', word: VOICE_WORD.thinking };
+  if (v.state === 'listening') {
+    return v.listen === 'ptt' ? { look: 'waiting', word: 'Hold to talk' } : { look: 'waiting', word: `Say “${wakePhrase()}”` };
+  }
+  return { look: v.state, word: VOICE_WORD[v.state] || v.state };
+}
 
 export function initChief() {
   const wave = $('wave');
@@ -141,7 +159,7 @@ function note(text, info = false) {
 
 function who(m) {
   if (m.source === 'notice') return h('div', { class: 'who' }, `NOTICE · ${clock(m.at)}`);
-  if (m.role === 'chief') return h('div', { class: 'who' }, h('b', { text: 'CHIEF' }), ` · ${clock(m.at)}`);
+  if (m.role === 'chief') return h('div', { class: 'who' }, h('b', { text: chiefName().toUpperCase() }), ` · ${clock(m.at)}`);
   return h('div', { class: 'who', text: `YOU · ${m.source || 'typed'} · ${clock(m.at)}` });
 }
 
@@ -205,7 +223,7 @@ function renderEmpty() {
   if (c.connected && state.chat.length) { if (card) card.remove(); return; }
   if (card) card.remove();
   card = c.connected
-    ? h('div', { class: 'chat-empty' }, h('strong', { text: 'Chief is ready' }), 'Ask what needs you, or say “Hey Chief”.')
+    ? h('div', { class: 'chat-empty' }, h('strong', { text: `${chiefName()} is ready` }), `Ask what needs you, or say “${wakePhrase()}”.`)
     : h('div', { class: 'chat-empty' }, h('strong', { text: 'No Chief connected' }),
       'Type ', h('code', { text: '/chief' }), ' in any Claude desktop session to make it your Chief. Until then you can browse sessions, but nobody answers here.');
   chat.appendChild(card);
@@ -217,28 +235,30 @@ export function renderVoice() {
   const v = state.voice || { state: 'starting', listen: 'off', speak: false };
   const c = state.chief;
   const installed = v.state !== 'not-installed';
-  let word = VOICE_WORD[v.state] || v.state;
-  if (v.state === 'listening' && v.listen === 'ptt') word = 'Ready';
-  if (c.busy && ['listening', 'off', 'not-installed', 'error'].includes(v.state)) word = 'Thinking';
-  if (!c.connected) word = 'No Chief';
-  const orbState = !c.connected ? 'none' : c.busy && !['hearing', 'speaking'].includes(v.state) ? 'thinking' : v.state;
-  $('orb').dataset.state = orbState;
+  const { look, word } = voiceLook();
+  $('orb').dataset.state = look;
   const st = $('orbState');
   st.textContent = word;
   st.classList.toggle('dim', !c.connected || !installed || v.state === 'off');
+  st.classList.toggle('calm', look === 'waiting');
 
-  const wake = v.wakeWord ? v.wakeWord.replace(/\b\w/g, (m) => m.toUpperCase()) : 'Hey Chief';
+  const wake = wakePhrase();
   let sub;
   if (!c.connected) sub = 'type /chief in a Claude session to start one';
   else if (!installed) sub = v.detail || 'run server/setup.ps1 to add voice · typing works';
   else if (v.state === 'error') sub = v.detail || 'the voice server stopped · typing works';
-  else if (v.listen === 'wake') sub = `say “${wake}” to talk`;
-  else if (v.listen === 'ptt') sub = 'hold the mic button to talk';
+  else if (look === 'hearing') sub = 'go ahead, I am listening';
+  else if (look === 'thinking') sub = 'working on it';
+  else if (look === 'speaking') sub = `say “${wake}” to interrupt`;
+  else if (v.listen === 'wake') sub = 'waiting for the wake word';
+  else if (v.listen === 'ptt') sub = 'hold the mic button while you speak';
   else sub = 'the mic is off · type below';
   $('orbSub').textContent = sub;
+  if (look !== 'waiting') hideNear();
 
   const wave = $('wave');
-  wave.classList.toggle('speaking', v.state === 'speaking' && !reducedMotion());
+  wave.classList.toggle('speaking', look === 'speaking' && !reducedMotion());
+  wave.classList.toggle('idle', look === 'waiting');
   wave.classList.toggle('flat', !installed || v.state === 'off' || !c.connected);
   if (v.state !== 'hearing' && v.state !== 'listening') level(0);
   if (v.state !== 'hearing') $('partial').hidden = true;
@@ -262,7 +282,9 @@ export function renderVoice() {
   $('chiefWho').textContent = c.connected ? `connected · ${c.sessionId ? c.sessionId.slice(0, 14) : ''}` : 'not connected';
   const ask = $('ask');
   ask.disabled = !c.connected;
-  ask.placeholder = c.connected ? `Ask the Chief${installed && v.listen === 'wake' ? `, or say “${wake}”` : ''}` : 'No Chief connected';
+  const ref = chiefRef();
+  ask.placeholder = c.connected ? `Ask ${ref}${installed && v.listen === 'wake' ? `, or say “${wake}”` : ''}` : `No ${chiefName()} connected`;
+  $('chiefTitle').textContent = chiefName();
   syncConfirm();
   renderEmpty();
 }
@@ -278,6 +300,46 @@ export function level(rms) {
   });
   clearTimeout(levelTimer);
   if (v > 0) levelTimer = setTimeout(() => level(0), 300);
+}
+
+/** The wake word was heard: show the active look at once, before the daemon's status arrives. */
+export function onWake(d) {
+  const v = state.voice;
+  if (!v || v.state === 'not-installed' || v.listen === 'off') return;
+  const orb = $('orb');
+  if (d && typeof d.score === 'number') orb.dataset.wakeScore = d.score.toFixed(2);
+  if (v.state !== 'hearing') setVoice({ ...v, state: 'hearing' });
+  orb.classList.add('woke');
+  clearTimeout(wokeTimer);
+  wokeTimer = setTimeout(() => orb.classList.remove('woke'), 700);
+}
+
+/** Something sounded close to the wake word. A faint hint, at most once every 10 s. */
+export function onNearMiss() {
+  const v = state.voice;
+  if (!v || v.state !== 'listening' || v.listen !== 'wake' || !state.chief.connected) return;
+  const now = Date.now();
+  if (now - nearAt < 10000) return;
+  nearAt = now;
+  const n = $('near');
+  n.textContent = `Heard something. Say “${wakePhrase()}” a bit louder.`;
+  n.hidden = false;
+  clearTimeout(nearTimer);
+  nearTimer = setTimeout(hideNear, 4000);
+}
+
+function hideNear() {
+  clearTimeout(nearTimer);
+  const n = $('near');
+  if (n) n.hidden = true;
+}
+
+/** The user talked over the Chief (wake word or the talk button): speech stops now, so the orb
+ *  goes straight from "Speaking" to the listening look. */
+export function onBarge() {
+  const v = state.voice;
+  if (!v || v.state !== 'speaking') return;
+  setVoice({ ...v, state: v.listen === 'off' ? 'off' : 'hearing' });
 }
 
 export function partial(text) {

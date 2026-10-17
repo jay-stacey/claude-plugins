@@ -55,11 +55,34 @@
       ],
       "default": "auto"
     },
+    "chief_name": {
+      "type": "string",
+      "title": "Chief's name",
+      "description": "What you call your Chief. It answers to this name and uses it for itself. Letters, digits, spaces, apostrophes and hyphens, up to 30.",
+      "default": "Chief"
+    },
     "wake_word": {
       "type": "string",
       "title": "Wake word",
-      "description": "The phrase that starts listening in wake mode.",
+      "description": "The phrase that starts listening in wake mode, usually hey plus the Chief's name. Run the setup's wake-word enrollment after changing it.",
       "default": "hey chief"
+    },
+    "wake_ack": {
+      "type": "string",
+      "title": "Wake acknowledgment",
+      "description": "What you hear when the wake word is heard. chime: a short tone. word: the Chief says a word such as yes. off: nothing.",
+      "options": [
+        "chime",
+        "word",
+        "off"
+      ],
+      "default": "chime"
+    },
+    "fillers": {
+      "type": "boolean",
+      "title": "Quick acknowledgments",
+      "description": "The voice says a short filler such as on it as soon as you ask something, before the Chief's full answer.",
+      "default": true
     },
     "notify": {
       "type": "boolean",

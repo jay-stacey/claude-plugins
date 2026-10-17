@@ -89,7 +89,9 @@ class App:
         self.inbox = Mailbox()
         self.voice_jobs = Mailbox(limit=50)
         self.voice = Voice(self.settings, enabled=voice_enabled)
-        self.notices = Notices()
+        self.notices = Notices(paths.run_dir() / "notices.json" if write_state else None)
+        self.voice_config_sent = False
+        self.has_voice_state = self.load_voice_state()
         self.chat = deque(maxlen=200)
         self.lock = threading.RLock()
         self.build_lock = threading.Lock()
@@ -411,9 +413,49 @@ class App:
         if self.server:
             threading.Thread(target=self.server.shutdown, daemon=True).start()
 
+    # -------------------------------------------------------------- voice --
+    def voice_state_path(self):
+        return paths.run_dir() / "voice-state.json"
+
+    def load_voice_state(self):
+        """The console's listen and speak toggles from the last run, over the settings."""
+        if not self.write_state:
+            return False
+        try:
+            data = json.loads(self.voice_state_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        self.voice.control(data.get("listen"), data.get("speak") if isinstance(data.get("speak"), bool) else None)
+        return True
+
+    def save_voice_state(self):
+        if not self.write_state:
+            return
+        status = self.voice.snapshot()
+        write_json_atomic(self.voice_state_path(), {"listen": status["listen"], "speak": status["speak"]})
+        self.has_voice_state = True
+
+    def voice_config_job(self):
+        return {"id": self.new_id("ctl"), "kind": "control", "text": "",
+                **{k: self.settings.get(k) for k in config.VOICE_KEYS}}
+
+    def maybe_ack(self, source):
+        """A quick spoken filler ("On it") the moment Jay asks, before the Chief's turn ends:
+        for every spoken request, and for a typed one while replies are spoken."""
+        if not self.settings.get("fillers", True):
+            return
+        status = self.voice.snapshot()
+        if not self.voice.installed or status["state"] in ("not-installed", "error"):
+            return
+        if source == "voice" or status["speak"]:
+            self.voice_jobs.put({"id": self.new_id("ack"), "kind": "ack", "text": ""})
+
     # ---------------------------------------------------------------- API --
     def health(self):
-        return {"ok": True, "api": API, "app": APP, "voice": self.voice_status(), "chief": self.chief_public()}
+        return {"ok": True, "api": API, "app": APP, "voice": self.voice_status(), "chief": self.chief_public(),
+                "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")}}
 
     def session_or_404(self, sid):
         if not ID_RE.match(sid or ""):
@@ -433,6 +475,7 @@ class App:
         self.require_chief()
         msg = self.add_chat("me", text, source)
         self.queue_item({"id": msg["id"], "type": "prompt", "text": text})
+        self.maybe_ack(source)
         return {"id": msg["id"]}
 
     def reply(self, sid, body):
@@ -503,6 +546,8 @@ class App:
                    if v is not None}
         if control:
             self.voice_jobs.put({"id": self.new_id("ctl"), "kind": "control", "text": "", **control})
+        if listen is not None or speak is not None:
+            self.save_voice_state()
         if self.voice.wanted() and self.voice.pid() is None:
             self.voice.start()
         status = self.voice_status()
@@ -552,10 +597,14 @@ class App:
             self.chief.update(sessionId=local, cliId=cli, busy=False)
             self.chief_poll_at = time.time()
         if options is not None:
+            before = {k: self.settings.get(k) for k in config.VOICE_KEYS}
             self.settings = config.load(options)
-            if new_chief:
+            # The console's own listen and speak toggles, once set, outlive a new Chief.
+            if new_chief and not self.has_voice_state:
                 self.voice.control(self.settings["listen"], bool(self.settings["speakReplies"]))
-                self.voice.status["wakeWord"] = self.settings.get("wakeWord") or None
+            self.voice.status["wakeWord"] = self.settings.get("wakeWord") or None
+            if self.voice_config_sent and before != {k: self.settings.get(k) for k in config.VOICE_KEYS}:
+                self.voice_jobs.put(self.voice_config_job())
         self.save_state()
         self.rebuild()
         self.publish_chief()
@@ -604,6 +653,10 @@ class App:
         except ValueError:
             wait = 25.0
         self.voice_poll_at = time.time()
+        if not self.voice_config_sent:
+            # The daemon's first poll: the wake word, its acknowledgment, fillers and the name.
+            self.voice_config_sent = True
+            self.voice_jobs.put_front(self.voice_config_job())
         return {"jobs": self.voice_jobs.take(wait if not self.stopping.is_set() else 0)}
 
     def voice_event(self, body):
@@ -629,6 +682,15 @@ class App:
                     return self.say({"text": text, "source": "voice"})
                 self.add_chat("me", text.strip()[:MAX_TEXT], "voice")
                 self.add_chat("chief", "No Chief is connected yet. Type slash chief in a desktop session first.", "notice")
+        elif kind == "barge":
+            # Jay talked over the Chief: what was still waiting to be said goes too.
+            self.voice_jobs.drop(lambda j: j.get("kind") in ("speak", "ack"))
+            self.hub.publish("voice", self.voice_status())
+        elif kind == "nearMiss":
+            # A wake word that almost matched: for tuning, in the server log only.
+            score = body.get("score")
+            print(json.dumps({"voice": "nearMiss", "score": score if isinstance(score, (int, float)) else None,
+                              "at": now_ms()}), file=sys.stderr, flush=True)
         elif kind == "spoken":
             pass
         else:

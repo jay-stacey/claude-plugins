@@ -8,7 +8,32 @@ export const state = {
   chat: [],
   voice: null,                 // VoiceStatus
   chief: { connected: false, sessionId: null, busy: false },
+  persona: { chiefName: null, wakeWord: null },   // from GET /api/health settings
 };
+
+const titleCase = (s) => String(s).trim().replace(/\s+/g, ' ').replace(/(^|\s)\S/g, (m) => m.toUpperCase());
+/** The Chief's display name ("Chief" unless the user renamed it). */
+export const chiefName = () => (state.persona.chiefName && String(state.persona.chiefName).trim()) || 'Chief';
+/** "the Chief" in a sentence, or the custom name as is ("Ask Friday"). */
+export const chiefRef = () => (chiefName() === 'Chief' ? 'the Chief' : chiefName());
+/** The wake phrase as people say it: "Hey Chief". Settings first, then the voice status, then the default. */
+export const wakePhrase = () => titleCase(state.persona.wakeWord || (state.voice && state.voice.wakeWord) || 'hey chief');
+
+export function setPersona(health) {
+  if (!health) return;
+  const s = health.settings && typeof health.settings === 'object' ? health.settings : {};
+  const next = {
+    chiefName: s.chiefName || health.chiefName || null,
+    wakeWord: s.wakeWord || health.wakeWord || null,
+  };
+  if (next.chiefName === state.persona.chiefName && next.wakeWord === state.persona.wakeWord) return;
+  state.persona = next;
+  emit('persona', next);
+}
+
+async function loadPersona() {
+  try { setPersona(await getHealth()); } catch { /* keep the defaults; the next reconnect tries again */ }
+}
 
 const subs = new Map();
 export function on(topic, fn) {
@@ -87,13 +112,14 @@ function connect() {
     setVoice(d.voice);
     setChief(d.chief);
     setConn('live');
+    loadPersona();
   });
   es.addEventListener('sessions', (e) => setSessions(parse(e)));
   es.addEventListener('chat', (e) => addChat(parse(e)));
   es.addEventListener('voice', (e) => setVoice(parse(e)));
   es.addEventListener('chief', (e) => setChief(parse(e)));
-  for (const t of ['activity', 'level', 'partial', 'action', 'notify']) {
-    es.addEventListener(t, (e) => { const d = parse(e); if (d) emit(t, d); });
+  for (const t of ['activity', 'level', 'partial', 'action', 'notify', 'wake', 'nearMiss', 'barge']) {
+    es.addEventListener(t, (e) => emit(t, parse(e) || {}));
   }
   es.onerror = () => {
     // Close and retry on our own clock so the delay can back off; the browser's retry does not.
@@ -112,6 +138,7 @@ async function probeAndConnect() {
     setChat(chat.messages);
     setVoice(health.voice);
     setChief(health.chief);
+    setPersona(health);
     connect();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return;

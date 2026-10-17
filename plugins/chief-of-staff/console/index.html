@@ -15,7 +15,7 @@
 <header class="top">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"></span>
-    <div><h1>CHIEF</h1><small>OF STAFF · SESSION CONSOLE</small></div>
+    <div><h1 id="brandName">CHIEF</h1><small id="brandSub">OF STAFF · SESSION CONSOLE</small></div>
   </div>
   <span class="conn" id="conn" role="status" data-state="connecting">Connecting</span>
   <div class="top-stats" id="stats"></div>
@@ -58,7 +58,7 @@
   </section>
 
   <section class="panel chief-panel" aria-label="Chief of staff">
-    <div class="panel-head"><span class="label">Chief</span><span class="mono head-note" id="chiefWho">not connected</span></div>
+    <div class="panel-head"><span class="label" id="chiefTitle">Chief</span><span class="mono head-note" id="chiefWho">not connected</span></div>
     <div class="orb-zone">
       <svg class="orb" id="orb" viewBox="0 0 100 100" aria-hidden="true">
         <circle cx="50" cy="50" r="46" class="orb-outer"/>
@@ -72,6 +72,7 @@
         <div class="mono orb-sub" id="orbSub"></div>
         <div class="wave" aria-hidden="true" id="wave"></div>
         <div class="partial mono" id="partial" aria-live="polite" hidden></div>
+        <div class="near mono" id="near" role="status" hidden></div>
         <div class="toggles" role="group" aria-label="Voice settings">
           <button class="toggle" type="button" aria-pressed="false" id="tWake">Wake word</button>
           <button class="toggle" type="button" aria-pressed="false" id="tSpeak">Speak replies</button>
@@ -100,7 +101,7 @@
       <span class="state-pill" id="pState"></span>
       <div class="page-actions">
         <button class="btn" type="button" id="pOpen">Open in app</button>
-        <button class="btn" type="button" id="pAsk">Ask Chief about it</button>
+        <button class="btn" type="button" id="pAsk">Ask the Chief about it</button>
         <button class="btn" type="button" id="pArchive">Archive</button>
       </div>
     </div>

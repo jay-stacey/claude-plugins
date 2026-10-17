@@ -85,6 +85,11 @@ class Mailbox:
                 self.items = self.items[-self.limit:]
             self.cond.notify_all()
 
+    def put_front(self, item):
+        with self.cond:
+            self.items.insert(0, item)
+            self.cond.notify_all()
+
     def take(self, wait):
         deadline = time.monotonic() + max(0.0, float(wait))
         with self.cond:

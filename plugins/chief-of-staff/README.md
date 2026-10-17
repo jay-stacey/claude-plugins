@@ -14,6 +14,16 @@ In a terminal session:
 
 Answer `y` to add the marketplace, then pick the user scope. With the `personal-plugins` marketplace already added, `/plugin install chief-of-staff@personal-plugins` does the same. The mod then loads in your desktop sessions too.
 
+Then, in a desktop session, run `/chief-setup`. It walks through the rest, one step at a time:
+
+1. It checks the machine: Windows, Python 3.10 or later for the server, and your GPU.
+2. It installs the local voice with `server/setup.ps1` in the background and reports each step. This is optional and takes 10 to 30 minutes.
+3. It offers to enroll your wake word: you say it five times so the Chief learns your voice.
+4. It shows the permission rule that lets the Chief archive and message sessions when you ask by voice or from the console, and writes it to the project's `.claude/settings.json` only after you say yes.
+5. It has you run `/chief` once and checks that the server, the Chief and the voice are healthy.
+
+`/chief-setup check`, `voice`, `enroll` or `permissions` runs one step on its own.
+
 ## Use
 
 Type `/chief` in a Claude desktop session. That session becomes the Chief: the server starts, the console opens in your browser, and the Chief tells you what needs you.
@@ -44,7 +54,10 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 | `speak_replies` | true | Speak the Chief's replies |
 | `listen` | wake | `wake` (always listening for the wake word), `ptt` (push to talk) or `off` |
 | `voice` | auto | `auto` uses the voice setup picked for this PC (Chatterbox on a GPU, Kokoro on a CPU); `chatterbox` or `kokoro` forces one, and the other is the fallback |
-| `wake_word` | hey chief | The wake phrase |
+| `chief_name` | Chief | What you call your Chief; it answers to this name |
+| `wake_word` | hey chief | The wake phrase, usually hey plus the name; enroll it again after a change |
+| `wake_ack` | chime | What you hear when the wake word is heard: `chime`, `word` (it says a word such as yes) or `off` |
+| `fillers` | true | A quick spoken "on it" as soon as you ask, before the full answer |
 | `notify` | true | Proactive notices |
 | `quiet_hours` | 22:00-07:00 | No proactive notices in this range; empty for none |
 

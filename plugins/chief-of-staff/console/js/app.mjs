@@ -1,10 +1,10 @@
 // Console entry: token, router (#/ and #/s/<id>), header, footer, and wiring between the views.
 import { initToken } from './api.mjs';
 import { $, clear, h, STATE_ORDER, stateClass, stateLabel } from './util.mjs';
-import { inViewSessions, on, startStore, state } from './store.mjs';
+import { chiefName, inViewSessions, on, startStore, state, wakePhrase } from './store.mjs';
 import { highlightNode, initGraph, onActivity, renderGraph } from './graph.mjs';
 import { highlightRow, initRoster, refreshAges, renderRoster } from './roster.mjs';
-import { initChief, level, partial, renderChat, renderVoice } from './chief.mjs';
+import { initChief, level, onBarge, onNearMiss, onWake, partial, renderChat, renderVoice, voiceLook } from './chief.mjs';
 import { initPage, leavePage, showPage } from './page.mjs';
 import { initToasts, toast } from './toast.mjs';
 
@@ -25,7 +25,7 @@ function route() {
     window.scrollTo(0, 0);
   } else {
     leavePage();
-    document.title = 'Chief of Staff';
+    document.title = pageTitle();
     $('page').hidden = true;
     $('console').hidden = false;
     renderAll();
@@ -88,20 +88,30 @@ function renderFooter() {
   const stale = state.sessions && state.sessions.liveStale;
   item(stale ? 'bad' : state.sessions ? 'ok' : 'off', `Desktop link: ${stale ? 'behind' : state.sessions ? 'live' : 'waiting'}`);
   item(c.connected ? 'ok' : 'off', `Chief: ${c.connected ? 'connected' : 'not connected'}`);
-  const wake = v.wakeWord ? v.wakeWord.replace(/\b\w/g, (m) => m.toUpperCase()) : 'Hey Chief';
+  const wake = wakePhrase();
   $('hint').textContent = !v.state || v.state === 'not-installed' || v.listen === 'off'
     ? 'Type · to talk' : v.listen === 'ptt' ? 'Hold the mic · to talk' : `${wake} · to talk`;
 }
 
 function coreInfo() {
   const v = state.voice || {};
-  const c = state.chief;
-  let label;
-  if (!c.connected) label = 'NO CHIEF';
-  else if (c.busy && !['hearing', 'speaking'].includes(v.state)) label = 'THINKING';
-  else if (!v.state || v.state === 'not-installed') label = 'TYPE TO TALK';
-  else label = ({ listening: v.listen === 'ptt' ? 'READY' : 'LISTENING', hearing: 'HEARING', thinking: 'THINKING', speaking: 'SPEAKING', off: 'MIC OFF', starting: 'STARTING', error: 'VOICE ERROR' })[v.state] || String(v.state).toUpperCase();
-  return { connected: !!c.connected, label };
+  const { look, word } = voiceLook();
+  const label = look !== 'none' && (!v.state || v.state === 'not-installed') && !state.chief.busy ? 'TYPE TO TALK' : word.toUpperCase();
+  return { connected: !!state.chief.connected, label, name: chiefName().toUpperCase(), look };
+}
+
+const pageTitle = () => (chiefName() === 'Chief' ? 'Chief of Staff' : `${chiefName()} · Chief of Staff`);
+
+/** The Chief's name and wake word (GET /api/health settings) wherever the page names them. */
+function renderPersona() {
+  const name = chiefName();
+  $('brandName').textContent = name.toUpperCase();
+  $('brandSub').textContent = name === 'Chief' ? 'OF STAFF · SESSION CONSOLE' : 'CHIEF OF STAFF · SESSION CONSOLE';
+  if ($('page').hidden) document.title = pageTitle();
+  renderVoice();
+  renderChat();
+  renderFooter();
+  if (!$('console').hidden && state.sessions) renderGraph(inViewSessions(), coreInfo());
 }
 
 function renderAll() {
@@ -140,6 +150,10 @@ function boot() {
   on('level', (d) => level(d.rms));
   on('partial', (d) => partial(d.text));
   on('notify', (n) => toast(n));
+  on('wake', onWake);
+  on('nearMiss', onNearMiss);
+  on('barge', onBarge);
+  on('persona', renderPersona);
 
   window.addEventListener('hashchange', route);
   renderVoice();

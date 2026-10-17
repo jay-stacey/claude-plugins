@@ -19,7 +19,9 @@ up to 64 KB.
 
 Test hooks (token required): POST /api/dev/kick closes every SSE stream,
 POST /api/dev/chief {"connected": bool}, POST /api/dev/voice {"state": "..."},
-POST /api/dev/notify sends one notice now.
+POST /api/dev/notify sends one notice now, POST /api/dev/wake runs one spoken question,
+POST /api/dev/nearmiss sends a near miss, POST /api/dev/speak starts a long reply,
+POST /api/dev/barge talks over it, POST /api/dev/settings {"chiefName", "wakeWord"}.
 """
 
 from __future__ import annotations
@@ -327,9 +329,10 @@ class Hub:
             "state": "not-installed" if args.no_voice else "listening", "listen": "wake", "speak": True,
             "device": None if args.no_voice else "cuda",
             "stt": None if args.no_voice else "faster-whisper large-v3-turbo",
-            "tts": None if args.no_voice else "chatterbox", "wakeWord": "hey chief",
+            "tts": None if args.no_voice else "chatterbox", "wakeWord": args.wake_word,
             "detail": "Voice is not installed. Run server/setup.ps1 to add it." if args.no_voice else None,
         }
+        self.settings = {"chiefName": args.chief_name, "wakeWord": args.wake_word}
         self.clients: list[queue.Queue] = []
         self.ring: list[tuple[int, str, str]] = []
         self.seq = 0
@@ -512,6 +515,7 @@ def ticker(hub: Hub):
     next_confirm = t0 + 16
     next_voice = t0 + 22
     next_flip = t0 + 30
+    next_near = t0 + 12
     while True:
         time.sleep(0.25)
         now = time.time()
@@ -560,6 +564,10 @@ def ticker(hub: Hub):
                 hub.add_chat("chief", "Heads up, DP1-676 is active right now. It's halfway through the inventory "
                                       "form fix and has one helper running. Want me to archive it anyway?",
                              None, confirm)
+        if now >= next_near:
+            next_near = now + rnd.uniform(15, 25)
+            if hub.voice["state"] == "listening" and hub.voice["listen"] == "wake":
+                hub.emit("nearMiss", {"score": round(rnd.uniform(0.25, 0.45), 2)})
         if now >= next_voice and hub.voice["state"] == "listening" and hub.voice["listen"] == "wake":
             next_voice = now + rnd.uniform(30, 45)
             threading.Thread(target=fake_utterance, args=(hub, "What needs me right now?"), daemon=True).start()
@@ -570,6 +578,7 @@ def ticker(hub: Hub):
 
 def fake_utterance(hub: Hub, text: str, wake=True):
     if wake:
+        hub.emit("wake", {"score": round(random.uniform(0.72, 0.95), 2)})
         hub.emit("level", {"rms": 0.6})
     hub.set_voice(state="hearing")
     words = text.split()
@@ -697,7 +706,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.static(path[len("/static/"):])
         if method == "GET" and path == "/api/health":
             h = self.hub
-            return self.send_json(200, {"ok": True, "api": 1, "voice": h.voice,
+            return self.send_json(200, {"ok": True, "api": 1, "voice": h.voice, "settings": h.settings,
                                         "chief": {"connected": h.chief["connected"],
                                                   "sessionId": h.chief["sessionId"]}})
         if not path.startswith("/api/"):
@@ -844,6 +853,8 @@ class Handler(BaseHTTPRequestHandler):
                 upd["state"] = idle_state(v)
             if upd:
                 v = h.set_voice(**upd)
+            if body.get("pttDown") is True and v["state"] == "speaking":
+                h.emit("barge", {})
             if body.get("pttDown") is True and v["listen"] == "ptt":
                 v = h.set_voice(state="hearing")
                 h.ptt_started = time.time()
@@ -882,6 +893,34 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/api/dev/notify":
             send_notice(h, random.Random())
             return self.send_json(200, {"ok": True})
+        if method == "POST" and path == "/api/dev/wake":
+            threading.Thread(target=fake_utterance, args=(h, "What needs me right now?"), daemon=True).start()
+            return self.send_json(200, {"ok": True})
+        if method == "POST" and path == "/api/dev/nearmiss":
+            h.emit("nearMiss", {"score": 0.38})
+            return self.send_json(200, {"ok": True})
+        if method == "POST" and path == "/api/dev/speak":
+            h.set_voice(state="speaking")
+            return self.send_json(200, h.voice)
+        if method == "POST" and path == "/api/dev/barge":
+            if h.voice["state"] == "speaking":
+                h.emit("barge", {})
+
+                def after():
+                    time.sleep(1.5)   # the daemon reports its own status a moment later
+                    h.set_voice(state="hearing")
+                    time.sleep(1.5)
+                    h.set_voice(state=idle_state(h.voice))
+
+                threading.Thread(target=after, daemon=True).start()
+            return self.send_json(200, {"ok": True})
+        if method == "POST" and path == "/api/dev/settings":
+            body = self.read_json() or {}
+            for k in ("chiefName", "wakeWord"):
+                if isinstance(body.get(k), str):
+                    h.settings[k] = body[k]
+            h.set_voice(wakeWord=h.settings["wakeWord"])
+            return self.send_json(200, h.settings)
         return self.err(404, "Not found.")
 
     def stream(self):
@@ -929,6 +968,8 @@ def main():
     ap.add_argument("--graph", type=int, default=0, help="generate N in-view sessions instead of the sample set")
     ap.add_argument("--no-chief", action="store_true")
     ap.add_argument("--no-voice", action="store_true")
+    ap.add_argument("--chief-name", default="Chief")
+    ap.add_argument("--wake-word", default="hey chief")
     ap.add_argument("--quiet", action="store_true", help="no timed events")
     ap.add_argument("--slow", action="store_true", help="delay transcript pages by 0.8 s")
     ap.add_argument("--fail-archive", action="store_true", help="archive actions report ok: false")

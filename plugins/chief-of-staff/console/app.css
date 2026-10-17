@@ -196,6 +196,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .core-sub { fill: var(--muted); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px; text-anchor: middle; }
 .core.off .ring-arc, .core.off .ring-dash { opacity: 0.25; }
 .core.off .core-name { fill: var(--faint); }
+.core.look-waiting .core-sub { fill: #c99076; }
+.core.look-hearing .core-sub { fill: var(--accent); }
 .link { fill: none; stroke: var(--line-strong); stroke-width: 1; transition: stroke 0.4s; }
 .link.core { stroke: rgba(255, 98, 46, 0.12); stroke-dasharray: 2 5; }
 .link.live { stroke: rgba(255, 140, 70, 0.55); }
@@ -255,6 +257,20 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .orb[data-state="hearing"] .orb-core { fill: rgba(255, 140, 70, 0.28); }
 .orb-state { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; }
 .orb-state.dim { color: var(--muted); }
+.orb-state.calm { color: #e0a586; letter-spacing: 0.12em; }
+/* waiting for the wake word: calm, slow, dim core */
+.orb[data-state="waiting"] .core-spin { animation-duration: 40s; }
+.orb[data-state="waiting"] .core-spin.rev { animation-duration: 60s; }
+.orb[data-state="waiting"] .orb-core { fill: rgba(255, 90, 31, 0.07); stroke: rgba(255, 90, 31, 0.55); }
+.orb[data-state="waiting"] .orb-dot { opacity: 0.6; }
+/* heard the wake word: bright, fast, glowing */
+.orb[data-state="hearing"] { filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.orb[data-state="hearing"] .core-spin { animation-duration: 4s; }
+.orb[data-state="hearing"] .core-spin.rev { animation-duration: 6s; }
+.orb.woke .orb-outer { stroke: var(--accent); stroke-width: 2; }
+.near { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+.near::before { content: "~ "; color: var(--accent-deep); }
+.wave.idle i { opacity: 0.3; }
 .orb-sub { font-size: 11px; color: var(--muted); }
 .wave { display: flex; gap: 3px; align-items: center; height: 26px; margin-top: 6px; }
 .wave i { display: block; width: 3px; border-radius: 2px; background: var(--accent); opacity: 0.8; height: 4px; transition: height 0.09s linear; }

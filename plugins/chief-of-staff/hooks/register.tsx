@@ -661,12 +661,20 @@ function ago(ms: number): string {
 
 // --------------------------------------------------------------- helpers ---
 
+// The chief_name setting as the prompt may hold it: letters, digits, spaces, apostrophes
+// and hyphens, at most 30 characters; "Chief" when empty. The server cleans it the same way.
+export function chiefName(value: unknown): string {
+  const text = String(value ?? '').replace(/[^A-Za-z0-9 '-]/g, ' ').replace(/\s+/g, ' ').slice(0, 30).trim()
+  return text === '' ? 'Chief' : text
+}
+
 async function loadPersona($: EngineInterface): Promise<string> {
   try {
     const raw = await $.fs.read(`${$.plugin.root}/agents/chief.md`)
     const text = typeof raw === 'string' ? raw : ''
-    // The agent file's body, without its frontmatter.
-    return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim()
+    // The agent file's body, without its frontmatter, with the Chief's name filled in.
+    const name = chiefName(options.chief_name)
+    return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim().replace(/\{name\}/g, name)
   } catch (err) {
     log($, `could not read the persona: ${String(err)}`)
     return ''

@@ -17,7 +17,8 @@ class Config(unittest.TestCase):
     def test_defaults_match_the_contract(self):
         self.assertEqual(config.defaults(), {
             "staleHours": 24, "recentDays": 3, "speakReplies": True, "listen": "wake", "voice": "auto",
-            "wakeWord": "hey chief", "notify": True, "quietHours": "22:00-07:00"})
+            "wakeWord": "hey chief", "notify": True, "quietHours": "22:00-07:00", "chiefName": "Chief",
+            "wakeAck": "chime", "fillers": True})
 
     def test_sources_and_coercion(self):
         with Sandbox() as box:

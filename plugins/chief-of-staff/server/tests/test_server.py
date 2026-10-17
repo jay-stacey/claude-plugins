@@ -227,7 +227,11 @@ class Api(unittest.TestCase):
         self.hello()
         self.call("POST", "/api/mod/reply", {"text": "Done.", "turnId": "t1"})
         jobs = self.call("GET", "/api/voice/jobs?wait=0")[1]["jobs"]
-        self.assertEqual([(j["kind"], j["text"]) for j in jobs], [("speak", "Done.")])
+        # The first poll starts with the daemon's settings.
+        self.assertEqual(jobs[0]["kind"], "control")
+        self.assertEqual({k: jobs[0][k] for k in ("wakeWord", "wakeAck", "fillers", "chiefName")},
+                         {"wakeWord": "hey chief", "wakeAck": "chime", "fillers": True, "chiefName": "Chief"})
+        self.assertEqual([(j["kind"], j["text"]) for j in jobs[1:]], [("speak", "Done.")])
         status = self.call("POST", "/api/voice/control", {"speak": False, "listen": "ptt", "stop": True})[1]
         self.assertEqual((status["speak"], status["listen"]), (False, "ptt"))
         jobs = self.call("GET", "/api/voice/jobs?wait=0")[1]["jobs"]

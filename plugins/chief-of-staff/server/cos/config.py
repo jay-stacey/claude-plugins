@@ -22,8 +22,16 @@ FIELDS = {
     "wakeWord": ("wake_word", "hey chief"),
     "notify": ("notify", True),
     "quietHours": ("quiet_hours", "22:00-07:00"),
+    "chiefName": ("chief_name", "Chief"),
+    "wakeAck": ("wake_ack", "chime"),
+    "fillers": ("fillers", True),
 }
 LISTEN_MODES = ("wake", "ptt", "off")
+WAKE_ACKS = ("chime", "word", "off")
+NAME_RE = re.compile(r"[^A-Za-z0-9 '\-]")
+MAX_NAME = 30
+# What the voice daemon needs to know, sent as one control job.
+VOICE_KEYS = ("wakeWord", "wakeAck", "fillers", "chiefName")
 QUIET_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$")
 
 
@@ -68,6 +76,13 @@ def _coerce(name, value, default):
         return text if text in LISTEN_MODES else None
     if name == "quietHours":
         return text if text == "" or QUIET_RE.match(text) else None
+    if name == "wakeAck":
+        return text.lower() if text.lower() in WAKE_ACKS else None
+    if name in ("chiefName", "wakeWord"):
+        # Spoken and shown, and the name goes into the Chief's prompt: letters, digits,
+        # spaces, apostrophes and hyphens only.
+        text = " ".join(NAME_RE.sub(" ", text).split())[:MAX_NAME].strip()
+        return (text.lower() if name == "wakeWord" else text) or None
     return text or None
 
 

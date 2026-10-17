@@ -15,7 +15,7 @@ name: chief
 description: test
 ---
 
-You are the Chief. Talk like a person.`
+You are {name}. Jay calls you {name}.`
 const LOCAL = 'local_chief-1'
 
 type Request = { method: string; path: string; body: Record<string, unknown> | null; token: string | undefined }
@@ -174,11 +174,11 @@ test('/chief makes this session the Chief: server started with the console, hell
   // The tool is in the prompt from the start in the Chief's session.
   expect(fake.tools.at(-1)).toEqual({ name: 'cos_sessions', isDeferred: false })
   // The /chief prompt carried the persona, since no compose had run yet.
-  expect(fake.prompts[0]?.context?.[0]).toContain('You are the Chief. Talk like a person.')
+  expect(fake.prompts[0]?.context?.[0]).toContain('You are Chief. Jay calls you Chief.')
   const { sections } = await $.prompt.compose(COMPOSE)
   const persona = sections.find(s => s.id === 'chief-of-staff:persona')
   expect(persona?.scope).toBe('session')
-  expect(persona?.text).toBe('You are the Chief. Talk like a person.')
+  expect(persona?.text).toBe('You are Chief. Jay calls you Chief.')
   expect(sections[0]?.id).toBe('intro')
   // The inbox loop runs.
   expect(fake.polls() > 0).toBe(true)
@@ -491,4 +491,24 @@ test('/chief stop and /chief status manage the server without making a Chief', a
   expect(fake.store.get('chief:session')).toBe(undefined)
   expect(fake.posted('/api/mod/hello')).toEqual([])
   expect(fake.prompts[0]?.context).toBe(undefined)
+})
+
+test('the persona uses the name Jay gave the Chief', { options: { chief_name: 'Friday <b>' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  const { sections } = await $.prompt.compose(COMPOSE)
+  expect(sections.find(s => s.id === 'chief-of-staff:persona')?.text).toBe('You are Friday b. Jay calls you Friday b.')
+  expect(fake.posted('/api/mod/hello')[0]).toMatchObject({ options: { chief_name: 'Friday <b>' } })
+})
+
+test('/chief-setup is not /chief: it makes no Chief', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  await $.session.start(START)
+  await $.prompt.submit({ text: '/chief-setup', wait: false, origin: { kind: 'user' } } as never)
+  await $.skill.prompt({ skill: 'chief-of-staff:chief-setup', text: 'Set up.' })
+  await settle(clock)
+  expect(fake.store.get('chief:session')).toBe(undefined)
+  expect(fake.posted('/api/mod/hello')).toEqual([])
 })

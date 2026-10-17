@@ -2,7 +2,7 @@
 // Open in app, Ask Chief about it, and Archive with the in-page confirm flow.
 import { archive, getSession, getTranscript, openInApp, reply } from './api.mjs';
 import { $, add, ageWords, clear, clock, h, modelName, stateClass, stateLabel, where } from './util.mjs';
-import { on, state } from './store.mjs';
+import { chiefRef, on, state, wakePhrase } from './store.mjs';
 import { sendToChief } from './chief.mjs';
 import { toast } from './toast.mjs';
 import { inline, md } from './md.mjs';
@@ -63,7 +63,8 @@ export function initPage({ home, open }) {
 export async function showPage(id) {
   hideConfirm();
   pageNote('');
-  replyNote('Ctrl+Enter sends. Or say “Hey Chief, tell this session …”');
+  replyNote(`Ctrl+Enter sends. Or say “${wakePhrase()}, tell this session …”`);
+  $('pAsk').textContent = `Ask ${chiefRef()} about it`;
   pendingReply = null;
   pendingArchive = null;
   cur = { id, sess: state.byId.get(id) || null, cursor: null, loading: false, seen: new Set(), lastUuid: null, gone: false, older: true };
@@ -356,8 +357,8 @@ async function onAsk() {
   if (!cur || !cur.sess) return;
   const ok = await sendToChief(`Tell me about ${cur.sess.title}.`);
   if (ok) {
-    pageNote('Asked the Chief. The answer is in the Chief panel.', 'ok',
-      h('button', { type: 'button', class: 'linkish', text: 'Go to the Chief', onclick: () => goHome() }));
+    pageNote(`Asked ${chiefRef()}. The answer is in the ${chiefRef().replace(/^the /, '')} panel.`, 'ok',
+      h('button', { type: 'button', class: 'linkish', text: `Go to ${chiefRef()}`, onclick: () => goHome() }));
   } else {
     const n = $('composerNote');
     pageNote(n.textContent || 'The Chief could not take the question.', 'err');
