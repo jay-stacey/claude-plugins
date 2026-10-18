@@ -230,6 +230,20 @@ class Actions(unittest.TestCase):
         self.assertEqual(s[EEE]["state"], "you")
         self.assertEqual(s["bg_bg-blocked"]["stateReason"], "Background job is blocked")
 
+    def test_a_real_background_row_gives_the_full_uuid_as_cli_id_and_the_short_id_as_bg_id(self):
+        # The shape `claude agents --json` (2.1.302) prints for a background session.
+        uuid = "5f3c2a10-8b7d-4e21-9c0a-1d2e3f405162"
+        row = {"pid": 4321, "id": "d8d55fa2", "cwd": "C:\\work", "kind": "background", "startedAt": FIXTURE_NOW,
+               "sessionId": uuid, "name": "nightly import 2", "status": "busy", "state": "working"}
+        reg = {uuid: {"sessionId": uuid, "entrypoint": "cli", "hasInbox": True}}
+        s = acting(TERMINAL_CHIEF, rows_extra=[row], registry=reg)[f"bg_{uuid}"]
+        self.assertEqual((s["kind"], s["cliId"], s["bgId"], s["title"]), ("bg", uuid, "d8d55fa2", "nightly import 2"))
+        self.assertEqual((s["live"], s["liveStatus"]), (True, "busy"))
+        self.assertEqual(s["actions"]["stop"], "yes")
+        self.assertEqual(s["actions"]["reply"], "yes")
+        # After `claude stop` the row leaves the list: the session is gone, so nothing more is offered.
+        self.assertNotIn(f"bg_{uuid}", acting(TERMINAL_CHIEF, rows_extra=[], registry=reg))
+
     def test_bad_bg_id_is_dropped(self):
         for bad in ("--all", "-h", "../x", "a" * 65, ""):
             row = {"id": bad, "kind": "background", "sessionId": "bg-odd", "state": "working",
