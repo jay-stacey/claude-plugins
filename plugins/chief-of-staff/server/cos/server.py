@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import API, APP, config, paths
 from .events import Hub, Mailbox, frame
-from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Request as JevRequest, hint_text
+from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Decision, Request as JevRequest, hint_text
 from .jev.engine import Jev
 from .jev.settings import read_jev_json
 from .notices import Notices, public
@@ -587,6 +587,10 @@ class App:
                 # Nothing of ours answers on the port, so nothing gets the key or Jay's words.
                 print("Jev: the local model did not start; using rules", file=sys.stderr)
                 self.jev.update(dict(self.settings, jevProvider="rules"), self.jev_key)
+                return
+            # One throwaway call loads the model, so Jay's first real request does not time out.
+            quick = Decision(model="haiku", route="chief", background=False, estimate_s=0)
+            self.jev.advise(JevRequest("what needs me", "typed", [], None), quick)
         except ImportError:
             pass
         except Exception:
