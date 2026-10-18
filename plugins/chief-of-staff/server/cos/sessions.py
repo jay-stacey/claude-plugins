@@ -27,9 +27,7 @@ DESKTOP_ENTRYPOINTS = {"claude-desktop", "claude-desktop-3p", "local-agent"}
 BG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")   # never a flag such as --all
 BG_DONE = {"done", "stopped", "failed"}
 ACTION_KEYS = ("reply", "archive", "stop", "open")
-# False until the mod can reply to terminal sessions and stop background ones, so the
-# console never draws a button the server would refuse.
-GATES_OPEN = False
+FACT_KEYS = ("_bgState", "_inbox", "_desktopHost")       # what plan_actions reads beyond the published fields
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -473,7 +471,6 @@ def ago(ms):
 
 NOTE_CHIEF = "This is the Chief of Staff session."
 NOTE_NO_CHIEF = "No Chief is connected. Type /chief in a Claude Code session first."
-NOTE_GATED = "Not available from here yet. Update the Chief of Staff plugin."
 
 
 def plan_actions(s, caps):
@@ -526,9 +523,6 @@ def plan_actions(s, caps):
                 put("reply", "app", "Reply in the Claude app. A Chief in a terminal cannot reach this session.")
             put("archive", "app", "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions.")
         return actions, notes
-    if not GATES_OPEN:
-        put("reply", "no", NOTE_GATED)
-        put("stop", "no", NOTE_GATED)
     if not live:                                                                 # rule 10
         put("reply", "no", "It is not running, so it cannot get a reply.")
     if not inbox:                                                                # rule 11
@@ -545,7 +539,7 @@ def plan_actions(s, caps):
 
 
 def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript_info=None, grew=None,
-                   background=None, chief_cli=None, registry=None, caps=None):
+                   background=None, chief_cli=None, registry=None, caps=None, facts=None):
     """Pure: joins the sources into the contract's Session list.
 
     desktop: {local_id: record}; agent_rows: `claude agents --json` rows;
@@ -553,6 +547,8 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
     background: {cliId: [start ms of background work not seen to finish]}.
     registry: {sessionId: row} from ~/.claude/sessions; a row counts only when `claude agents` lists it.
     caps: the Chief's host caps, or None when no Chief is connected (plan_actions).
+    facts: a dict that gets {id: the unpublished inputs of plan_actions}, so an endpoint can
+    check the table again with the caps of that moment.
     chief_id / chief_cli: the Chief's desktop id and CLI id. Either one marks its session,
     so the Chief is never listed as a session of its own before its desktop id is known.
     """
@@ -604,6 +600,8 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
                 other["inView"] = True
                 queue.append(other)
     for s in sessions:
+        if facts is not None:
+            facts[s["id"]] = {k: s.get(k) for k in FACT_KEYS}
         for key in ("_bgState", "_background", "_live_kind", "_inbox", "_desktopHost"):
             s.pop(key, None)
     sessions.sort(key=lambda s: -(s["lastActivityAt"] or 0))
@@ -680,6 +678,7 @@ class SessionReader:
         self.desktop_source = desktop or DesktopSource()
         self.registry = registry or RegistrySource()
         self.reg = {}
+        self.facts = {}
         self.transcripts = transcripts or TranscriptIndex()
         self.lock = threading.Lock()
         self.desktop = {}
@@ -741,6 +740,7 @@ class SessionReader:
 
     def build(self, settings, chief_id=None, now=None, chief_cli=None, caps=None):
         now = now or now_ms()
+        facts = {}
         with self.lock:
             reg = dict(self.reg)
             desktop = dict(self.desktop)
@@ -748,9 +748,10 @@ class SessionReader:
             grew = dict(self.grew)
             background = dict(self.background)
         sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew, background,
-                                  chief_cli, reg, caps)
+                                  chief_cli, reg, caps, facts)
         with self.lock:
             self.sessions = sessions
+            self.facts = facts
             self.generated_at = now
         return sessions
 
@@ -761,6 +762,11 @@ class SessionReader:
                     "counts": counts_of(sessions),
                     "countsInView": counts_of([s for s in sessions if s["inView"]]),
                     "sessions": sessions}
+
+    def action_input(self, s):
+        """The session with the unpublished fields plan_actions needs."""
+        with self.lock:
+            return dict(s, **self.facts.get(s["id"], {}))
 
     def get(self, sid):
         with self.lock:

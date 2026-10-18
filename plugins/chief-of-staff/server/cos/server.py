@@ -24,7 +24,7 @@ from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Decision, 
 from .jev.engine import Jev
 from .jev.settings import read_jev_json
 from .notices import Notices, public
-from .sessions import ID_RE, SessionReader, now_ms, plan_actions
+from .sessions import ID_RE, LINK, SessionReader, now_ms, plan_actions
 from .transcripts import BackgroundWork, Tail, Transcript
 from .voice import Voice
 
@@ -37,12 +37,14 @@ IDLE_EXIT_S = 12 * 3600
 LIVE_ACTIVE_S = 5       # `claude agents --json` while a console or the Chief is connected
 LIVE_IDLE_S = 20        # and while nobody is
 SESSIONS_MIN_GAP_S = 2  # at most one full sessions event this often
-ACK_TIMEOUT_S = 60      # an inbox item the mod took and did not acknowledge goes back
-ARCHIVE_EXPIRY_S = 120  # an archive nobody ran by then is reported as not done
+ACK_TIMEOUT_S = 60      # a prompt the mod took and did not acknowledge goes back
+ARCHIVE_EXPIRY_S = 120  # an archive or stop the mod never took by then is reported as not done
+TAKEN_GIVEUP_S = 600    # an action the mod took and never reported on is then reported as expired
 HANDOFF_EXPIRY_S = 300  # a handed-off action with no second result by then is reported as expired
 SETTLED_KEEP_S = 600    # a real result's id is remembered this long, so a retry is not published twice
 UNSETTLED_KEEP_S = 3600 # an id the server reported expired, so a late real result is still published
-MAX_DELIVERIES = 3
+MAX_DELIVERIES = 3      # for prompts; an action is delivered once
+ACTION_TYPES = ("archive", "reply", "stop")
 FILES_EVERY_S = 10
 PULSE_EVERY_S = 1
 LEVEL_MIN_GAP_S = 0.1
@@ -90,6 +92,15 @@ def _text_field(body, key, required=True):
     if len(value) > MAX_TEXT:
         raise HttpError(400, f"The {key} is too long. Keep it under {MAX_TEXT} characters.")
     return value
+
+
+def default_open(link):
+    """Opens a claude:// link in the desktop app."""
+    if os.name == "nt":
+        os.startfile(link)        # noqa: the link is built from a checked id
+    else:
+        subprocess.Popen(["xdg-open", link], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def prompt_from(request):
@@ -148,6 +159,7 @@ class App:
         self.stopping = threading.Event()
         self.ready = threading.Event()
         self.server = None
+        self.open_url = default_open
         # Jev advises the Chief on each request. The hosted key lives in memory only.
         self.jev_key = None
         self.jev = Jev(self.settings, paths.home())
@@ -177,8 +189,9 @@ class App:
     def chief_caps(self):
         """The connected Chief's caps, or None when no Chief is connected."""
         with self.lock:
-            host = self.chief["host"] if self.chief_connected() else None
-        return host["caps"] if host else None
+            if not self.chief_connected():
+                return None
+            return (self.chief["host"] or LEGACY_HOST)["caps"]
 
     def voice_status(self):
         return self.voice.snapshot(busy=self.chief["busy"])
@@ -287,34 +300,43 @@ class App:
             self.queued_at.pop(item_id, None)
         return entry
 
-    def fail_action(self, item, detail):
+    def fail_action(self, item, detail, outcome="expired"):
         self.queued_at.pop(item["id"], None)
-        if item.get("type") in ("archive", "reply"):
-            self.hub.publish("action", {"actionId": item["id"], "ok": False, "detail": detail})
+        if item.get("type") in ACTION_TYPES:
+            self.hub.publish("action", {"actionId": item["id"], "ok": False, "outcome": outcome, "detail": detail})
 
     def sweep_inbox(self):
-        """Puts back items the mod took and never acknowledged, and gives up on
-        archives nobody ran within two minutes, so the console stops waiting."""
+        """Prompts the mod took and never acknowledged go back, at most three times.
+
+        An action is delivered exactly once: once taken it is never put back, and the server
+        waits for the mod's result, giving up after ten minutes. An archive or stop the mod
+        never took within two minutes is reported as not done."""
         now = self.clock()
-        late_note = "The Chief did not get to it within two minutes, so nothing was archived."
+        late_note = {"archive": "The Chief did not get to it within two minutes, so nothing was archived.",
+                     "stop": "The Chief did not get to it within two minutes, so nothing was stopped."}
 
         def expired(item):
-            return item.get("type") == "archive" and now - self.queued_at.get(item["id"], now) > ARCHIVE_EXPIRY_S
+            return item.get("type") in late_note and now - self.queued_at.get(item["id"], now) > ARCHIVE_EXPIRY_S
 
         for item in self.inbox.pending():
             if expired(item):
                 self.inbox.drop(lambda x, iid=item["id"]: x["id"] == iid)
-                self.fail_action(item, late_note)
+                self.fail_action(item, late_note[item["type"]])
         with self.lock:
-            late = [(iid, e) for iid, e in self.inflight.items() if now - e["deliveredAt"] > ACK_TIMEOUT_S]
+            late = [(iid, e) for iid, e in self.inflight.items()
+                    if now - e["deliveredAt"] > (TAKEN_GIVEUP_S if e["item"].get("type") in ACTION_TYPES
+                                                 else ACK_TIMEOUT_S)]
             for iid, _ in late:
                 del self.inflight[iid]
         for iid, entry in late:
             item = entry["item"]
-            if expired(item):
-                self.fail_action(item, late_note)
+            if item.get("type") in ACTION_TYPES:
+                # It may have run: a late real result is still published (mod_result).
+                with self.lock:
+                    self.unsettled[iid] = now
+                self.fail_action(item, EXPIRED_TAKEN)
             elif entry["tries"] >= MAX_DELIVERIES:
-                self.fail_action(item, "The Chief did not confirm it after three tries.")
+                self.queued_at.pop(iid, None)
             else:
                 with self.lock:
                     self.inflight[iid] = {"item": item, "deliveredAt": float("inf"), "tries": entry["tries"]}
@@ -540,7 +562,7 @@ class App:
         """"yes" or "app" for this action on this session (THE action table), else a 409."""
         if s["isChief"]:
             raise HttpError(409, "That is the Chief's own session.")
-        actions, notes = plan_actions(s, self.chief_caps())
+        actions, notes = plan_actions(self.reader.action_input(s), self.chief_caps())
         value = actions.get(action, "no")
         if value == "no":
             raise HttpError(409, notes.get(action) or "That session does not support this from here.", unsupported=True)
@@ -661,34 +683,49 @@ class App:
 
     def reply(self, sid, body):
         s = self.session_or_404(sid)
+        if self.plan_action(s, "reply") == "app":
+            self.open_link(s)
+            return {"opened": True, "detail": "Opened it in the Claude app. Reply there."}
         text = _text_field(body, "text")
-        if s["isChief"]:
-            raise HttpError(409, "That is the Chief's own session. Talk to it in the chat instead.")
-        if not sid.startswith("local_"):
-            raise HttpError(409, "Only desktop sessions can get a reply from here.")
         self.require_chief()
         action = self.new_id("act")
-        self.queue_item({"id": action, "type": "reply", "sessionId": sid, "title": s["title"], "text": text})
+        self.queue_item({"id": action, "type": "reply", "sessionId": sid, "title": s["title"], "kind": s["kind"],
+                         "text": text})
         self.hub.publish("activity", {"kind": "chief", "to": sid})
         return {"actionId": action}
 
     def archive(self, sid, body):
         s = self.session_or_404(sid)
-        if s["isChief"]:
-            raise HttpError(409, "That is the Chief's own session. Archive it from the desktop app.")
-        if not sid.startswith("local_"):
-            raise HttpError(409, "Only desktop sessions can be archived from here.")
+        if self.plan_action(s, "archive") == "app":
+            self.open_link(s)
+            return {"opened": True, "detail": "Opened it in the Claude app. Archive it there."}
         busy = self.active_family(s)
         if busy and body.get("confirmed") is not True:
             why = (f"{s['title']} is working right now. Archiving it stops that work." if busy == "self" else
                    f"A helper session of {s['title']} is working right now. Archiving it can stop that work.")
             raise HttpError(409, why, needsConfirm=True, reason=why)
         self.require_chief()
+        return self.queue_action(s, "archive", body, "Archived from the Chief of Staff console")
+
+    def stop(self, sid, body):
+        """Stops a background session (the mod runs `claude stop <bgId>`). Its conversation is kept."""
+        s = self.session_or_404(sid)
+        self.plan_action(s, "stop")             # only ever "yes" or a 409
+        busy = self.active_family(s)
+        if busy and body.get("confirmed") is not True:
+            why = (f"{s['title']} is working right now. Stopping it ends that turn. Its conversation is kept."
+                   if busy == "self" else
+                   f"A helper session of {s['title']} is working right now. Stopping it can end that work.")
+            raise HttpError(409, why, needsConfirm=True, reason=why)
+        self.require_chief()
+        return self.queue_action(s, "stop", body, "Stopped from the Chief of Staff console")
+
+    def queue_action(self, s, kind_of, body, default_reason):
         action = self.new_id("act")
-        reason = _text_field(body, "reason", required=False) or "Archived from the Chief of Staff console"
-        self.queue_item({"id": action, "type": "archive", "sessionId": sid, "title": s["title"], "reason": reason,
-                         "confirmed": body.get("confirmed") is True})
-        self.hub.publish("activity", {"kind": "chief", "to": sid})
+        reason = _text_field(body, "reason", required=False) or default_reason
+        self.queue_item({"id": action, "type": kind_of, "sessionId": s["id"], "title": s["title"], "kind": s["kind"],
+                         "reason": reason, "confirmed": body.get("confirmed") is True})
+        self.hub.publish("activity", {"kind": "chief", "to": s["id"]})
         return {"actionId": action}
 
     def active_family(self, s):
@@ -702,18 +739,20 @@ class App:
         return None
 
     def open_session(self, sid):
+        """Opens a desktop session in the Claude app. Needs no Chief."""
         s = self.session_or_404(sid)
-        if not s.get("link"):
-            raise HttpError(409, "That session has no desktop link.")
-        try:
-            if os.name == "nt":
-                os.startfile(s["link"])        # noqa: the link is built from a checked id
-            else:
-                subprocess.Popen(["xdg-open", s["link"]], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            raise HttpError(500, "The desktop app did not open the session.")
+        self.plan_action(s, "open")
+        self.open_link(s)
         return {"ok": True}
+
+    def open_link(self, s):
+        """Opens the session's deep link; a failure is a 500, never an "opened" answer."""
+        if not ID_RE.match(s["id"]) or not s["id"].startswith("local_"):
+            raise HttpError(409, "Only desktop sessions open in the Claude app.", unsupported=True)
+        try:
+            self.open_url(LINK.format(s["id"]))
+        except OSError:
+            raise HttpError(500, "The Claude app did not open the session.")
 
     def voice_control(self, body):
         listen = body.get("listen") if body.get("listen") in ("wake", "ptt", "off") else None
@@ -965,7 +1004,7 @@ class App:
 
 # ------------------------------------------------------------- routing -----
 
-SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|open))?$")
+SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|stop|open))?$")
 
 
 def route(app, method, path, query, body):
@@ -996,6 +1035,8 @@ def route(app, method, path, query, body):
             return app.reply(sid, body)
         if method == "POST" and sub == "archive":
             return app.archive(sid, body)
+        if method == "POST" and sub == "stop":
+            return app.stop(sid, body)
         if method == "POST" and sub == "open":
             return app.open_session(sid)
     if method == "POST" and path == "/api/chief/say":

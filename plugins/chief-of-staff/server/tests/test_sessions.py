@@ -236,7 +236,8 @@ class Actions(unittest.TestCase):
                    "startedAt": FIXTURE_NOW}
             s = acting(TERMINAL_CHIEF, rows_extra=[row])
             self.assertIsNone(s["bg_bg-odd"]["bgId"], bad)
-            self.assertEqual(s["bg_bg-odd"]["actions"]["stop"], "no")
+            self.assertEqual(cell(s["bg_bg-odd"], "stop"),
+                             ("no", "Its background id is missing, so it cannot be stopped."))
 
     def test_actions_with_a_desktop_chief(self):
         s = acting(DESKTOP_CHIEF)
@@ -304,16 +305,83 @@ class Actions(unittest.TestCase):
         reg["cli-needs"] = {"sessionId": "cli-needs", "entrypoint": "cli", "hasInbox": True}
         self.assertEqual(acting(TERMINAL_CHIEF, registry=reg)[BBB]["actions"]["reply"], "app")
 
-    def test_closed_gates_hide_cli_and_bg_actions(self):
-        gated = "Not available from here yet. Update the Chief of Staff plugin."
+    def test_terminal_and_background_actions(self):
         for caps in (DESKTOP_CHIEF, TERMINAL_CHIEF):
             s = acting(caps)
-            self.assertEqual(cell(s["cli_cli-term"], "reply"), ("no", gated))
-            self.assertEqual(cell(s["bg_bg-working"], "reply"), ("no", gated))
-            self.assertEqual(cell(s["bg_bg-working"], "stop"), ("no", gated))
-            self.assertEqual(cell(s["bg_bg-done"], "stop"), ("no", gated))
-        # Desktop rows are as in 0.2.2.
-        self.assertEqual(acting(DESKTOP_CHIEF)[AAA]["actions"]["archive"], "yes")
+            self.assertEqual(cell(s["cli_cli-term"], "reply"), ("yes", None))
+            self.assertEqual(cell(s["bg_bg-working"], "reply"), ("yes", None))
+            self.assertEqual(cell(s["bg_bg-working"], "stop"), ("yes", None))
+            self.assertEqual(cell(s["bg_bg-done"], "stop"), ("no", "It already finished. Its conversation is kept."))
+            self.assertEqual(cell(s["bg_bg-blocked"], "stop"), ("yes", None))
+            self.assertEqual(cell(s["bg_bg-blocked"], "reply"),
+                             ("no", "It has no message inbox (it may run with --bare)."))
+
+    def test_reply_needs_an_inbox(self):
+        reg = RegistrySource(FIXTURES / "registry").scan()          # cli-wait's row has no messagingSocketPath
+        s = acting(TERMINAL_CHIEF, chief=None, registry=reg)
+        self.assertEqual(cell(s[CHIEF], "reply"),
+                         ("app", "Reply in the Claude app. A Chief in a terminal cannot reach this session."))
+        self.assertEqual(cell(s["cli_cli-bare"], "reply"), ("no", "It has no message inbox (it may run with --bare)."))
+        self.assertEqual(cell(s["bg_bg-working"], "reply"), ("yes", None))
+
+    def test_the_action_table_cell_by_cell(self):
+        """Every combination of kind, Chief, live, inbox, bgId and finished, against THE table
+        (plan-b 4.1) held here as data: the first rule that names a key sets it."""
+        CH = "This is the Chief of Staff session."
+        NC = "No Chief is connected. Type /chief in a Claude Code session first."
+        TABLE = [
+            ({"isChief": True}, {k: ("no", CH) for k in ("reply", "archive", "stop", "open")}),
+            ({"kind": {"desktop"}}, {"open": ("yes", None)}),
+            ({"kind": {"cli", "bg"}}, {"open": ("no", "Only desktop sessions open in the Claude app.")}),
+            ({"kind": {"desktop", "cli"}}, {"stop": ("no", "Only background sessions can be stopped.")}),
+            ({"kind": {"cli"}, "host": True}, {"archive": ("no", "Archive it in the Claude app.")}),
+            ({"kind": {"cli"}}, {"archive": ("no", "Close it in its own terminal window. "
+                                                   "The Chief does not end terminal sessions.")}),
+            ({"kind": {"bg"}}, {"archive": ("no", "Use Stop for a background session.")}),
+            ({"chief": "none", "kind": {"desktop"}},
+             {"reply": ("app", "No Chief is connected. You can reply in the Claude app."),
+              "archive": ("app", "No Chief is connected. You can archive it in the Claude app.")}),
+            ({"chief": "none"}, {"reply": ("no", NC), "stop": ("no", NC)}),
+            ({"chief": "D", "kind": {"desktop"}}, {"reply": ("yes", None), "archive": ("yes", None)}),
+            ({"chief": "T", "kind": {"desktop"}, "L": True, "I": True}, {"reply": ("yes", None)}),
+            ({"chief": "T", "kind": {"desktop"}},
+             {"reply": ("app", "Reply in the Claude app. A Chief in a terminal cannot reach this session."),
+              "archive": ("app", "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions.")}),
+            ({"L": False}, {"reply": ("no", "It is not running, so it cannot get a reply.")}),
+            ({"I": False}, {"reply": ("no", "It has no message inbox (it may run with --bare).")}),
+            ({}, {"reply": ("yes", None)}),
+            ({"F": True}, {"stop": ("no", "It already finished. Its conversation is kept.")}),
+            ({"L": False}, {"stop": ("no", "It is not running, so it cannot be stopped.")}),
+            ({"B": False}, {"stop": ("no", "Its background id is missing, so it cannot be stopped.")}),
+            ({}, {"stop": ("yes", None)}),
+        ]
+        CAPS = {"D": {"desktopSessions": True}, "T": {"desktopSessions": False}, "none": None}
+        from cos.sessions import plan_actions
+        seen = 0
+        for kind in ("desktop", "cli", "bg"):
+            for chief in CAPS:
+                for L in (True, False):
+                    for I in (True, False):
+                        for B in ((True, False) if kind == "bg" else (False,)):
+                            for F in ((True, False) if kind == "bg" else (False,)):
+                                for host in ((True, False) if kind == "cli" else (False,)):
+                                    for is_chief in (False, True):
+                                        case = {"kind": kind, "chief": chief, "L": L, "I": I, "B": B, "F": F,
+                                                "host": host, "isChief": is_chief}
+                                        want = {}
+                                        for cond, cells in TABLE:
+                                            if all(case[k] in v if isinstance(v, set) else case[k] == v
+                                                   for k, v in cond.items()):
+                                                for k, v in cells.items():
+                                                    want.setdefault(k, v)
+                                        s = {"kind": kind, "isChief": is_chief, "live": L, "_inbox": I,
+                                             "bgId": "0d10" if B else None, "_bgState": "done" if F else "working",
+                                             "_desktopHost": host}
+                                        actions, notes = plan_actions(s, CAPS[chief])
+                                        got = {k: (actions[k], notes.get(k)) for k in actions}
+                                        self.assertEqual(got, want, case)
+                                        seen += 1
+        self.assertEqual(seen, 3 * 4 * 2 + 3 * 4 * 2 * 2 + 3 * 4 * 4 * 2)
 
 
 class Registry(unittest.TestCase):

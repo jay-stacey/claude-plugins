@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent
@@ -56,6 +57,11 @@ class Sandbox:
                  COS_PROJECTS_DIR=str(self.dir / "projects"), COS_SESSIONS_DIR=str(self.dir / "registry"),
                  COS_SETTINGS_FILE=str(self.dir / "settings.json"),
                  COS_CLAUDE_CMD=json.dumps([sys.executable, str(HERE / "fake_agents.py"), str(self.dir / "agents.json")]))
+        # No test ever opens a real claude:// link: every App made in here records them instead.
+        from cos import server
+        self.opened = []
+        self.open_patch = mock.patch.object(server, "default_open", self.opened.append)
+        self.open_patch.start()
         return self
 
     def write_agents(self, rows):
@@ -67,6 +73,7 @@ class Sandbox:
             os.environ[k] = v
 
     def __exit__(self, *exc):
+        self.open_patch.stop()
         for k, v in self.saved_env.items():
             if v is None:
                 os.environ.pop(k, None)

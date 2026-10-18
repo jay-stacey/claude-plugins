@@ -95,15 +95,27 @@ class AppState(unittest.TestCase):
         self.assertEqual(self.app.inbox.pending(), [])
 
     def test_an_item_is_given_up_after_three_deliveries(self):
-        out = self.app.reply(BBB, {"text": "Go ahead."})
+        said = self.app.say({"text": "hello"})
         q, _ = self.app.hub.subscribe()
         for _ in range(3):
-            self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})
+            items = self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})["items"]
+            self.assertEqual([i["id"] for i in items], [said["id"]])
             self.clock.now += 61
             self.app.sweep_inbox()
         self.assertEqual(self.app.inbox.pending(), [])
-        self.assertEqual(events(q, "action"), [{"actionId": out["actionId"], "ok": False,
-                                                "detail": "The Chief did not confirm it after three tries."}])
+        self.assertEqual(self.app.inflight, {})
+        self.assertEqual(events(q, "action"), [])             # a prompt has no action result
+
+    def test_a_taken_reply_is_never_delivered_twice(self):
+        self.app.reply(BBB, {"text": "Go ahead."})
+        self.assertEqual(len(self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})["items"]), 1)
+        q, _ = self.app.hub.subscribe()
+        for step in (61, 60):
+            self.clock.now += step
+            self.app.sweep_inbox()
+            self.assertEqual(self.app.inbox.pending(), [])
+            self.assertEqual(self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})["items"], [])
+        self.assertEqual(events(q, "action"), [])
 
     def test_an_archive_nobody_runs_within_two_minutes_is_reported_as_not_done(self):
         out = self.app.archive(BBB, {})
@@ -111,15 +123,96 @@ class AppState(unittest.TestCase):
         self.clock.now += 121
         self.app.sweep_inbox()
         self.assertEqual(self.app.inbox.pending(), [])
-        got = events(q, "action")
-        self.assertEqual([(e["actionId"], e["ok"]) for e in got], [(out["actionId"], False)])
-        # Taken by the mod but never run: also given up after two minutes.
+        self.assertEqual(events(q, "action"), [{
+            "actionId": out["actionId"], "ok": False, "outcome": "expired",
+            "detail": "The Chief did not get to it within two minutes, so nothing was archived."}])
+        # Taken by the mod: the server waits for its result, and gives up only at ten minutes.
         out = self.app.archive(BBB, {})
         self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})
         self.clock.now += 121
         self.app.sweep_inbox()
-        self.assertEqual([(e["actionId"], e["ok"]) for e in events(q, "action")], [(out["actionId"], False)])
+        self.assertEqual(events(q, "action"), [])
+        self.clock.now += 480
+        self.app.sweep_inbox()
+        self.assertEqual(events(q, "action"), [{"actionId": out["actionId"], "ok": False, "outcome": "expired",
+                                                "detail": "It may have run. Check the session."}])
         self.assertEqual(self.app.inbox.pending(), [])
+
+    def add_cli(self, **row):
+        """A terminal session and a background job beside the fixtures, both with an inbox."""
+        rows = [dict(r) for r in self.box.agents_rows] + [
+            {"pid": 9, "cwd": "C:\\work", "kind": "interactive", "sessionId": "cli-gone", "name": "Terminal work",
+             "status": "idle", "startedAt": int(time.time() * 1000)}]
+        for r in rows:
+            r.update(row.get(r["sessionId"], {}))
+        self.box.write_agents(rows)
+        self.app.reader.refresh_live()
+        self.clock.now += 5
+        self.app.rebuild()
+
+    def terminal(self):
+        self.app.chief["host"] = {"surface": "terminal", "caps": {"desktopSessions": False, "sendMessage": True,
+                                                                 "cliStop": True}}
+        self.app.rebuild()
+
+    def test_terminal_chief_reply_to_a_live_cli_session_is_queued(self):
+        self.add_cli()
+        self.terminal()
+        out = self.app.reply("cli_cli-gone", {"text": "Run the tests."})
+        self.assertEqual(self.app.inbox.pending()[-1], {
+            "id": out["actionId"], "type": "reply", "sessionId": "cli_cli-gone", "title": "Terminal work",
+            "kind": "cli", "text": "Run the tests."})
+        with self.assertRaises(HttpError) as err:
+            self.app.archive("cli_cli-gone", {"confirmed": True})
+        self.assertEqual((err.exception.status, err.exception.extra.get("unsupported")), (409, True))
+
+    def test_stop_asks_first_for_a_working_job_then_queues(self):
+        self.terminal()
+        with self.assertRaises(HttpError) as err:
+            self.app.stop("bg_bg-working", {})
+        self.assertEqual(err.exception.status, 409)
+        self.assertEqual(err.exception.extra["reason"],
+                         "nightly import is working right now. Stopping it ends that turn. Its conversation is kept.")
+        out = self.app.stop("bg_bg-working", {"confirmed": True})
+        item = self.app.inbox.pending()[-1]
+        self.assertEqual(item, {"id": out["actionId"], "type": "stop", "sessionId": "bg_bg-working",
+                                "title": "nightly import", "kind": "bg",
+                                "reason": "Stopped from the Chief of Staff console", "confirmed": True})
+        out = self.app.stop("bg_bg-blocked", {})              # waiting on Jay, not working: no question
+        self.assertEqual(self.app.inbox.pending()[-1]["id"], out["actionId"])
+        for sid, note in ((AAA, "Only background sessions can be stopped."),
+                          ("local_9999aaaa-0000-4000-8000-000000000007", "That is the Chief's own session.")):
+            with self.assertRaises(HttpError) as err:
+                self.app.stop(sid, {"confirmed": True})
+            self.assertEqual((err.exception.status, str(err.exception)), (409, note))
+
+    def test_stop_expires_after_two_minutes_with_outcome_expired(self):
+        out = self.app.stop("bg_bg-blocked", {})
+        q, _ = self.app.hub.subscribe()
+        self.clock.now += 121
+        self.app.sweep_inbox()
+        self.assertEqual(self.app.inbox.pending(), [])
+        self.assertEqual(events(q, "action"), [{
+            "actionId": out["actionId"], "ok": False, "outcome": "expired",
+            "detail": "The Chief did not get to it within two minutes, so nothing was stopped."}])
+
+    def test_a_taken_stop_waits_for_the_result_then_expires_at_ten_minutes(self):
+        out = self.app.stop("bg_bg-blocked", {})
+        self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})
+        q, _ = self.app.hub.subscribe()
+        self.clock.now += 121
+        self.app.sweep_inbox()
+        self.assertEqual((events(q, "action"), self.app.inbox.pending()), ([], []))
+        self.clock.now += 480
+        self.app.sweep_inbox()
+        self.assertEqual(events(q, "action"), [{"actionId": out["actionId"], "ok": False, "outcome": "expired",
+                                                "detail": "It may have run. Check the session."}])
+        self.assertEqual(self.app.mod_inbox({"wait": "0", "cli": "cli-wait"})["items"], [])   # never re-queued
+        self.app.mod_result({"actionId": out["actionId"], "outcome": "done", "detail": "Stopped."})
+        self.assertEqual(events(q, "action"), [{"actionId": out["actionId"], "ok": True, "outcome": "done",
+                                                "detail": "Stopped.", "late": True}])
+        self.app.mod_result({"actionId": out["actionId"], "outcome": "done", "detail": "Stopped."})
+        self.assertEqual(events(q, "action"), [])
 
     def result(self, **body):
         return self.app.mod_result(body)
