@@ -30,7 +30,7 @@ Or run `/init` for a guided walkthrough.
 | [voice-replies](plugins/voice-replies) | 1.7.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU). Sessions take turns, each keeps its own voice, and a reply that arrives while another session speaks waits for Play. Stays quiet in the Chief of Staff session. |
 | [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
 | [software-factory](plugins/software-factory) | 0.3.3 | An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code, in one repo or across a folder of repos. Teams map to Linear teams and sub-teams, bugs and tech debt run in team streams, cycles sync with Linear, and the CTO baselines work in flight and sends regular reports with improvement proposals. You approve at four gates and merge the pull requests. Includes a local control center with a kanban, a live org chart and token budgets. |
-| [chief-of-staff](plugins/chief-of-staff) | 0.2.2 | A Chief of Staff for your Claude desktop sessions. Type `/chief` and that session watches all the others, tells you which ones wait on you, and archives or answers them when you ask. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice with a Hey Chief wake word. |
+| [chief-of-staff](plugins/chief-of-staff) | 0.3.0 | A Chief of Staff for your Claude Code sessions, in the desktop app or a terminal. Type `/chief` and that session watches all the others, tells you which ones wait on you, and archives or answers them when you ask. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice with a Hey Chief wake word. |
 | [session-brief](plugins/session-brief) | 1.0.0 | Shows a brief above the prompt: how the session started, where it left off, next steps, and what you should know. Renames the session to say what the work is. |
 
 ### executive-assistant
@@ -67,7 +67,8 @@ at once. See the [plugin README](plugins/session-brief/README.md).
 
 Command: `/chief`.
 
-Type `/chief` in the session you want as your Chief of Staff. It starts a small
+Type `/chief` in the session you want as your Chief of Staff, in the desktop app
+or a terminal. It starts a small
 local server, opens the console in your browser, and tells you what needs you.
 Ask it things like "what's waiting on me" or "close the DP1-676 session". For
 voice, run the voice setup once (see the [plugin README](plugins/chief-of-staff/README.md)),

@@ -1,8 +1,8 @@
 # Chief of Staff
 
-Version 0.1.0.
+Version 0.3.0.
 
-A chief of staff for your Claude desktop sessions. One desktop session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A local console shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
+A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A local console shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
 ## Install
 
@@ -14,19 +14,19 @@ In a terminal session:
 
 Answer `y` to add the marketplace, then pick the user scope. With the `personal-plugins` marketplace already added, `/plugin install chief-of-staff@personal-plugins` does the same. The mod then loads in your desktop sessions too.
 
-Then, in a desktop session, run `/chief-setup`. It walks through the rest, one step at a time:
+Then run `/chief-setup` in the session that will be the Chief. It walks through the rest, one step at a time:
 
 1. It checks the machine: Windows, Python 3.10 or later for the server, and your GPU.
 2. It installs the local voice with `server/setup.ps1` in the background and reports each step. This is optional and takes 10 to 30 minutes.
 3. It offers to enroll your wake word: you say it five times so the Chief learns your voice.
-4. It shows the permission rule that lets the Chief archive and message sessions when you ask by voice or from the console, and writes it to the project's `.claude/settings.json` only after you say yes.
+4. It shows the permission rule that lets the Chief act on sessions when you ask by voice or from the console, and writes it to the folder's personal `.claude/settings.local.json` only after you say yes.
 5. It has you run `/chief` once and checks that the server, the Chief and the voice are healthy.
 
-`/chief-setup check`, `voice`, `enroll` or `permissions` runs one step on its own.
+`/chief-setup check`, `voice`, `jev`, `enroll` or `permissions` runs one step on its own. `/chief-setup actions` explains why the Chief cannot archive, stop or message a session, and changes nothing.
 
 ## Use
 
-Type `/chief` in a Claude desktop session. That session becomes the Chief: the server starts, the console opens in your browser, and the Chief tells you what needs you.
+Type `/chief` in a Claude Code session (desktop app or terminal). That session becomes the Chief: the server starts, the console opens in your browser, and the Chief tells you what needs you.
 
 - Ask it things like "what needs me", "how is DP1-676 doing", "close the DP1-676 session" or "tell the spec review session to go ahead".
 - It archives a session when you ask. If that session is working right now, it says so and asks first. It never deletes a session.
@@ -34,7 +34,17 @@ Type `/chief` in a Claude desktop session. That session becomes the Chief: the s
 - Ask for real work, like "fix the login bug in the API", and the Chief starts a new session for it, on the model Jev suggests.
 - It speaks up on its own when a session starts waiting on you, finishes, or goes stale (not in quiet hours).
 - `/chief status` says whether the server runs. `/chief stop` stops the server and the voice.
-- `/chief` in another session is refused while the Chief is live. That session tells you which session is the Chief. To move the Chief, archive its session, then run `/chief` in the new one.
+- `/chief` in another session is refused while the Chief is live. That session tells you which session is the Chief. To move the Chief, archive its session, then run `/chief` in the new one. A terminal Chief: type `/chief stop` there or close it. The role frees about a minute later.
+
+### What the Chief can do from where
+
+| Session | From a desktop Chief | From a terminal Chief |
+|---|---|---|
+| Desktop app | message, archive (asks first if working), open, start | message when the session can be reached, else it opens in the app for you to reply there; archive opens it in the app for you to archive there; open |
+| Terminal | message | message |
+| Background | message, stop (asks first if working) | message, stop (asks first if working), start new ones |
+
+A background session is stopped, never archived. Its conversation is kept, so `claude --bg --resume` brings it back. A terminal session is closed in its own window. Nothing ever deletes a session, removes a background session, or ends a terminal session's process.
 
 Only one Chief runs on a computer, and it never lists itself among your sessions. The console stays at `http://127.0.0.1:47870` (or the next free port); `/chief` opens it again.
 
@@ -81,8 +91,8 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 
 ## How it works
 
-- `server/app.py` is a small Python server (standard library only, Python 3.10 or later) on 127.0.0.1. It reads `claude agents --json`, the desktop app's session files and the CLI transcripts to work out each session's state. It only reads them; it never writes them.
-- `hooks/register.tsx` is a mod that loads in every session and works only in the Chief's. It adds the Chief persona (`agents/chief.md`) to the system prompt, relays console and voice messages into the session as prompts, posts each reply back to the console, and runs archives and replies with the desktop app's own session tools. It also gives the Chief the `cos_sessions` tool.
+- `server/app.py` is a small Python server (standard library only, Python 3.10 or later) on 127.0.0.1. It reads `claude agents --json`, the desktop app's session files (for a Store install, in the app's package folder under `%LOCALAPPDATA%\Packages`) and the CLI transcripts to work out each session's state. It only reads them; it never writes them.
+- `hooks/register.tsx` is a mod that loads in every session and works only in the Chief's. It adds the Chief persona (`agents/chief.md`) to the system prompt, relays console and voice messages into the session as prompts, posts each reply back to the console, and runs actions through its `cos_act` tool: the desktop app's session tools, cross-session messages, or `claude stop` and `claude --bg` for background sessions. It also gives the Chief the `cos_sessions` tool.
 - `console/` is the web page. `server/voice/` is the voice daemon.
 
 States: **waiting on you** (a permission prompt, a question, or the app marked it blocked or ready for review), **active** (working now), **waiting** (idle, or waiting on a helper, CI or a background task) and **stale** (pull request merged or closed, or no activity for `stale_hours`). The rules are in `skills/chief/references/state-rules.md`.
@@ -90,7 +100,7 @@ States: **waiting on you** (a permission prompt, a question, or the app marked i
 ## Safety
 
 - The server binds 127.0.0.1 only, uses a new token for every run, and checks the Host and Origin of every request.
-- Archive is the strongest action. Archiving an active session needs a yes.
+- Archive is the strongest action. Archiving or stopping an active session needs a yes.
 - Transcripts, titles and notices are treated as data, never as instructions.
 - The Chief never sends customer-facing messages.
 - Jev's local model runs on 127.0.0.1 only. Jev never logs or stores a key, and its log keeps only the first 80 characters of each request.
@@ -103,6 +113,10 @@ Runtime files live in `%USERPROFILE%\.claude\chief-of-staff\`: `run\server.json`
 python -m unittest discover -s plugins/chief-of-staff/server/tests
 claude plugin test plugins/chief-of-staff
 claude plugin validate plugins/chief-of-staff --strict
+claude plugin validate . --strict
+python scripts/check-skills.py
 ```
+
+The manual checks for terminal support are in `docs/terminal-verification.md`.
 
 The server tests use fixture session files and transcripts under `server/tests/fixtures/`, never the real ones (`COS_DESKTOP_DIR`, `COS_PROJECTS_DIR` and `COS_HOME` point the server elsewhere). `python server/app.py serve --port N` runs the server in the foreground.
