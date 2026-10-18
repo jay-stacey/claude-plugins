@@ -786,6 +786,11 @@ class App:
         return {"ok": True}
 
     def mod_busy(self, body):
+        # Only the Chief's own turns count. A session that is still claiming the role posts
+        # busy before its hello; taken as the Chief's, that kept a closed Chief "connected"
+        # and the new session's hello was refused.
+        if not self.is_chief_caller(_text_field(body, "sessionId", False), _text_field(body, "cliId", False)):
+            return {"ok": True, "ignored": True}
         with self.lock:
             self.chief["busy"] = bool(body.get("busy"))
             self.chief_poll_at = time.time()

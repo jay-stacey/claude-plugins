@@ -168,7 +168,7 @@ export const register: Register = (on, opts) => {
     const result = await next(e)
     if (isChief) {
       discussed = new Set()
-      $.clock.after(0, () => void post($, '/api/mod/busy', { busy: true }))
+      $.clock.after(0, () => void post($, '/api/mod/busy', { busy: true, cliId: myId }))
     }
     return result
   })
@@ -641,7 +641,7 @@ function textOf(content: readonly unknown[]): string {
 // --------------------------------------------------------------- replies ---
 
 async function sendReply($: EngineInterface, answer: string, turnId: string): Promise<void> {
-  await post($, '/api/mod/busy', { busy: false })
+  await post($, '/api/mod/busy', { busy: false, cliId: myId })
   if (answer.trim() === '') return
   const { text, confirm } = splitConfirm(answer)
   if (text === '' && confirm === null) return
