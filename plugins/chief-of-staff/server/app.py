@@ -33,6 +33,8 @@ START_WAIT_S = 5.0
 LOCK_WAIT_S = 10.0
 STALE_LOCK_S = 30.0
 APP_PY = Path(__file__).resolve()
+DETACHED = 0x00000008 | 0x00000200          # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+BREAKAWAY = 0x01000000                      # CREATE_BREAKAWAY_FROM_JOB: outlive the terminal that started it
 
 
 def read_info():
@@ -42,14 +44,20 @@ def read_info():
         return None
 
 
-def healthy(port, timeout=1.0):
+def health(port, timeout=1.0):
+    """The server's health answer (sent with no token), or None."""
     if not isinstance(port, int):
-        return False
+        return None
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=timeout) as r:
-            return json.loads(r.read()).get("app") == APP
+            body = json.loads(r.read())
+        return body if isinstance(body, dict) and body.get("app") == APP else None
     except Exception:
-        return False
+        return None
+
+
+def healthy(port, timeout=1.0):
+    return health(port, timeout) is not None
 
 
 def open_url(url):
@@ -133,7 +141,21 @@ def alive(pid):
 
 def public(info, already):
     return {"url": info.get("url"), "port": info.get("port"), "pid": info.get("pid"),
-            "chiefSessionId": info.get("chiefSessionId"), "already_running": already}
+            "chiefSessionId": info.get("chiefSessionId"), "already_running": already,
+            "version": info.get("version")}
+
+
+def running_public(info, args):
+    """The answer for a server that already runs. It is never restarted here: an older one
+    is only reported as stale, and the mod restarts it on an explicit /chief."""
+    if args.open:
+        open_url(info["url"])
+    out = public(info, True)
+    version = (health(info.get("port")) or {}).get("version")
+    out["version"] = version
+    if version != paths.plugin_version():
+        out["stale"] = True             # every server up to 0.2.2 sends no version
+    return out
 
 
 class StartLock:
@@ -179,30 +201,24 @@ def running_info():
 def cmd_start(args):
     info = running_info()
     if info:
-        if args.open:
-            open_url(info["url"])
-        return public(info, True)
+        return running_public(info, args)
     lock = StartLock()
     if not lock.acquire():
         # Another start holds the lock: answer with the server it started.
         info = running_info()
         if info:
-            if args.open:
-                open_url(info["url"])
-            return public(info, True)
+            return running_public(info, args)
         raise SystemExit("Another start is still running. Try again in a few seconds.")
     try:
         info = running_info()       # the start that held the lock may have finished
         if info:
-            if args.open:
-                open_url(info["url"])
-            return public(info, True)
+            return running_public(info, args)
         return spawn(args)
     finally:
         lock.release()
 
 
-def spawn(args):
+def spawn(args, popen=subprocess.Popen, nt=None):
     port = args.port or DEFAULT_PORT
     token = secrets.token_urlsafe(24)
     logs = paths.logs_dir()
@@ -210,15 +226,25 @@ def spawn(args):
     log_path = logs / "server.log"
     rotate(log_path)
     cmd = [sys.executable, str(APP_PY), "serve", "--port", str(port)]
-    kwargs = {}
-    if os.name == "nt":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
+    nt = (os.name == "nt") if nt is None else nt
     env = dict(os.environ, COS_TOKEN=token, PYTHONUNBUFFERED="1")
     with open(log_path, "ab") as log:
-        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=env,
-                                close_fds=True, **kwargs)
+        def start(**kwargs):
+            return popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log, env=env, close_fds=True, **kwargs)
+        how = "detached"
+        if nt:
+            try:
+                proc = start(creationflags=DETACHED | BREAKAWAY)
+                how = "breakaway"
+            except OSError as e:
+                if getattr(e, "winerror", None) != 5:
+                    raise
+                # The terminal's job does not allow it: the server then ends with that terminal.
+                proc = start(creationflags=DETACHED)
+        else:
+            proc = start(start_new_session=True)
+        log.write((json.dumps({"spawn": how, "pid": proc.pid}) + "\n").encode())
+        log.flush()
     deadline = time.monotonic() + START_WAIT_S
     while time.monotonic() < deadline:
         info = read_info()

@@ -1,0 +1,9 @@
+{
+ "pid": 4,
+ "sessionId": "bg-working",
+ "kind": "background",
+ "entrypoint": "cli",
+ "status": "busy",
+ "name": "nightly import",
+ "messagingSocketPath": "//./pipe/claude-4"
+}

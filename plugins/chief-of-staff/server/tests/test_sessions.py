@@ -1,12 +1,14 @@
+import builtins
 import json
 import sys
 import unittest
+from unittest import mock
 
 from helpers import FIXTURE_NOW, FIXTURES, Sandbox, snapshot_tree
 
 from cos import config
-from cos.sessions import (AgentsSource, DesktopSource, SessionReader, TranscriptIndex, build_sessions,
-                          classify, counts_of)
+from cos.sessions import (AgentsSource, DesktopSource, RegistrySource, SessionReader, TranscriptIndex,
+                          build_sessions, classify, counts_of)
 
 AAA = "local_aaaa1111-0000-4000-8000-000000000001"
 BBB = "local_bbbb2222-0000-4000-8000-000000000002"
@@ -68,7 +70,7 @@ class StateRules(unittest.TestCase):
         self.assertEqual(fixture_sessions()[FFF]["summary"], "Wrote the draft Done.")
         self.assertEqual(fixture_sessions()[EEE]["parentId"], AAA)
         bg = fixture_sessions()["bg_bg-blocked"]
-        self.assertEqual((bg["kind"], bg["liveStatus"], bg["link"]), ("background", "waiting", None))
+        self.assertEqual((bg["kind"], bg["liveStatus"], bg["link"], bg["bgId"]), ("bg", "waiting", None, "c8d8"))
 
     def test_in_view_covers_live_recent_and_family(self):
         s = fixture_sessions()
@@ -184,6 +186,175 @@ class Reader(unittest.TestCase):
             self.assertEqual({k: v[:2] for k, v in cached.items()}, {k: v[:2] for k, v in src.cache.items()})
             self.assertIs(next(iter(cached.values()))[2], src.cache[next(iter(cached))][2])
             self.assertIn(AAA, first)
+
+
+DESKTOP_CHIEF = {"desktopSessions": True, "desktopStart": True}
+TERMINAL_CHIEF = {"desktopSessions": False, "sendMessage": True, "listAgents": True, "cliStop": True}
+TERM_ROWS = [
+    {"pid": 5, "cwd": "C:\\work", "kind": "interactive", "startedAt": FIXTURE_NOW - H, "sessionId": "cli-term",
+     "name": "Terminal work", "status": "idle"},
+    {"pid": 6, "cwd": "C:\\work", "kind": "interactive", "startedAt": FIXTURE_NOW - H, "sessionId": "cli-bare",
+     "name": "Bare run", "status": "idle"},
+    {"id": "d0ne", "cwd": "C:\\work", "kind": "background", "startedAt": FIXTURE_NOW - H, "sessionId": "bg-done",
+     "name": "finished job", "state": "done"},
+]
+TERM_REG = {
+    "cli-busy": {"sessionId": "cli-busy", "entrypoint": "cli", "hasInbox": True},
+    "cli-term": {"sessionId": "cli-term", "entrypoint": "cli", "hasInbox": True},
+    "cli-bare": {"sessionId": "cli-bare", "entrypoint": "cli", "hasInbox": False},
+    "bg-working": {"sessionId": "bg-working", "entrypoint": "cli", "hasInbox": True},
+    "bg-done": {"sessionId": "bg-done", "entrypoint": "cli", "hasInbox": True},
+}
+
+
+def acting(caps, chief=CHIEF, rows_extra=TERM_ROWS, registry=TERM_REG):
+    desktop = DesktopSource(FIXTURES / "desktop").scan()
+    rows = json.loads((FIXTURES / "agents.json").read_text(encoding="utf-8")) + list(rows_extra)
+    return {s["id"]: s for s in build_sessions(desktop, rows, config.defaults(), FIXTURE_NOW, chief, {}, {},
+                                                registry=registry, caps=caps)}
+
+
+def cell(s, key):
+    return s["actions"][key], s["actionNotes"].get(key)
+
+
+class Actions(unittest.TestCase):
+    def test_kind_and_bg_id(self):
+        s = acting(DESKTOP_CHIEF)
+        self.assertEqual((s[AAA]["kind"], s[AAA]["bgId"]), ("desktop", None))
+        self.assertEqual((s["cli_cli-term"]["kind"], s["cli_cli-term"]["bgId"]), ("cli", None))
+        self.assertEqual((s["bg_bg-working"]["kind"], s["bg_bg-working"]["bgId"]), ("bg", "0d10"))
+        for sess in s.values():
+            self.assertFalse({"_live_kind", "_inbox", "_desktopHost", "_bgState"} & set(sess))
+        # classify still tells a live prompt from a background job's state.
+        self.assertEqual(s[EEE]["state"], "you")
+        self.assertEqual(s["bg_bg-blocked"]["stateReason"], "Background job is blocked")
+
+    def test_bad_bg_id_is_dropped(self):
+        for bad in ("--all", "-h", "../x", "a" * 65, ""):
+            row = {"id": bad, "kind": "background", "sessionId": "bg-odd", "state": "working",
+                   "startedAt": FIXTURE_NOW}
+            s = acting(TERMINAL_CHIEF, rows_extra=[row])
+            self.assertIsNone(s["bg_bg-odd"]["bgId"], bad)
+            self.assertEqual(s["bg_bg-odd"]["actions"]["stop"], "no")
+
+    def test_actions_with_a_desktop_chief(self):
+        s = acting(DESKTOP_CHIEF)
+        self.assertEqual(s[AAA]["actions"], {"reply": "yes", "archive": "yes", "stop": "no", "open": "yes"})
+        self.assertEqual(s[AAA]["actionNotes"], {"stop": "Only background sessions can be stopped."})
+        self.assertEqual(cell(s[BBB], "reply"), ("yes", None))          # not live: the desktop tool reaches it
+
+    def test_actions_with_a_terminal_chief(self):
+        s = acting(TERMINAL_CHIEF)
+        self.assertEqual(cell(s["bg_bg-working"], "archive"), ("no", "Use Stop for a background session."))
+        self.assertEqual(cell(s[AAA], "archive"),
+                         ("app", "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions."))
+        self.assertEqual(cell(s[AAA], "reply"), ("yes", None))          # live, with an inbox
+        self.assertEqual(cell(s[BBB], "reply"),
+                         ("app", "Reply in the Claude app. A Chief in a terminal cannot reach this session."))
+        self.assertEqual(cell(s[AAA], "open"), ("yes", None))
+        self.assertEqual(cell(s["cli_cli-term"], "archive"),
+                         ("no", "Close it in its own terminal window. The Chief does not end terminal sessions."))
+        self.assertEqual(cell(s["cli_cli-term"], "open"), ("no", "Only desktop sessions open in the Claude app."))
+
+    def test_no_chief(self):
+        s = acting(None)
+        self.assertEqual(cell(s[AAA], "open"), ("yes", None))
+        self.assertEqual(cell(s[AAA], "archive"), ("app", "No Chief is connected. You can archive it in the Claude app."))
+        self.assertEqual(cell(s[AAA], "reply"), ("app", "No Chief is connected. You can reply in the Claude app."))
+        no_chief = "No Chief is connected. Type /chief in a Claude Code session first."
+        self.assertEqual(set(s["cli_cli-term"]["actions"].values()), {"no"})
+        self.assertEqual(cell(s["cli_cli-term"], "reply"), ("no", no_chief))
+        self.assertEqual(set(s["bg_bg-working"]["actions"].values()), {"no"})
+        self.assertEqual(cell(s["bg_bg-working"], "stop"), ("no", no_chief))
+
+    def test_chief_session_has_no_actions(self):
+        for caps in (DESKTOP_CHIEF, TERMINAL_CHIEF, None):
+            chief = acting(caps)[CHIEF]
+            self.assertEqual(chief["actions"], {"reply": "no", "archive": "no", "stop": "no", "open": "no"})
+            self.assertEqual(set(chief["actionNotes"].values()), {"This is the Chief of Staff session."})
+
+    def test_every_non_yes_action_has_a_note(self):
+        for caps in (DESKTOP_CHIEF, TERMINAL_CHIEF, None):
+            for s in acting(caps).values():
+                self.assertEqual(set(s["actions"]), {"reply", "archive", "stop", "open"})
+                for key, value in s["actions"].items():
+                    self.assertIn(value, ("yes", "app", "no"))
+                    if value == "yes":
+                        self.assertNotIn(key, s["actionNotes"])
+                    else:
+                        self.assertTrue(s["actionNotes"].get(key), (s["id"], key))
+
+    def test_desktop_entrypoint_on_a_cli_row_changes_only_the_archive_note(self):
+        reg = dict(TERM_REG, **{"cli-term": {"sessionId": "cli-term", "entrypoint": "claude-desktop", "hasInbox": True}})
+        plain, desk = acting(TERMINAL_CHIEF)["cli_cli-term"], acting(TERMINAL_CHIEF, registry=reg)["cli_cli-term"]
+        self.assertEqual(desk["kind"], "cli")
+        self.assertEqual(desk["actions"], plain["actions"])
+        self.assertEqual(cell(desk, "archive"), ("no", "Archive it in the Claude app."))
+        self.assertEqual({k: v for k, v in desk["actionNotes"].items() if k != "archive"},
+                         {k: v for k, v in plain["actionNotes"].items() if k != "archive"})
+
+    def test_registry_row_without_agents_row_is_ignored(self):
+        # cli-gone is in the registry but not in `claude agents`: it is no session, and lends nothing.
+        reg = RegistrySource(FIXTURES / "registry").scan()
+        self.assertIn("cli-gone", reg)
+        s = acting(TERMINAL_CHIEF, registry=reg)
+        self.assertFalse([x for x in s.values() if x["cliId"] == "cli-gone"])
+        # BBB's cli-needs has no agents row: even a registry row with an inbox gives no reply.
+        reg["cli-needs"] = {"sessionId": "cli-needs", "entrypoint": "cli", "hasInbox": True}
+        self.assertEqual(acting(TERMINAL_CHIEF, registry=reg)[BBB]["actions"]["reply"], "app")
+
+    def test_closed_gates_hide_cli_and_bg_actions(self):
+        gated = "Not available from here yet. Update the Chief of Staff plugin."
+        for caps in (DESKTOP_CHIEF, TERMINAL_CHIEF):
+            s = acting(caps)
+            self.assertEqual(cell(s["cli_cli-term"], "reply"), ("no", gated))
+            self.assertEqual(cell(s["bg_bg-working"], "reply"), ("no", gated))
+            self.assertEqual(cell(s["bg_bg-working"], "stop"), ("no", gated))
+            self.assertEqual(cell(s["bg_bg-done"], "stop"), ("no", gated))
+        # Desktop rows are as in 0.2.2.
+        self.assertEqual(acting(DESKTOP_CHIEF)[AAA]["actions"]["archive"], "yes")
+
+
+class Registry(unittest.TestCase):
+    def test_registry_reader_skips_keys_bad_and_big_files(self):
+        with Sandbox() as box:
+            reg_dir = box.dir / "registry"
+            (reg_dir / "77.json").write_text(json.dumps({"sessionId": "big", "pad": "x" * 70000}), encoding="utf-8")
+            (reg_dir / "notes.json").write_text(json.dumps({"sessionId": "named"}), encoding="utf-8")
+            (reg_dir / "5.json").write_text(json.dumps({"sessionId": "../bad"}), encoding="utf-8")
+            opened = []
+            real_open = builtins.open
+
+            def spy(file, *a, **kw):
+                opened.append(str(file))
+                return real_open(file, *a, **kw)
+
+            with mock.patch("builtins.open", spy):
+                rows = RegistrySource().scan()
+            self.assertEqual(set(rows), {"cli-busy", "cli-wait", "cli-child", "bg-working", "cli-gone"})
+            self.assertFalse([p for p in opened if p.endswith(".key")])
+            self.assertFalse([p for p in opened if p.endswith(("77.json", "notes.json"))])
+            busy = rows["cli-busy"]
+            self.assertEqual(busy, {"pid": 1, "sessionId": "cli-busy", "kind": "interactive", "entrypoint": "cli",
+                                    "status": "busy", "name": "DP1-676", "hasInbox": True})
+            self.assertFalse(rows["cli-wait"]["hasInbox"])
+            # Parsed again only when a file changes.
+            opened.clear()
+            with mock.patch("builtins.open", spy):
+                src = RegistrySource()
+                src.scan()
+                src.scan()
+            self.assertEqual(len([p for p in opened if p.endswith("1.json")]), 1)
+
+    def test_the_reader_joins_the_registry(self):
+        with Sandbox():
+            reader = SessionReader(AgentsSource(), DesktopSource(), TranscriptIndex())
+            reader.refresh_files()
+            reader.refresh_live()
+            s = {x["id"]: x for x in reader.build(config.defaults(), caps=TERMINAL_CHIEF)}
+            self.assertEqual(s[AAA]["actions"]["reply"], "yes")         # cli-busy has an inbox
+            self.assertEqual(s[CHIEF]["actions"]["reply"], "app")       # cli-wait has none
 
 
 if __name__ == "__main__":

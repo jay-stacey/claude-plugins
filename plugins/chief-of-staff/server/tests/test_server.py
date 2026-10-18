@@ -21,6 +21,7 @@ class Api(unittest.TestCase):
         self.box = Sandbox().__enter__()
         self.desk_before = snapshot_tree(self.box.dir / "desktop")
         self.proj_before = snapshot_tree(self.box.dir / "projects")
+        self.reg_before = snapshot_tree(self.box.dir / "registry")
         self.app = App(TOKEN, 0, voice_enabled=False)
         self.server = bind(self.app, 0)
         self.port = self.app.port
@@ -36,6 +37,7 @@ class Api(unittest.TestCase):
         # The server only reads the desktop files and transcripts.
         self.assertEqual(self.desk_before, snapshot_tree(self.box.dir / "desktop"))
         self.assertEqual(self.proj_before, snapshot_tree(self.box.dir / "projects"))
+        self.assertEqual(self.reg_before, snapshot_tree(self.box.dir / "registry"))
         self.box.__exit__(None, None, None)
 
     def call(self, method, path, body=None, token=TOKEN, host=None, origin=None, raw=None, timeout=10):
@@ -66,7 +68,8 @@ class Api(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((body["ok"], body["api"]), (True, 1))
         self.assertEqual(body["voice"]["state"], "not-installed")
-        self.assertEqual(body["chief"], {"connected": False, "sessionId": None, "cliId": None, "busy": False})
+        self.assertEqual(body["chief"], {"connected": False, "busy": False})
+        self.assertNotIn("desktop", body)
         self.assertEqual(self.call("GET", "/api/sessions", token=None)[0], 401)
         self.assertEqual(self.call("GET", "/api/sessions", token="wrong")[0], 401)
 
@@ -298,6 +301,89 @@ class Api(unittest.TestCase):
             "state": "error", "detail": "The voice daemon did not start (OSError)."}})
         self.call("POST", "/api/mod/reply", {"text": "Nobody hears this.", "turnId": "t1"})
         self.assertEqual(self.call("GET", "/api/voice/jobs?wait=0")[1]["jobs"], [])
+
+    # --- the Chief's host and the action results
+    def terminal_hello(self, cli="cli-wait"):
+        host = {"surface": "terminal", "caps": {"desktopSessions": False, "sendMessage": True, "listAgents": True,
+                                                "cliStop": True, "secret": "x"}, "extra": 1}
+        return self.call("POST", "/api/mod/hello", {"cliId": cli, "isChief": True, "host": host})
+
+    def actions_of(self, sid):
+        return self.call("GET", f"/api/sessions/{sid}")[1]["actions"]
+
+    def test_hello_host_is_stored_and_shown_in_health(self):
+        self.assertEqual(self.terminal_hello()[0], 200)
+        health = self.call("GET", "/api/health")[1]
+        self.assertEqual(health["chief"]["host"], {"surface": "terminal", "caps": {
+            "desktopSessions": False, "desktopListed": False, "desktopStart": False, "sendMessage": True,
+            "listAgents": True, "cliStop": True, "cliStart": False}})
+        self.assertEqual(health["version"], paths.plugin_version())
+        self.assertEqual(health["desktop"], {"source": "env", "files": 7})
+        self.assertEqual(self.actions_of(AAA)["archive"], "app")
+        info = json.loads(paths.server_json().read_text(encoding="utf-8"))
+        self.assertEqual(info["version"], paths.plugin_version())
+
+    def test_hello_without_host_keeps_desktop_behavior(self):
+        self.hello()
+        host = self.call("GET", "/api/health")[1]["chief"]["host"]
+        self.assertEqual((host["surface"], host["caps"]["desktopSessions"], host["caps"]["desktopStart"],
+                          host["caps"]["cliStop"]), (None, True, True, False))
+        self.assertEqual(self.actions_of(AAA), {"reply": "yes", "archive": "yes", "stop": "no", "open": "yes"})
+
+    def test_health_without_a_token_hides_chief_ids_host_and_desktop(self):
+        self.terminal_hello()
+        status, body = self.call("GET", "/api/health", token=None)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["chief"], {"connected": True, "busy": False})
+        self.assertNotIn("desktop", body)
+        self.assertEqual(body["version"], paths.plugin_version())
+        status, wrong = self.call("GET", "/api/health", token="wrong")
+        self.assertEqual((status, wrong["chief"]), (200, {"connected": True, "busy": False}))
+        self.assertNotIn(str(self.box.dir), json.dumps(body))
+
+    def test_mod_caps_updates_actions_and_ignores_other_callers(self):
+        self.terminal_hello()
+        self.assertEqual(self.actions_of(AAA)["archive"], "app")
+        status, other = self.call("POST", "/api/mod/caps", {"cliId": "cli-needs",
+                                                            "host": {"surface": "desktop", "caps": {"desktopSessions": True}}})
+        self.assertEqual((status, other), (200, {"ok": True, "ignored": True}))
+        self.assertEqual(self.actions_of(AAA)["archive"], "app")
+        q, _ = self.app.hub.subscribe()
+        status, ok = self.call("POST", "/api/mod/caps", {"cliId": "cli-wait",
+                                                         "host": {"surface": "desktop", "caps": {"desktopSessions": True}}})
+        self.assertEqual((status, ok), (200, {"ok": True}))
+        self.assertEqual(self.actions_of(AAA)["archive"], "yes")
+        names = []
+        while not q.empty():
+            names.append(q.get_nowait()[1])
+        self.assertIn("chief", names)
+
+    def test_actions_change_when_the_chief_leaves(self):
+        self.terminal_hello()
+        self.assertEqual(self.actions_of(AAA)["archive"], "app")
+        self.assertEqual(self.actions_of(AAA)["reply"], "yes")
+        self.call("POST", "/api/mod/hello", {"cliId": "cli-wait", "isChief": False})
+        self.assertEqual(self.actions_of(AAA)["reply"], "app")
+        self.assertEqual(self.call("GET", "/api/sessions/bg_bg-working")[1]["actionNotes"]["stop"],
+                         "No Chief is connected. Type /chief in a Claude Code session first.")
+        # A Chief that stops polling leaves too.
+        self.hello()
+        self.assertEqual(self.actions_of(AAA)["archive"], "yes")
+        self.app.chief_poll_at = 0
+        self.app.tick_chief()
+        self.assertEqual(self.actions_of(AAA)["archive"], "app")
+
+    def test_prompt_items_carry_from(self):
+        self.hello()
+        self.call("POST", "/api/chief/say", {"text": "typed one", "from": "notice"})
+        self.call("POST", "/api/chief/say", {"text": "spoken one", "source": "voice", "from": "console"})
+        self.call("POST", "/api/voice/event", {"type": "final", "text": "from the mic"})
+        self.app.notices.due = lambda *a, **k: "[Notice, not from Jay] A session finished."
+        self.app.tick_notices()
+        items = self.call("GET", "/api/mod/inbox?wait=1&cli=cli-wait")[1]["items"]
+        self.assertEqual([(i["text"], i["from"]) for i in items],
+                         [("typed one", "console"), ("spoken one", "voice"), ("from the mic", "voice"),
+                          ("[Notice, not from Jay] A session finished.", "notice")])
 
     # --- SSE
     def test_stream_sends_a_snapshot_then_events(self):

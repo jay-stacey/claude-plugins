@@ -13,7 +13,8 @@ up to 64 KB.
     python fake_server.py                  # sample data, prints the console URL
     python fake_server.py --graph 40       # 40 generated in-view sessions
     python fake_server.py --graph 3        # 3 in-view sessions
-    python fake_server.py --no-chief       # no Chief connected (say -> 409)
+    python fake_server.py --no-chief       # no Chief connected (say -> 409); same as --chief none
+    python fake_server.py --chief terminal # a Chief in a terminal: desktop archive and reply open the app
     python fake_server.py --no-voice       # voice.state = not-installed
     python fake_server.py --quiet          # no timed events (for screenshots)
 
@@ -64,14 +65,19 @@ DAY = 24 * HOUR
 
 
 def mk(sid, title, state, reason, *, parent=None, live=False, live_status=None, waiting_for=None,
-       kind="interactive", repo=None, branch=None, pr=None, pr_state=None, ago=0, created_ago=None,
-       summary="", needs=None, app_status=None, is_chief=False, cwd="C:\\Dealerpull", model="claude-sonnet-5-5"):
+       repo=None, branch=None, pr=None, pr_state=None, ago=0, created_ago=None,
+       summary="", needs=None, app_status=None, is_chief=False, cwd="C:\\Dealerpull", model="claude-sonnet-5-5",
+       inbox=True, bg_id=None, finished=False):
+    """One session. kind follows the id prefix (local_ desktop, cli_ cli, bg_ bg). The _inbox and
+    _finished flags feed the action table and are never sent."""
     t = now_ms()
+    kind = "bg" if sid.startswith("bg_") else "cli" if sid.startswith("cli_") else "desktop"
     return {
         "id": sid,
-        "cliId": secrets.token_hex(8) if not sid.startswith("bg_") else sid[3:],
+        "cliId": sid.split("_", 1)[1] if kind != "desktop" else secrets.token_hex(8),
         "title": title,
         "kind": kind,
+        "bgId": (bg_id or sid[3:7]) if kind == "bg" else None,
         "state": state,
         "stateReason": reason,
         "live": live,
@@ -93,9 +99,66 @@ def mk(sid, title, state, reason, *, parent=None, live=False, live_status=None, 
         "needsAction": needs,
         "appStatus": app_status,
         "isChief": is_chief,
-        "link": f"claude://claude.ai/epitaxy/{sid}",
+        "link": f"claude://claude.ai/epitaxy/{sid}" if kind == "desktop" else None,
         "inView": True,
+        "_inbox": inbox,
+        "_finished": finished,
     }
+
+
+NOCHIEF = "No Chief is connected. Type /chief in a Claude Code session first."
+
+
+def plan_actions(s, chief):
+    """A copy of THE action table (plan-b.md 4.1, docs/contracts.md section 4) for the fake.
+    chief: "none", "desktop" (desktopSessions true) or "terminal" (false)."""
+    kind, live, inbox = s["kind"], s["live"], s.get("_inbox", True)
+    acts, notes = {}, {}
+
+    def put(k, v, note=None):
+        if k not in acts:
+            acts[k] = v
+            if v != "yes":
+                notes[k] = note
+
+    if s["isChief"]:
+        for k in ("reply", "archive", "stop", "open"):
+            put(k, "no", "This is the Chief of Staff session.")
+        return acts, notes
+    put("open", "yes" if kind == "desktop" else "no", "Only desktop sessions open in the Claude app.")
+    if kind != "bg":
+        put("stop", "no", "Only background sessions can be stopped.")
+    if kind == "cli":
+        put("archive", "no", "Close it in its own terminal window. The Chief does not end terminal sessions.")
+    if kind == "bg":
+        put("archive", "no", "Use Stop for a background session.")
+    if chief == "none":
+        if kind == "desktop":
+            put("reply", "app", "No Chief is connected. You can reply in the Claude app.")
+            put("archive", "app", "No Chief is connected. You can archive it in the Claude app.")
+        else:
+            put("reply", "no", NOCHIEF)
+            put("stop", "no", NOCHIEF)
+    if kind == "desktop":
+        if chief == "desktop":
+            put("reply", "yes")
+            put("archive", "yes")
+        put("reply", "yes" if live and inbox else "app",
+            "Reply in the Claude app. A Chief in a terminal cannot reach this session.")
+        put("archive", "app", "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions.")
+    if not live:
+        put("reply", "no", "It is not running, so it cannot get a reply.")
+    if not inbox:
+        put("reply", "no", "It has no message inbox (it may run with --bare).")
+    put("reply", "yes")
+    if s.get("_finished"):
+        put("stop", "no", "It already finished. Its conversation is kept.")
+    if not live:
+        put("stop", "no", "It is not running, so it cannot be stopped.")
+    if not s.get("bgId"):
+        put("stop", "no", "Its background id is missing, so it cannot be stopped.")
+    put("stop", "yes")
+    return acts, notes
 
 
 def sample_sessions():
@@ -145,9 +208,17 @@ def sample_sessions():
            summary="Filters done, tests pending. The branch is 41 commits behind development."),
         mk("local_dd000014", "Day Desk dashboard fix", "stale", "PR 24 merged", repo="claude-plugins", pr=24,
            pr_state="MERGED", ago=26 * HOUR, summary="PR 24 merged yesterday. Safe to archive."),
-        mk("bg_7f3a9c21d0e4", "Nightly inventory feed check", "active", "Background job, working", kind="background",
-           live=True, live_status=None, repo="InventoryFeeds", ago=0, model="claude-haiku-5-5",
+        mk("bg_7f3a9c21d0e4", "Nightly inventory feed check", "active", "Background job, working",
+           live=True, live_status="busy", repo="InventoryFeeds", ago=0, model="claude-haiku-5-5",
            summary="Checks every dealer feed for missing photos and bad prices. 212 of 340 feeds done."),
+        mk("bg_c8d8e1f20a33", "Release notes draft", "wait", "Background job finished", live=True,
+           live_status="idle", repo="claude-plugins", ago=40 * MIN, finished=True,
+           summary="Wrote the R2026-10 release notes draft. Nothing left to run."),
+        mk("cli_5b21e0aa-term", "Terminal: API migration check", "you", "Waiting for your input", live=True,
+           live_status="waiting", waiting_for="input", repo="dealerpull-api", ago=3 * MIN,
+           summary="Checked the pending EF migrations. Asks whether to apply them to the local database."),
+        mk("cli_9a0c11bb-bare", "Terminal: quick grep", "wait", "Idle", live=True, live_status="idle",
+           cwd=None, ago=15 * MIN, inbox=False, summary="A --bare session with no message inbox."),
     ]
     topics = ["Intercom inbox triage", "DP1-5{0} tax rounding", "NEO-3{0} deal jacket layout", "Release notes R2026-09",
               "IF-{0} feed mapping", "Auth0 trigger review", "Cycle planning DP1", "Bug intake: duplicate VIN",
@@ -323,8 +394,13 @@ class Hub:
         self._link_children()
         self.transcripts = Transcripts()
         self.chat: list[dict] = []
-        self.chief = {"connected": not args.no_chief, "sessionId": None if args.no_chief else "local_chief0000",
-                      "busy": False}
+        if args.no_chief:
+            args.chief = "none"
+        self.chief_mode = args.chief if args.chief != "none" else "desktop"   # what a reconnect brings back
+        self.chief = {"connected": args.chief != "none", "sessionId": None, "cliId": None, "busy": False,
+                      "host": None}
+        if args.chief != "none":
+            self.chief.update(self.chief_fields(args.chief))
         self.voice = {
             "state": "not-installed" if args.no_voice else "listening", "listen": "wake", "speak": True,
             "device": None if args.no_voice else "cuda",
@@ -339,6 +415,27 @@ class Hub:
         self.pending_confirm = None
         if self.chief["connected"]:
             self._seed_chat()
+
+    def chief_fields(self, mode):
+        """A desktop Chief has a desktop id; a terminal Chief has only its CLI id."""
+        caps = {"desktopSessions": mode == "desktop", "desktopListed": mode == "desktop",
+                "desktopStart": mode == "desktop", "sendMessage": True, "listAgents": True,
+                "cliStop": True, "cliStart": True}
+        return {"sessionId": "local_chief0000" if mode == "desktop" else None, "cliId": "chief0000cli",
+                "host": {"surface": mode, "caps": caps}}
+
+    def chief_now(self):
+        """The table's Chief input: none, desktop or terminal."""
+        if not self.chief["connected"]:
+            return "none"
+        host = self.chief.get("host") or {}
+        return "desktop" if (host.get("caps") or {}).get("desktopSessions") else "terminal"
+
+    def shaped(self, s):
+        """A session as the server sends it: actions and notes added, internal flags left out."""
+        out = {k: v for k, v in s.items() if not k.startswith("_")}
+        out["actions"], out["actionNotes"] = plan_actions(s, self.chief_now())
+        return out
 
     # ---- sessions
     def _link_children(self):
@@ -358,7 +455,10 @@ class Hub:
         for s in self.sessions:
             if not s["isChief"]:
                 counts[s["state"]] += 1
-        return {"generatedAt": now_ms(), "liveStale": False, "counts": counts, "sessions": self.sessions}
+        return {"generatedAt": now_ms(), "liveStale": False, "counts": counts,
+                "sessions": [self.shaped(s) for s in self.sessions],
+                "desktop": {"source": "msix", "files": len([s for s in self.sessions if s["kind"] == "desktop"]),
+                            "root": "C:\\Users\\you\\AppData\\Local\\Packages\\Claude_x\\LocalCache\\Roaming\\Claude\\claude-code-sessions"}}
 
     def in_view(self):
         return [s for s in self.sessions if s["inView"] and not s["isChief"]]
@@ -443,9 +543,12 @@ class Hub:
 
     def set_chief(self, **kw):
         with self.lock:
+            changed = "connected" in kw and kw["connected"] != self.chief["connected"]
             self.chief.update(kw)
             c = dict(self.chief)
         self.emit("chief", c)
+        if changed:
+            self.emit("sessions", self.sessions_body())     # the actions follow the Chief
         return c
 
     # ---- the fake Chief's replies
@@ -722,9 +825,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.static(path[len("/static/"):])
         if method == "GET" and path == "/api/health":
             h = self.hub
-            return self.send_json(200, {"ok": True, "api": 1, "voice": h.voice, "settings": h.settings,
-                                        "chief": {"connected": h.chief["connected"],
-                                                  "sessionId": h.chief["sessionId"]}})
+            body = {"ok": True, "api": 1, "version": "0.3.0", "voice": h.voice, "settings": h.settings,
+                    "chief": {"connected": h.chief["connected"], "busy": h.chief["busy"]}}
+            if self.token_ok(query):
+                # Only with the token: the Chief's ids and host, and where the desktop files are found.
+                body["chief"] = dict(h.chief)
+                body["desktop"] = {"source": h.args.desktop, "files": 0 if h.args.desktop == "none" else 55}
+            return self.send_json(200, body)
         if not path.startswith("/api/"):
             return self.err(404, "Not found.")
         if not self.token_ok(query):
@@ -780,7 +887,19 @@ class Handler(BaseHTTPRequestHandler):
             if not s:
                 return self.err(404, "That session is not open any more.")
             if method == "GET" and sub is None:
-                return self.send_json(200, s)
+                return self.send_json(200, h.shaped(s))
+            acts, notes = plan_actions(s, h.chief_now())
+
+            def gate(verb):
+                """The check order of docs/contracts.md section 5: own session, unsupported, then app."""
+                if s["isChief"]:
+                    self.err(409, "That is the Chief's own session.")
+                    return None
+                if acts[verb] == "no":
+                    self.send_json(409, {"error": notes.get(verb) or "That session does not support this from here.",
+                                         "unsupported": True})
+                    return None
+                return acts[verb]
             if method == "GET" and sub == "/transcript":
                 try:
                     limit = max(1, min(200, int((query.get("limit") or ["60"])[0])))
@@ -797,9 +916,17 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.read_json()
                 if body is None:
                     return
+                v = gate("reply")
+                if v is None:
+                    return
+                if v == "app":
+                    sys.stderr.write(f"open: {s['link']}\n")
+                    return self.send_json(200, {"opened": True, "detail": "Opened it in the Claude app. Reply there."})
                 text = str(body.get("text") or "").strip()
                 if not text:
                     return self.err(400, "The reply is empty.")
+                if not h.chief["connected"]:
+                    return self.err(409, NOCHIEF)
                 act = "act_" + secrets.token_hex(5)
 
                 def done():
@@ -807,34 +934,52 @@ class Handler(BaseHTTPRequestHandler):
                     h.transcripts.append(s, "user", text, from_session="Chief of staff")
                     h.emit("activity", {"kind": "chief", "to": s["id"]})
                     h.emit("activity", {"kind": "pulse", "id": s["id"]})
-                    h.emit("action", {"actionId": act, "ok": True, "detail": f"Sent to {s['title']}."})
+                    h.emit("action", {"actionId": act, "ok": True, "outcome": "done", "detail": f"Sent to {s['title']}."})
 
                 threading.Thread(target=done, daemon=True).start()
                 return self.send_json(200, {"actionId": act})
-            if method == "POST" and sub == "/archive":
+            if method == "POST" and sub in ("/archive", "/stop"):
                 body = self.read_json()
                 if body is None:
                     return
+                verb = sub[1:]
+                v = gate(verb)
+                if v is None:
+                    return
+                if v == "app":
+                    sys.stderr.write(f"open: {s['link']}\n")
+                    return self.send_json(200, {"opened": True, "detail": "Opened it in the Claude app. Archive it there."})
                 if s["state"] == "active" and not body.get("confirmed"):
                     kids = [c for c in s["childIds"] if (h.find(c) or {}).get("state") == "active"]
-                    reason = f"{s['title']} is working right now."
-                    if kids:
+                    reason = (f"{s['title']} is working right now. Stopping it ends that turn. Its conversation is kept."
+                              if verb == "stop" else f"{s['title']} is working right now.")
+                    if kids and verb == "archive":
                         reason += f" It has {len(kids)} helper{'s' if len(kids) > 1 else ''} running."
                     return self.send_json(409, {"needsConfirm": True, "reason": reason})
+                if not h.chief["connected"]:
+                    return self.err(409, NOCHIEF)
                 act = "act_" + secrets.token_hex(5)
 
                 def gone():
                     time.sleep(1.5)
                     if self.hub.args.fail_archive:
-                        h.emit("action", {"actionId": act, "ok": False,
+                        h.emit("action", {"actionId": act, "ok": False, "outcome": "failed",
                                           "detail": "The desktop app refused: the session is busy."})
                         return
+                    if verb == "stop":
+                        s.update(live=False, liveStatus=None, state="wait", stateReason="Background job stopped")
+                        h.emit("sessions", h.sessions_body())
+                        h.emit("action", {"actionId": act, "ok": True, "outcome": "done",
+                                          "detail": "Stopped. Its conversation is kept, so it can be resumed."})
+                        return
                     h.remove_session(s["id"])
-                    h.emit("action", {"actionId": act, "ok": True, "detail": f"Archived {s['title']}."})
+                    h.emit("action", {"actionId": act, "ok": True, "outcome": "done", "detail": f"Archived {s['title']}."})
 
                 threading.Thread(target=gone, daemon=True).start()
                 return self.send_json(200, {"actionId": act})
             if method == "POST" and sub == "/open":
+                if gate("open") is None:
+                    return
                 sys.stderr.write(f"open: {s['link']}\n")
                 h.emit("activity", {"kind": "chief", "to": s["id"]})
                 return self.send_json(200, {"ok": True})
@@ -848,7 +993,7 @@ class Handler(BaseHTTPRequestHandler):
             if not text:
                 return self.err(400, "The message is empty.")
             if not h.chief["connected"]:
-                return self.err(409, "No Chief is connected. Run /chief in a Claude session first.")
+                return self.err(409, NOCHIEF)
             msg = h.add_chat("me", text, source)
             h.fake_jev(msg, text)
             h.chief_answer(text, source)
@@ -899,7 +1044,10 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and path == "/api/dev/chief":
             body = self.read_json() or {}
             c = bool(body.get("connected"))
-            h.set_chief(connected=c, sessionId="local_chief0000" if c else None, busy=False)
+            if c:
+                h.set_chief(connected=True, busy=False, **h.chief_fields(h.chief_mode))
+            else:
+                h.set_chief(connected=False, sessionId=None, cliId=None, host=None, busy=False)
             return self.send_json(200, h.chief)
         if method == "POST" and path == "/api/dev/voice":
             body = self.read_json() or {}
@@ -983,7 +1131,11 @@ def main():
     ap.add_argument("--port", type=int, default=47871)
     ap.add_argument("--token", default=None, help="fixed token (default: random per run)")
     ap.add_argument("--graph", type=int, default=0, help="generate N in-view sessions instead of the sample set")
-    ap.add_argument("--no-chief", action="store_true")
+    ap.add_argument("--no-chief", action="store_true", help="same as --chief none")
+    ap.add_argument("--chief", choices=("desktop", "terminal", "none"), default="desktop",
+                    help="where the Chief runs: desktop (default), terminal, or none connected")
+    ap.add_argument("--desktop", choices=("appdata", "msix", "env", "none"), default="msix",
+                    help="health desktop.source (none shows 'Desktop app: not found')")
     ap.add_argument("--no-voice", action="store_true")
     ap.add_argument("--chief-name", default="Chief")
     ap.add_argument("--wake-word", default="hey chief")

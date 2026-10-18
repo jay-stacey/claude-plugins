@@ -24,7 +24,7 @@ from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Decision, 
 from .jev.engine import Jev
 from .jev.settings import read_jev_json
 from .notices import Notices, public
-from .sessions import ID_RE, SessionReader, now_ms
+from .sessions import ID_RE, SessionReader, now_ms, plan_actions
 from .transcripts import BackgroundWork, Tail, Transcript
 from .voice import Voice
 
@@ -39,6 +39,9 @@ LIVE_IDLE_S = 20        # and while nobody is
 SESSIONS_MIN_GAP_S = 2  # at most one full sessions event this often
 ACK_TIMEOUT_S = 60      # an inbox item the mod took and did not acknowledge goes back
 ARCHIVE_EXPIRY_S = 120  # an archive nobody ran by then is reported as not done
+HANDOFF_EXPIRY_S = 300  # a handed-off action with no second result by then is reported as expired
+SETTLED_KEEP_S = 600    # a real result's id is remembered this long, so a retry is not published twice
+UNSETTLED_KEEP_S = 3600 # an id the server reported expired, so a late real result is still published
 MAX_DELIVERIES = 3
 FILES_EVERY_S = 10
 PULSE_EVERY_S = 1
@@ -52,6 +55,22 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.go
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
        "form-action 'none'; frame-ancestors 'none'")
 STATIC_RE = re.compile(r"^/static/((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)$")
+OUTCOMES = ("done", "failed", "refused", "needsConfirm", "opened", "handedOff", "unsupported")
+EXPIRED_TAKEN = "It may have run. Check the session."
+SURFACES = ("terminal", "desktop", "vscode", "mobile")
+CAP_KEYS = ("desktopSessions", "desktopListed", "desktopStart", "sendMessage", "listAgents", "cliStop", "cliStart")
+# An old mod sends no host: it runs in the desktop app with the desktop tools.
+LEGACY_HOST = {"surface": None, "caps": {k: k in ("desktopSessions", "desktopStart") for k in CAP_KEYS}}
+
+
+def _host(body):
+    """The Chief's {surface, caps} from a hello or caps body; unknown keys are dropped, missing caps are false."""
+    host = body.get("host")
+    if not isinstance(host, dict):
+        return LEGACY_HOST
+    caps = host.get("caps") if isinstance(host.get("caps"), dict) else {}
+    return {"surface": host.get("surface") if host.get("surface") in SURFACES else None,
+            "caps": {k: caps.get(k) is True for k in CAP_KEYS}}
 
 
 class HttpError(Exception):
@@ -71,6 +90,11 @@ def _text_field(body, key, required=True):
     if len(value) > MAX_TEXT:
         raise HttpError(400, f"The {key} is too long. Keep it under {MAX_TEXT} characters.")
     return value
+
+
+def prompt_from(request):
+    """Where a prompt came from, set by the server code path, never by a request body: the mod trusts it."""
+    return "voice" if request.source == "voice" else "console"
 
 
 def write_json_atomic(path: Path, data):
@@ -98,7 +122,7 @@ class App:
         self.chat = deque(maxlen=200)
         self.lock = threading.RLock()
         self.build_lock = threading.Lock()
-        self.chief = {"sessionId": None, "cliId": None, "busy": False}
+        self.chief = {"sessionId": None, "cliId": None, "busy": False, "host": None}
         self.chief_poll_at = 0.0
         self.chief_polling = 0
         self.last_connected = False
@@ -116,6 +140,9 @@ class App:
         self.clock = time.time
         self.inflight = {}      # item id -> {"item", "deliveredAt", "tries"}
         self.queued_at = {}     # item id -> when it was first queued
+        self.handoffs = {}      # action id -> {"at", "type", "sessionId"}: handed off, waiting for its second result
+        self.settled = {}       # action id -> when its real result was published
+        self.unsettled = {}     # action id -> when the server published "expired" for it
         self.started_at = now_ms()
         self.ids = itertools.count(1)
         self.stopping = threading.Event()
@@ -145,7 +172,13 @@ class App:
     def chief_public(self):
         with self.lock:
             return {"connected": self.chief_connected(), "sessionId": self.chief["sessionId"],
-                    "cliId": self.chief["cliId"], "busy": self.chief["busy"]}
+                    "cliId": self.chief["cliId"], "busy": self.chief["busy"], "host": self.chief["host"]}
+
+    def chief_caps(self):
+        """The connected Chief's caps, or None when no Chief is connected."""
+        with self.lock:
+            host = self.chief["host"] if self.chief_connected() else None
+        return host["caps"] if host else None
 
     def voice_status(self):
         return self.voice.snapshot(busy=self.chief["busy"])
@@ -156,7 +189,8 @@ class App:
             return bool((cli and cli == c["cliId"]) or (session and c["sessionId"] and session == c["sessionId"]))
 
     def state_info(self):
-        return {"api": API, "port": self.port, "pid": os.getpid(), "token": self.token,
+        return {"api": API, "version": paths.plugin_version(), "port": self.port, "pid": os.getpid(),
+                "token": self.token,
                 "url": f"http://127.0.0.1:{self.port}/#{self.token}",
                 "chiefSessionId": self.chief["sessionId"], "chiefCliId": self.chief["cliId"],
                 "voicePid": self.voice.pid(), "startedAt": self.started_at}
@@ -185,7 +219,8 @@ class App:
                     with self.lock:
                         if self.chief["cliId"] == cli and not self.chief["sessionId"]:
                             self.chief["sessionId"] = local
-            sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"])
+            sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"],
+                                         caps=self.chief_caps())
             snap = self.reader.snapshot()
             body = json.dumps(snap["sessions"], sort_keys=True) + json.dumps(snap["liveStale"])
             now = self.clock()
@@ -296,13 +331,14 @@ class App:
                                 notify_on=bool(self.settings.get("notify")), quiet=self.settings.get("quietHours", ""),
                                 local_minutes=local.hour * 60 + local.minute)
         if text:
-            self.queue_item({"id": self.new_id("ntc"), "type": "prompt", "text": text})
+            self.queue_item({"id": self.new_id("ntc"), "type": "prompt", "text": text, "from": "notice"})
 
     def tick_chief(self):
         """A `chief` event when the Chief's connection comes or goes (it stops polling)."""
         connected = self.chief_connected()
         if connected != self.last_connected:
             self.last_connected = connected
+            self.rebuild()                  # the actions depend on whether a Chief is there
             self.publish_chief()
 
     def pulse(self):
@@ -408,6 +444,7 @@ class App:
             self.tick_notices()
             self.tick_chief()
             self.sweep_inbox()
+            self.sweep_results()
 
         def watchdog():
             idle = time.time() - max(self.hub.last_client_at, self.last_mod_at)
@@ -476,10 +513,16 @@ class App:
             self.voice_jobs.put(job)
 
     # ---------------------------------------------------------------- API --
-    def health(self):
-        return {"ok": True, "api": API, "app": APP, "voice": self.voice_status(), "chief": self.chief_public(),
-                "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")},
-                "jev": {k: v for k, v in self.jev.health().items() if k in ("provider", "model", "fallbacks")}}
+    def health(self, full=True):
+        """Health needs no token. Without one it leaves out the Chief's ids, its host and the desktop source."""
+        chief = self.chief_public()
+        out = {"ok": True, "api": API, "app": APP, "version": paths.plugin_version(), "voice": self.voice_status(),
+               "chief": chief if full else {"connected": chief["connected"], "busy": chief["busy"]},
+               "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")},
+               "jev": {k: v for k, v in self.jev.health().items() if k in ("provider", "model", "fallbacks")}}
+        if full:
+            out["desktop"] = self.reader.desktop_source.info()
+        return out
 
     def session_or_404(self, sid):
         if not ID_RE.match(sid or ""):
@@ -491,7 +534,17 @@ class App:
 
     def require_chief(self):
         if not self.chief_connected():
-            raise HttpError(409, "No Chief is connected. Type /chief in a desktop session first.")
+            raise HttpError(409, "No Chief is connected. Type /chief in a Claude Code session first.")
+
+    def plan_action(self, s, action):
+        """"yes" or "app" for this action on this session (THE action table), else a 409."""
+        if s["isChief"]:
+            raise HttpError(409, "That is the Chief's own session.")
+        actions, notes = plan_actions(s, self.chief_caps())
+        value = actions.get(action, "no")
+        if value == "no":
+            raise HttpError(409, notes.get(action) or "That session does not support this from here.", unsupported=True)
+        return value
 
     def say(self, body):
         text = _text_field(body, "text")
@@ -543,8 +596,8 @@ class App:
             self.jev.record(msg["id"], request, final, quick)
         except Exception:
             traceback.print_exc()
-        self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text, "jev": decision,
-                         "hint": hint_text(final)})
+        self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text, "from": prompt_from(request),
+                         "jev": decision, "hint": hint_text(final)})
 
     def jev_start_worker(self):
         with self.jev_lock:
@@ -563,7 +616,8 @@ class App:
                 # Never lose Jay's words: the prompt goes out without advice.
                 traceback.print_exc()
                 try:
-                    self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text})
+                    self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text,
+                                     "from": prompt_from(request)})
                 except Exception:
                     traceback.print_exc()
             finally:
@@ -720,7 +774,7 @@ class App:
         if body.get("isChief") is False:
             with self.lock:
                 if self.chief["cliId"] == cli:
-                    self.chief.update(sessionId=None, cliId=None, busy=False)
+                    self.chief.update(sessionId=None, cliId=None, busy=False, host=None)
             self.save_state()
             self.rebuild()
             self.publish_chief()
@@ -731,7 +785,7 @@ class App:
         local = self.reader.local_id_for(cli)
         with self.lock:
             new_chief = self.chief["cliId"] != cli
-            self.chief.update(sessionId=local, cliId=cli, busy=False)
+            self.chief.update(sessionId=local, cliId=cli, busy=False, host=_host(body))
             self.chief_poll_at = time.time()
         if options is not None:
             before = {k: self.settings.get(k) for k in config.VOICE_KEYS}
@@ -766,6 +820,17 @@ class App:
             return None
         return {"sessionId": sid, "title": s["title"] if s else None}
 
+    def mod_caps(self, body):
+        """The Chief's tools changed: new caps, so new actions."""
+        if not self.is_chief_caller(None, _text_field(body, "cliId", False)):
+            return {"ok": True, "ignored": True}
+        with self.lock:
+            self.chief["host"] = _host(body)
+            self.chief_poll_at = time.time()
+        self.rebuild()
+        self.publish_chief()
+        return {"ok": True}
+
     def mod_reply(self, body):
         text = body.get("text")
         if not isinstance(text, str) or not text.strip():
@@ -789,10 +854,43 @@ class App:
         entry = self.ack(action)
         if entry and entry["item"].get("type") == "prompt":
             return {"ok": True}                 # a prompt's acknowledgement, not an action
-        event = {"actionId": action, "ok": bool(body.get("ok")),
-                 "detail": str(body.get("detail") or "")[:500]}
+        outcome = body.get("outcome")
+        if outcome not in OUTCOMES:
+            outcome = "handedOff" if body.get("handedOff") is True else "done" if body.get("ok") is True else "failed"
+        detail = str(body.get("detail") or "")[:500]
+        now = self.clock()
+        with self.lock:
+            if outcome == "handedOff":
+                # Not final: the mod posts a second result when the Chief's own call ends.
+                if action in self.settled or action in self.handoffs:
+                    return {"ok": True}
+                item = entry["item"] if entry else {}
+                self.handoffs[action] = {"at": now, "type": item.get("type"), "sessionId": item.get("sessionId")}
+                event = {"actionId": action, "ok": False, "pending": True, "outcome": outcome, "detail": detail}
+            else:
+                if action in self.settled:
+                    return {"ok": True}         # a retry of a result already published
+                self.handoffs.pop(action, None)
+                event = {"actionId": action, "ok": outcome == "done", "outcome": outcome, "detail": detail}
+                if self.unsettled.pop(action, None) is not None:
+                    event["late"] = True
+                self.settled[action] = now
         self.hub.publish("action", event)
         return {"ok": True}
+
+    def sweep_results(self):
+        """Hand-offs with no second result within five minutes are reported as expired."""
+        now = self.clock()
+        with self.lock:
+            late = [a for a, h in self.handoffs.items() if now - h["at"] > HANDOFF_EXPIRY_S]
+            for a in late:
+                del self.handoffs[a]
+                self.unsettled[a] = now
+            for keep, ids in ((SETTLED_KEEP_S, self.settled), (UNSETTLED_KEEP_S, self.unsettled)):
+                for a in [a for a, at in ids.items() if now - at > keep]:
+                    del ids[a]
+        for a in late:
+            self.hub.publish("action", {"actionId": a, "ok": False, "outcome": "expired", "detail": EXPIRED_TAKEN})
 
     def mod_busy(self, body):
         # Only the Chief's own turns count. A session that is still claiming the role posts
@@ -841,7 +939,8 @@ class App:
                 if self.chief_connected():
                     return self.say({"text": text, "source": "voice"})
                 self.add_chat("me", text.strip()[:MAX_TEXT], "voice")
-                self.add_chat("chief", "No Chief is connected yet. Type slash chief in a desktop session first.", "notice")
+                self.add_chat("chief", "No Chief is connected yet. Type slash chief in a Claude Code session first.",
+                              "notice")
         elif kind == "barge":
             # Jay talked over the Chief: what was still waiting to be said goes too.
             self.voice_jobs.drop(lambda j: j.get("kind") in ("speak", "ack"))
@@ -907,6 +1006,8 @@ def route(app, method, path, query, body):
         return app.mod_inbox(query)
     if method == "POST" and path == "/api/mod/hello":
         return app.mod_hello(body)
+    if method == "POST" and path == "/api/mod/caps":
+        return app.mod_caps(body)
     if method == "POST" and path == "/api/mod/reply":
         return app.mod_reply(body)
     if method == "POST" and path == "/api/mod/result":
@@ -1000,7 +1101,10 @@ def make_handler(app):
                     self.guard(need_token=False)
                     if method != "GET":
                         raise HttpError(405, "Not allowed.")
-                    return self.send_json(200, app.health())
+                    # Never a 401 here: app.py checks health with no token. The token only adds detail.
+                    given = self.headers.get("X-COS-Token") or ""
+                    full = bool(given) and secrets.compare_digest(given.encode(), app.token.encode())
+                    return self.send_json(200, app.health(full))
                 if path == "/api/stream" and method == "GET":
                     self.guard(need_token=True, query=query)
                     return self.stream()

@@ -246,7 +246,7 @@ function renderEmpty() {
   card = c.connected
     ? h('div', { class: 'chat-empty' }, h('strong', { text: `${chiefName()} is ready` }), `Ask what needs you, or say “${wakePhrase()}”.`)
     : h('div', { class: 'chat-empty' }, h('strong', { text: 'No Chief connected' }),
-      'Type ', h('code', { text: '/chief' }), ' in any Claude desktop session to make it your Chief. Until then you can browse sessions, but nobody answers here.');
+      'Type ', h('code', { text: '/chief' }), ' in any Claude Code session (desktop app or terminal) to make it your Chief. Until then you can browse sessions, but nobody answers here.');
   chat.appendChild(card);
 }
 
