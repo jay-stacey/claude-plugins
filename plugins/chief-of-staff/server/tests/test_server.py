@@ -100,6 +100,16 @@ class Api(unittest.TestCase):
             self.assertEqual((res.status, res.getheader("Content-Type")), (200, "text/javascript; charset=utf-8"))
         conn.close()
 
+    def test_a_closed_chief_does_not_block_a_new_one(self):
+        self.hello("cli-old")
+        self.app.chief_poll_at = 0                 # the old Chief closed a minute ago
+        # The new session's turn starts before its hello: its busy must not revive the old Chief.
+        status, body = self.call("POST", "/api/mod/busy", {"busy": True, "cliId": "cli-new"})
+        self.assertEqual((status, body.get("ignored")), (200, True))
+        self.assertFalse(self.call("GET", "/api/health")[1]["chief"]["connected"])
+        self.assertEqual(self.hello("cli-new")[0], 200)
+        self.assertEqual(self.app.chief["cliId"], "cli-new")
+
     def test_chief_event_when_the_chief_connects_and_leaves(self):
         q, _ = self.app.hub.subscribe()
         self.hello()
@@ -230,7 +240,7 @@ class Api(unittest.TestCase):
         last = self.call("GET", "/api/chat")[1]["messages"][-1]
         self.assertEqual((last["role"], last["text"], last["confirm"]["yes"]),
                          ("chief", "Two sessions need you.", "Archive anyway"))
-        self.assertEqual(self.call("POST", "/api/mod/busy", {"busy": True})[0], 200)
+        self.assertEqual(self.call("POST", "/api/mod/busy", {"busy": True, "cliId": "cli-wait"})[0], 200)
         self.assertTrue(self.call("GET", "/api/health")[1]["chief"]["busy"])
         self.assertEqual(self.call("GET", "/api/health")[1]["voice"]["state"], "thinking")
         self.assertEqual(self.call("POST", "/api/mod/result", {"actionId": "act_1", "ok": True})[0], 200)

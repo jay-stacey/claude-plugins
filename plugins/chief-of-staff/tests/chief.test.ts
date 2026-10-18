@@ -416,7 +416,7 @@ test('replies are posted without the confirm line, which comes as buttons; turns
   })
   await settle(clock, 500)
 
-  expect(fake.posted('/api/mod/busy')).toEqual([{ busy: true }, { busy: false }])
+  expect(fake.posted('/api/mod/busy')).toEqual([{ busy: true, cliId: 's-chief' }, { busy: false, cliId: 's-chief' }])
   expect(fake.posted('/api/mod/reply')).toEqual([{
     text: 'DP1-676 is working right now, so archiving it stops that work. Archive it anyway?',
     turnId: 't1',
