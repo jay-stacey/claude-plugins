@@ -115,3 +115,56 @@ Last, one integration pass: `claude plugin validate --strict`, `scripts/check-sk
 - Phase 0 spike: about 1 hour.
 - Parallel build: about 4 to 6 hours of agent time.
 - Integration and local test: about 2 hours, plus about 20 minutes of your time to try the voice loop.
+
+## Update 2026-10-18: terminal support (0.3.0)
+
+This section records what changed in 0.3.0. The text above is the original plan from 2026-10-16 and is left as it was.
+
+### What no longer holds
+
+Item 2 of "Why this shape" said that every change goes through the desktop app, so the Chief had to live in a desktop session. That is no longer true. The Chief can now run in a terminal Claude Code session as well. A terminal session does not have the desktop app's session tools, so 0.2.2 in a terminal reported a false success for an archive, could not see desktop sessions from a Windows Store install, and blocked every action on terminal and background sessions.
+
+### cos_act and the router
+
+Every change to another session now goes through one Chief-only mod tool, `cos_act` (`mcp__chief-of-staff__cos_act`), with the actions `archive`, `stop`, `reply`, `open` and `start`. One guarded router in the mod runs every action, whether it comes from the Chief or from a console button. The router picks the route that works on this host:
+
+- the desktop app's session tools, in a desktop Chief;
+- the engine's cross-session send (`$.session.send`), for replies the desktop tools cannot make;
+- `claude stop <bgId>` and `claude --bg ... -- <task>`, run by the mod itself with fixed arguments, for background sessions.
+
+`cos_act` answers with an outcome: `done`, `refused`, `failed`, `needsConfirm`, `opened`, `handedOff` or `unsupported`. The server adds `expired` when no result comes back in time. Only `done` means the action happened. `opened` means the session is open in the Claude app and Jay finishes the action there. The persona never calls that an archive. In the desktop app, the Chief still starts sessions with `mcp__ccd_session__start_session`, because `cos_act start` refuses there.
+
+The server gives each session a `kind` (`desktop`, `cli` or `bg`) and an `actions` map that says, per action, `yes`, `app` (only by opening it in the app) or `no`, with a plain note for every value that is not `yes`. The console shows only the buttons that work, and the Chief offers only what the map allows. The binding field and outcome shapes are in `docs/contracts.md`.
+
+### What each session kind gets
+
+| Session | Reply | Archive | Stop | Open in app |
+|---|---|---|---|---|
+| Desktop, Chief in the desktop app | yes (desktop tool) | yes (desktop tool) | no | yes |
+| Desktop, Chief in a terminal | yes when the session can be reached, else open it in the app | opens it in the app, where Jay archives it | no | yes |
+| Terminal (interactive) | yes | no: close it in its own window | no | no |
+| Background | yes | no: use Stop | yes, `claude stop` | no |
+
+### Why no claude rm, no process kill and no file edit
+
+- **No `claude rm`.** It removes the background session's row and may remove its worktree, which is the closest command to a delete. `claude stop` keeps the conversation, and `claude --bg --resume` brings it back.
+- **No process kill.** The only way to end an interactive terminal session from outside is to kill its process, which loses the running turn. The Chief tells Jay to type /exit in that window instead.
+- **No edit of the desktop app's files.** The app keeps its archive state in memory, overwrites an edited file, and skips its own teardown (stopping the process and cleaning the worktree). So a terminal Chief opens the session in the app instead of archiving it.
+
+Jay approved all three defaults on 2026-10-18. There is also no Open button for terminal and background sessions.
+
+### Safety additions
+
+- Three levels of yes. A yes typed in the Chief's own session counts for everything. A console button, the console chat, the voice and the Remote Control bridge answer only the busy question ("it's working, stop anyway?"). A message from another session is never a yes, and `cos_act` refuses every action in a turn another session started.
+- Deny rules win. Before the mod sends a message or runs `claude stop` or `claude --bg` itself, it asks the permission system and refuses on a deny. It never approves its own calls.
+- No session text becomes a command-line flag. Ids must match a strict pattern, and the start task always follows `--`.
+- Each action runs exactly once.
+- Setup writes one allow rule, `mcp__chief-of-staff__cos_act`, to `.claude\settings.local.json` after a yes. There are no Bash rules and no `SendMessage` rule.
+
+### Spike results
+
+Recorded 2026-10-18, with the desktop app running:
+
+- S1 PASS. A desktop session registers in `~/.claude/sessions/<pid>.json` with `entrypoint: "claude-desktop"` and a messaging inbox.
+- S2 PASS. `claude agents --json` lists it, and its `sessionId` equals the `cliSessionId` of the matching `local_` file.
+- Still open: S4 (a real terminal-to-desktop send), S11 (the prompt origin of typed and forwarded messages) and S8 (the allow rule takes effect in auto mode). The script for these and the full manual matrix is `docs/terminal-verification.md`. Its results go in the pull request.

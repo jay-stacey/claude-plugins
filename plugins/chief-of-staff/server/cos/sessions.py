@@ -23,6 +23,11 @@ BACKGROUND_MAX_AGE_MS = 2 * HOUR_MS     # older unfinished background work is ig
 MAX_SUMMARY = 400
 ID_RE = re.compile(r"^(local|bg|cli)_[A-Za-z0-9-]{1,80}$")
 LINK = "claude://claude.ai/epitaxy/{}"
+DESKTOP_ENTRYPOINTS = {"claude-desktop", "claude-desktop-3p", "local-agent"}
+BG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")   # never a flag such as --all
+BG_DONE = {"done", "stopped", "failed"}
+ACTION_KEYS = ("reply", "archive", "stop", "open")
+FACT_KEYS = ("_bgState", "_inbox", "_desktopHost")       # what plan_actions reads beyond the published fields
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -77,20 +82,73 @@ class AgentsSource:
         return self.rows
 
 
-class DesktopSource:
-    """The desktop app's local_*.json files, cached by mtime."""
+ARCHIVED = object()         # a cache entry for a file the archive index names; never opened
+IDX_NAME = "archived-sessions.idx"
+IDX_MAX = 1024 * 1024
+ROOT_EVERY_S = 60
+FILES_RETRY_S = 10          # a hello's miss reads the files again at most this often
 
-    def __init__(self, root=None):
+
+class DesktopSource:
+    """The desktop app's local_*.json files, cached by real path, mtime and size.
+
+    The folder is resolved again at most once a minute (every scan while none is
+    found). Files the org's archived-sessions.idx names are not opened."""
+
+    def __init__(self, root=None, clock=time.monotonic):
         self.root = Path(root) if root else None
-        self.cache = {}     # path -> (mtime_ns, record or None)
+        self.clock = clock
+        self.cache = {}     # real path -> (mtime_ns, size, record or None or ARCHIVED)
+        self.idx = {}       # org folder -> (mtime_ns, size, set of archived ids)
+        self.source = "env" if self.root else "none"
+        self.current = self.root
+        self.resolved_at = None
+        self.count = 0
+
+    def root_now(self):
+        """(source, folder or None)."""
+        if self.root is not None:
+            return "env", self.root
+        now = self.clock()
+        if self.resolved_at is None or self.current is None or now - self.resolved_at >= ROOT_EVERY_S:
+            self.source, self.current = paths.resolve_desktop_root()
+            self.resolved_at = now
+        return self.source, self.current
+
+    def archived_ids(self, org_path):
+        """The ids archived-sessions.idx lists ({"v": 1, "archived": [ids]}); a bad or missing file is none."""
+        path = os.path.join(org_path, IDX_NAME)
+        try:
+            st = os.stat(path)
+        except OSError:
+            self.idx.pop(org_path, None)
+            return set()
+        hit = self.idx.get(org_path)
+        if hit and hit[:2] == (st.st_mtime_ns, st.st_size):
+            return hit[2]
+        ids = set()
+        if st.st_size <= IDX_MAX:
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                listed = data.get("archived") if isinstance(data, dict) else None
+                if isinstance(listed, list):
+                    ids = {x for x in listed if isinstance(x, str) and ID_RE.match(x)}
+            except (OSError, ValueError):
+                ids = set()
+        self.idx[org_path] = (st.st_mtime_ns, st.st_size, ids)
+        return ids
 
     def scan(self):
-        root = self.root or paths.desktop_root()
+        _, root = self.root_now()
         seen = {}
-        try:
-            accounts = list(os.scandir(root))
-        except OSError:
-            accounts = []
+        orgs_seen = set()
+        accounts = []
+        if root is not None:
+            try:
+                accounts = list(os.scandir(root))
+            except OSError:
+                accounts = []
         for acc in accounts:
             if not acc.is_dir():
                 continue
@@ -105,23 +163,43 @@ class DesktopSource:
                     files = list(os.scandir(org.path))
                 except OSError:
                     continue
+                orgs_seen.add(org.path)
+                archived = self.archived_ids(org.path)
+                # One real path per folder, so two paths to the same files share the cache.
+                real_org = os.path.realpath(org.path)
                 for f in files:
                     if not (f.name.startswith("local_") and f.name.endswith(".json")):
                         continue
                     try:
-                        mtime = f.stat().st_mtime_ns
+                        st = f.stat()
                     except OSError:
                         continue
-                    hit = self.cache.get(f.path)
-                    if hit and hit[0] == mtime:
-                        seen[f.path] = hit
+                    key = os.path.join(real_org, f.name)
+                    stamp = (st.st_mtime_ns, st.st_size)
+                    if f.name[:-5] in archived:
+                        seen[key] = stamp + (ARCHIVED,)
                         continue
-                    seen[f.path] = (mtime, read_desktop_file(f.path))
+                    hit = self.cache.get(key)
+                    if hit and hit[:2] == stamp and hit[2] is not ARCHIVED:
+                        seen[key] = hit
+                        continue
+                    seen[key] = stamp + (read_desktop_file(f.path),)
         self.cache = seen
+        for org in list(self.idx):
+            if org not in orgs_seen:
+                del self.idx[org]
         out = {}
-        for _, rec in seen.values():
-            if rec and not rec.get("isArchived"):
+        for *_, rec in seen.values():
+            if rec and rec is not ARCHIVED and not rec.get("isArchived"):
                 out[rec["sessionId"]] = rec
+        self.count = len(out)
+        return out
+
+    def info(self, with_root=False):
+        """{source, files} for health; the folder only when asked (it holds the user name)."""
+        out = {"source": self.source if self.current is not None else "none", "files": self.count}
+        if with_root:
+            out["root"] = str(self.current) if self.current is not None else None
         return out
 
 
@@ -144,6 +222,63 @@ def read_desktop_file(path):
     rec = {k: data.get(k) for k in keep if k in data}
     rec["sessionId"] = sid
     return rec
+
+
+REGISTRY_NAME_RE = re.compile(r"^\d{1,10}\.json$")
+REGISTRY_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,80}$")
+REGISTRY_MAX = 64 * 1024
+
+
+class RegistrySource:
+    """~/.claude/sessions/<pid>.json: one file per running Claude Code process.
+
+    Only <digits>.json is read, so the pipe key files beside them are never opened.
+    Only a yes or no for the message inbox is kept, never the pipe name."""
+
+    def __init__(self, root=None):
+        self.root = Path(root) if root else None
+        self.cache = {}     # path -> (mtime_ns, row or None)
+
+    def scan(self):
+        root = self.root or paths.registry_dir()
+        seen = {}
+        try:
+            entries = list(os.scandir(root))
+        except OSError:
+            entries = []
+        for f in entries:
+            if not REGISTRY_NAME_RE.match(f.name):
+                continue
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            if st.st_size > REGISTRY_MAX:
+                continue
+            hit = self.cache.get(f.path)
+            seen[f.path] = hit if hit and hit[0] == st.st_mtime_ns else (st.st_mtime_ns, read_registry_file(f.path))
+        self.cache = seen
+        return {row["sessionId"]: row for _, row in seen.values() if row}
+
+
+def read_registry_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sid = data.get("sessionId")
+    if not isinstance(sid, str) or not REGISTRY_ID_RE.match(sid):
+        return None
+    row = {"pid": _int(data.get("pid")), "sessionId": sid}
+    for key in ("kind", "entrypoint", "status", "name"):
+        value = _text(data.get(key))
+        row[key] = value[:120] if value else None
+    sock = data.get("messagingSocketPath")
+    row["hasInbox"] = isinstance(sock, str) and bool(sock)
+    return row
 
 
 class TranscriptIndex:
@@ -255,6 +390,13 @@ def repo_of(rec):
 BG_LIVE = {"working": "busy", "blocked": "waiting", "failed": "waiting"}
 
 
+def live_kind(s):
+    """"interactive" or "background": the live row's kind, also for callers that pass an old `kind`."""
+    if s.get("_live_kind"):
+        return s["_live_kind"]
+    return "background" if s.get("kind") in ("bg", "background") else "interactive"
+
+
 def classify(s, now, stale_hours, grew_at=None):
     """(state, stateReason), first match wins.
 
@@ -269,7 +411,7 @@ def classify(s, now, stale_hours, grew_at=None):
     busy = live and status == "busy"
     last = s.get("lastActivityAt") or s.get("createdAt") or 0
     aged = now - last > stale_hours * HOUR_MS
-    if live and s["kind"] == "interactive" and status == "waiting":
+    if live and live_kind(s) == "interactive" and status == "waiting":
         return "you", waiting_reason(s.get("waitingFor"))
     if live and any(now - at <= BACKGROUND_MAX_AGE_MS for at in s.get("_background") or []):
         return "active", "Running background work"
@@ -327,19 +469,93 @@ def ago(ms):
     return f"{n} days"
 
 
+NOTE_CHIEF = "This is the Chief of Staff session."
+NOTE_NO_CHIEF = "No Chief is connected. Type /chief in a Claude Code session first."
+
+
+def plan_actions(s, caps):
+    """(actions, notes) for one session: THE action table (plan-b 4.1), first matching rule wins.
+
+    caps is the Chief's host caps, or None when no Chief is connected. Every value that
+    is not "yes" gets exactly one note."""
+    actions, notes = {}, {}
+
+    def put(key, value, note=None):
+        if key in actions:
+            return
+        actions[key] = value
+        if value != "yes":
+            notes[key] = note
+
+    kind = s.get("kind")
+    live, inbox = bool(s.get("live")), bool(s.get("_inbox"))
+    if s.get("isChief"):                                                         # rule 1
+        for key in ACTION_KEYS:
+            put(key, "no", NOTE_CHIEF)
+        return actions, notes
+    if kind == "desktop":                                                        # rule 2
+        put("open", "yes")
+    else:
+        put("open", "no", "Only desktop sessions open in the Claude app.")
+    if kind != "bg":                                                             # rule 3
+        put("stop", "no", "Only background sessions can be stopped.")
+    if kind == "cli":                                                            # rule 4
+        put("archive", "no", "Archive it in the Claude app." if s.get("_desktopHost") else
+            "Close it in its own terminal window. The Chief does not end terminal sessions.")
+    elif kind == "bg":                                                           # rule 5
+        put("archive", "no", "Use Stop for a background session.")
+    if caps is None:
+        if kind == "desktop":                                                    # rule 6
+            put("reply", "app", "No Chief is connected. You can reply in the Claude app.")
+            put("archive", "app", "No Chief is connected. You can archive it in the Claude app.")
+        else:                                                                    # rule 7
+            put("reply", "no", NOTE_NO_CHIEF)
+            put("stop", "no", NOTE_NO_CHIEF)
+        return actions, notes
+    if kind == "desktop":
+        if caps.get("desktopSessions"):                                          # rule 8
+            put("reply", "yes")
+            put("archive", "yes")
+        else:                                                                    # rule 9
+            if live and inbox:
+                put("reply", "yes")
+            else:
+                put("reply", "app", "Reply in the Claude app. A Chief in a terminal cannot reach this session.")
+            put("archive", "app", "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions.")
+        return actions, notes
+    if not live:                                                                 # rule 10
+        put("reply", "no", "It is not running, so it cannot get a reply.")
+    if not inbox:                                                                # rule 11
+        put("reply", "no", "It has no message inbox (it may run with --bare).")
+    put("reply", "yes")                                                          # rule 12
+    if s.get("_bgState") in BG_DONE:                                             # rule 13
+        put("stop", "no", "It already finished. Its conversation is kept.")
+    if not live:                                                                 # rule 14
+        put("stop", "no", "It is not running, so it cannot be stopped.")
+    if not s.get("bgId"):                                                        # rule 15
+        put("stop", "no", "Its background id is missing, so it cannot be stopped.")
+    put("stop", "yes")                                                           # rule 16
+    return actions, notes
+
+
 def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript_info=None, grew=None,
-                   background=None, chief_cli=None):
+                   background=None, chief_cli=None, registry=None, caps=None, facts=None):
     """Pure: joins the sources into the contract's Session list.
 
     desktop: {local_id: record}; agent_rows: `claude agents --json` rows;
     transcript_info: {cliId: mtime_ms}; grew: {cliId: ms of last growth};
     background: {cliId: [start ms of background work not seen to finish]}.
+    registry: {sessionId: row} from ~/.claude/sessions; a row counts only when `claude agents` lists it.
+    caps: the Chief's host caps, or None when no Chief is connected (plan_actions).
+    facts: a dict that gets {id: the unpublished inputs of plan_actions}, so an endpoint can
+    check the table again with the caps of that moment.
     chief_id / chief_cli: the Chief's desktop id and CLI id. Either one marks its session,
     so the Chief is never listed as a session of its own before its desktop id is known.
     """
     transcript_info = transcript_info or {}
     grew = grew or {}
     background = background or {}
+    registry = registry or {}
     by_cli = {}
     for row in agent_rows:
         sid = row.get("sessionId")
@@ -352,13 +568,14 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
         row = by_cli.get(cli) if cli else None
         if row:
             used.add(cli)
-        sessions.append(_session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli))
+        reg = registry.get(cli) if cli and cli in by_cli else None
+        sessions.append(_session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli, reg))
     for cli, row in by_cli.items():
         if cli in used:
             continue
         kind = "background" if row.get("kind") == "background" else "interactive"
         local_id = ("bg_" if kind == "background" else "cli_") + re.sub(r"[^A-Za-z0-9-]", "", cli)[:80]
-        sessions.append(_session(local_id, cli, {}, row, transcript_info, chief_id, chief_cli))
+        sessions.append(_session(local_id, cli, {}, row, transcript_info, chief_id, chief_cli, registry.get(cli)))
 
     by_id = {s["id"]: s for s in sessions}
     for s in sessions:
@@ -373,6 +590,7 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
         s["_background"] = background.get(s["cliId"]) or []
         s["state"], s["stateReason"] = classify(s, now, stale_hours, grew.get(s["cliId"]))
         s["inView"] = bool(s["live"] or now - (s["lastActivityAt"] or 0) <= recent_ms)
+        s["actions"], s["actionNotes"] = plan_actions(s, caps)
     # Parents and children of in-view sessions are in view too.
     queue = [s for s in sessions if s["inView"]]
     while queue:
@@ -382,15 +600,19 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
                 other["inView"] = True
                 queue.append(other)
     for s in sessions:
-        s.pop("_bgState", None)
-        s.pop("_background", None)
+        if facts is not None:
+            facts[s["id"]] = {k: s.get(k) for k in FACT_KEYS}
+        for key in ("_bgState", "_background", "_live_kind", "_inbox", "_desktopHost"):
+            s.pop(key, None)
     sessions.sort(key=lambda s: -(s["lastActivityAt"] or 0))
     return sessions
 
 
-def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None):
+def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None, reg=None):
     row = row or {}
+    reg = reg or {}
     kind = "background" if row.get("kind") == "background" else "interactive"
+    bg_id = row.get("id") if kind == "background" else None
     live = bool(row)
     bg_state = _text(row.get("state")) if kind == "background" else None
     if kind == "interactive":
@@ -407,7 +629,8 @@ def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None)
         "id": local_id,
         "cliId": cli,
         "title": _text(rec.get("title")) or _text(row.get("name")) or "Untitled session",
-        "kind": kind,
+        "kind": "desktop" if local_id.startswith("local_") else "bg" if local_id.startswith("bg_") else "cli",
+        "bgId": bg_id if isinstance(bg_id, str) and BG_ID_RE.match(bg_id) else None,
         "state": "wait",
         "stateReason": "",
         "live": live,
@@ -431,6 +654,9 @@ def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None)
         "isChief": bool((chief_id and local_id == chief_id) or (chief_cli and cli == chief_cli)),
         "link": LINK.format(local_id) if local_id.startswith("local_") else None,
         "_bgState": bg_state,
+        "_live_kind": kind,
+        "_inbox": bool(reg.get("hasInbox")),
+        "_desktopHost": reg.get("entrypoint") in DESKTOP_ENTRYPOINTS,
     }
 
 
@@ -447,9 +673,12 @@ def counts_of(sessions):
 class SessionReader:
     """Holds the sources and the latest snapshot. Thread safe."""
 
-    def __init__(self, agents=None, desktop=None, transcripts=None):
+    def __init__(self, agents=None, desktop=None, transcripts=None, registry=None):
         self.agents = agents or AgentsSource()
         self.desktop_source = desktop or DesktopSource()
+        self.registry = registry or RegistrySource()
+        self.reg = {}
+        self.facts = {}
         self.transcripts = transcripts or TranscriptIndex()
         self.lock = threading.Lock()
         self.desktop = {}
@@ -458,8 +687,15 @@ class SessionReader:
         self.background = {}
         self.sessions = []
         self.generated_at = 0
+        self.files_lock = threading.Lock()      # one desktop scan at a time
+        self.files_at = 0.0
 
     def refresh_files(self):
+        with self.files_lock:
+            self._refresh_files()
+
+    def _refresh_files(self):
+        self.files_at = time.monotonic()
         desktop = self.desktop_source.scan()
         mtimes = {}
         for rec in desktop.values():
@@ -476,6 +712,9 @@ class SessionReader:
 
     def refresh_live(self):
         rows = self.agents.poll()
+        reg = self.registry.scan()
+        with self.lock:
+            self.reg = reg
         for row in rows:
             cli = row.get("sessionId")
             if isinstance(cli, str) and cli not in self.mtimes:
@@ -499,17 +738,20 @@ class SessionReader:
             self.grew[cli] = at
             self.mtimes[cli] = max(self.mtimes.get(cli, 0), at)
 
-    def build(self, settings, chief_id=None, now=None, chief_cli=None):
+    def build(self, settings, chief_id=None, now=None, chief_cli=None, caps=None):
         now = now or now_ms()
+        facts = {}
         with self.lock:
+            reg = dict(self.reg)
             desktop = dict(self.desktop)
             mtimes = dict(self.mtimes)
             grew = dict(self.grew)
             background = dict(self.background)
         sessions = build_sessions(desktop, self.agents.rows, settings, now, chief_id, mtimes, grew, background,
-                                  chief_cli)
+                                  chief_cli, reg, caps, facts)
         with self.lock:
             self.sessions = sessions
+            self.facts = facts
             self.generated_at = now
         return sessions
 
@@ -521,19 +763,30 @@ class SessionReader:
                     "countsInView": counts_of([s for s in sessions if s["inView"]]),
                     "sessions": sessions}
 
+    def action_input(self, s):
+        """The session with the unpublished fields plan_actions needs."""
+        with self.lock:
+            return dict(s, **self.facts.get(s["id"], {}))
+
     def get(self, sid):
         with self.lock:
             return next((s for s in self.sessions if s["id"] == sid), None)
 
+    def find_local(self, cli):
+        """The desktop id for a CLI session id from the current files, or None."""
+        with self.lock:
+            return next((sid for sid, rec in self.desktop.items() if rec.get("cliSessionId") == cli), None)
+
     def local_id_for(self, cli):
-        """The desktop id for a CLI session id, reading the files again on a miss."""
-        def find():
-            with self.lock:
-                return next((sid for sid, rec in self.desktop.items() if rec.get("cliSessionId") == cli), None)
-        hit = find()
-        if hit is None:
-            self.refresh_files()
-            hit = find()
+        """The desktop id for a CLI session id. A miss reads the files again only when the last
+        read is over 10 s old and no scan runs now, so a terminal Chief's hello never waits."""
+        hit = self.find_local(cli)
+        if hit is None and time.monotonic() - self.files_at > FILES_RETRY_S and self.files_lock.acquire(blocking=False):
+            try:
+                self._refresh_files()
+            finally:
+                self.files_lock.release()
+            hit = self.find_local(cli)
         return hit
 
     def transcript_path(self, cli):

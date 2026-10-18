@@ -115,7 +115,8 @@ export function where(sess) {
   else if (sess.branch) parts.push(sess.branch);
   if (parts.length) return parts.join(' · ');
   if (sess.cwd) return String(sess.cwd).split(/[\\/]/).filter(Boolean).pop() || sess.cwd;
-  return sess.kind === 'background' ? 'background job' : '';
+  if (sess.kind === 'bg') return 'background job';
+  return sess.kind === 'cli' ? 'terminal' : '';
 }
 
 export function modelName(id) {

@@ -1,0 +1,9 @@
+{
+ "pid": 1,
+ "sessionId": "cli-busy",
+ "kind": "interactive",
+ "entrypoint": "cli",
+ "status": "busy",
+ "name": "DP1-676",
+ "messagingSocketPath": "//./pipe/claude-1"
+}

@@ -18,11 +18,11 @@ Never edit a file another owner holds. Never commit. The lead commits.
 ## 2. Runtime folders and processes
 
 - Runtime home: `%USERPROFILE%\.claude\chief-of-staff\` (call it `HOME`).
-  - `HOME\run\server.json`: `{ "api": 1, "port": 47870, "pid": 1234, "token": "...", "url": "http://127.0.0.1:47870/#<token>", "chiefSessionId": "local_..." | null, "startedAt": 1792160000000 }`. Written by the app server at start, rewritten when the chief changes. Deleted on clean stop.
+  - `HOME\run\server.json`: `{ "api": 1, "version": "0.3.0", "port": 47870, "pid": 1234, "token": "...", "url": "http://127.0.0.1:47870/#<token>", "chiefSessionId": "local_..." | null, "chiefCliId": "..." | null, "voicePid": 5678 | null, "startedAt": 1792160000000 }`. Written by the app server at start, rewritten when the chief changes. Deleted on clean stop. `version` is the plugin version the server runs. `chiefSessionId` is null for a Chief in a terminal (it has no desktop file); `chiefCliId` is set for every Chief.
   - `HOME\venv\` voice venv, `HOME\models\` model files, `HOME\logs\` logs (rotate at 5 MB, keep 2).
   - `HOME\run\voice-state.json`: `{ "listen": "wake" | "ptt" | "off", "speak": bool }`, the console's own toggles. Written on every `/api/voice/control` change of `listen` or `speak` and read at start, so they survive a restart and win over the `listen` and `speak_replies` settings.
   - `HOME\run\notices.json`: `{ "staleDay": "2026-10-17" | null, "youAt": { "local_...": epoch_s } }`, so a restart repeats neither the daily stale notice nor a "waiting on Jay" notice from the last 10 minutes.
-- **App server** `server/app.py`: Python 3.10+ standard library only (no venv). `python app.py start|stop|status|restart [--port N]`. Binds `127.0.0.1` only. Default port 47870; if busy, tries the next 9 ports. Start runs itself detached, waits up to 5 s on `/api/health`, writes `server.json`. Copy the Day Desk lifecycle (`plugins/executive-assistant/dashboard/server.py` `cmd_start`, `cmd_stop`, pid check by command line). Exits after 12 hours with no console client and no mod poll.
+- **App server** `server/app.py`: Python 3.10+ standard library only (no venv). `python app.py start|stop|status|restart [--port N] [--open]`. `start` answers `{ url, port, pid, chiefSessionId, version, already_running }`, plus `"stale": true` when a server already runs a different version (or reports none, as every server up to 0.2.2 does). The server never restarts itself: the mod runs `app.py restart --open` only on an explicit `/chief`, and only when no live Chief holds the role. On Windows the server is started with `CREATE_BREAKAWAY_FROM_JOB` (retried without it when Windows refuses), so it outlives a terminal window. `status` also prints `version` and `desktop { source, files, root }`. Binds `127.0.0.1` only. Default port 47870; if busy, tries the next 9 ports. Start runs itself detached, waits up to 5 s on `/api/health`, writes `server.json`. Copy the Day Desk lifecycle (`plugins/executive-assistant/dashboard/server.py` `cmd_start`, `cmd_stop`, pid check by command line). Exits after 12 hours with no console client and no mod poll.
 - **Voice daemon** `server/voice/voiced.py`: runs in `HOME\venv`. The app server starts it at start if `HOME\venv` exists and voice is enabled, and stops it on stop. It reads `server.json` for port and token. If the venv is missing, the app server runs without voice and reports `voice.state = "not-installed"`.
 - **Chief mod** `hooks/register.tsx`: loads in every session; does work only in the Chief's session (section 6).
 
@@ -32,7 +32,8 @@ Never edit a file another owner holds. Never commit. The lead commits.
 - Host must be `127.0.0.1:<port>` or `localhost:<port>`. Origin must be absent or the same origin. No CORS headers.
 - No token needed only for `GET /`, static files under `/static/`, and `GET /api/health`.
 - JSON bodies up to 64 KB. Over that: 413.
-- The server never writes any file of the Claude desktop app or of `~/.claude/projects`. It only reads them.
+- The server never writes any file of the Claude desktop app, of `~/.claude/projects` or of `~/.claude/sessions`. It only reads them. It never opens the `*.key` files in `~/.claude/sessions`.
+- `GET /api/health` shows no folder path and no session id without the token (section 5).
 
 ## 4. Data shapes
 
@@ -40,10 +41,16 @@ Never edit a file another owner holds. Never commit. The lead commits.
 
 ```json
 {
-  "id": "local_ced01055-...",          // desktop session id; background jobs use "bg_<cliSessionId>"
+  "id": "local_ced01055-...",          // desktop session id; terminal sessions use "cli_<cliSessionId>", background jobs "bg_<cliSessionId>"
   "cliId": "bf92d35d-...",             // CLI session id (transcript file name), may be null
   "title": "DP1-676",
-  "kind": "interactive" | "background",
+  "kind": "desktop" | "cli" | "bg",    // always matches the id prefix local_ / cli_ / bg_; there is no `source` field
+  "bgId": "d8d55fa2" | null,           // kind "bg" only: the short id `claude stop` takes; matches ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$
+                                       // For cli and bg sessions cliId is the `claude agents --json` row's full
+                                       // sessionId UUID and bgId its 8-character `id`; the mod matches rows by
+                                       // sessionId === cliId and runs `claude stop <bgId>`.
+  "actions": { "reply": "yes" | "app" | "no", "archive": "...", "stop": "...", "open": "..." },
+  "actionNotes": { "archive": "Use Stop for a background session." },   // one plain sentence for every action that is not "yes"
   "state": "you" | "active" | "wait" | "stale",
   "stateReason": "Waiting for a permission prompt",   // short, plain, shown in hover cards
   "live": true,                        // has a running process (listed by `claude agents --json`)
@@ -65,17 +72,59 @@ Never edit a file another owner holds. Never commit. The lead commits.
   "needsAction": "Jay's decision: ..." | null,        // postTurnSummary.needs_action
   "appStatus": "blocked" | "completed" | "review_ready" | null, // postTurnSummary.status_category, as written by the app
   "isChief": false,
-  "link": "claude://claude.ai/epitaxy/local_..."
+  "link": "claude://claude.ai/epitaxy/local_..." | null    // desktop sessions only
 }
 ```
+
+`actions` values: `yes` the Chief can do it now; `app` only by opening the session in the Claude desktop app for Jay to finish there; `no` not possible (the note says why). The server builds `actions` and `actionNotes` from the action table below. The console draws its buttons from them, and the mod uses the note word for word as its `refused` detail, so both say the same thing.
+
+TypeScript shapes (from `types/index.d.ts`):
+
+```ts
+export type ChiefSessionKind = 'desktop' | 'cli' | 'bg'
+export type Avail = 'yes' | 'app' | 'no'
+export type ActionVerb = 'reply' | 'archive' | 'stop' | 'open' | 'start'
+export type ChiefSessionActions = { reply: Avail; archive: Avail; stop: Avail; open: Avail }
+export type ChiefActionNotes = Partial<Record<keyof ChiefSessionActions, string>>
+export type ActionOutcomeKind = 'done' | 'refused' | 'failed' | 'needsConfirm' | 'opened' | 'handedOff' | 'unsupported' | 'expired'
+export type ChiefCaps = { desktopSessions: boolean; desktopListed: boolean; desktopStart: boolean; sendMessage: boolean;
+  listAgents: boolean; cliStop: boolean; cliStart: boolean }
+export type ChiefHost = { surface: 'terminal' | 'desktop' | 'vscode' | 'mobile' | null; caps: ChiefCaps }
+```
+
+### The action table
+
+The only action table. Inputs: `kind`; the Chief: none connected, or connected with D = `host.caps.desktopSessions` (trusted as sent; the other caps change no value); L = live (listed by `claude agents --json`); I = inbox (the session's `~/.claude/sessions/<pid>.json` row has a `messagingSocketPath`); B = a valid `bgId`; F = finished (the background state is done, stopped or failed). The first rule that matches a cell sets its value and note.
+
+| # | Rule | reply | archive | stop | open |
+|---|---|---|---|---|---|
+| 1 | The session `isChief` | no: "This is the Chief of Staff session." | no: same note | no: same note | no: same note |
+| 2 | `open`, by kind (any Chief state) | | | | desktop: **yes**. cli and bg: no, "Only desktop sessions open in the Claude app." |
+| 3 | `stop` on desktop or cli (any Chief state) | | | no: "Only background sessions can be stopped." | |
+| 4 | `archive` on cli (any Chief state) | | no: "Close it in its own terminal window. The Chief does not end terminal sessions." When the registry entrypoint is a desktop one: "Archive it in the Claude app." | | |
+| 5 | `archive` on bg (any Chief state) | | no: "Use Stop for a background session." | | |
+| 6 | Chief none, desktop | app: "No Chief is connected. You can reply in the Claude app." | app: "No Chief is connected. You can archive it in the Claude app." | | |
+| 7 | Chief none, cli or bg | no: "No Chief is connected. Type /chief in a Claude Code session first." | | bg: no, same note | |
+| 8 | desktop, D | **yes** | **yes** | | |
+| 9 | desktop, not D | L and I: **yes**, else app: "Reply in the Claude app. A Chief in a terminal cannot reach this session." | app: "Archive it in the Claude app. A Chief in a terminal cannot archive desktop sessions." | | |
+| 10 | cli or bg reply, not L | no: "It is not running, so it cannot get a reply." | | | |
+| 11 | cli or bg reply, not I | no: "It has no message inbox (it may run with --bare)." | | | |
+| 12 | cli or bg reply, otherwise | **yes** | | | |
+| 13 | bg stop, F | | | no: "It already finished. Its conversation is kept." | |
+| 14 | bg stop, not L | | | no: "It is not running, so it cannot be stopped." | |
+| 15 | bg stop, not B | | | no: "Its background id is missing, so it cannot be stopped." | |
+| 16 | bg stop, otherwise | | | **yes** | |
+
+`stop` runs `claude stop <bgId>` (never `claude rm`, never a kill), and keeps the conversation.
 
 ### Sources and state rules
 
 Read, every 2 s for live status and every 10 s for files:
 
-1. `claude agents --json` (timeout 20 s; on failure keep the last result and mark `liveStale: true` in the snapshot). Rows: `kind`, `sessionId` (= `cliId`), `name`, `status` (interactive: `busy`/`idle`/`waiting`, plus `waitingFor`) or `state` (background: `working`/`blocked`/`done`/`failed`/`stopped`).
-2. Desktop session files: `%APPDATA%\Claude\claude-code-sessions\*\*\local_*.json`. Skip `isArchived: true`. These files are not a documented format: treat every field as optional, never crash on a bad file, and re-read a file only when its mtime changes. Join to rows by `cliSessionId`.
+1. `claude agents --json` (timeout 20 s; on failure keep the last result and mark `liveStale: true` in the snapshot). Rows: `kind`, `sessionId` (= `cliId`), `id` (background: the short `bgId`), `name`, `status` (interactive: `busy`/`idle`/`waiting`, plus `waitingFor`) or `state` (background: `working`/`blocked`/`done`/`failed`/`stopped`). A row with no desktop file becomes a `cli_` session (interactive) or a `bg_` session (background).
+2. Desktop session files: `<root>\*\*\local_*.json`. One root is used, never a merge. The root is, in order: `COS_DESKTOP_DIR` when set (source `env`, not probed); else whichever of `%APPDATA%\Claude\claude-code-sessions` (source `appdata`) and the MSIX folders `%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions` (newer MSIX builds move the data here and leave a `.user-data-left.*` marker in the package folder) and `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions` (both source `msix`; folder names must match `^Claude_[A-Za-z0-9]{1,32}$`, any case) holds the newest `local_*.json` file by mtime (a candidate counts only with at least one such file; a tie goes to `appdata`); else source `none`. A found root is kept for 60 s; while the source is `none` it is resolved again on every scan. Skip `isArchived: true`, and do not open files whose id is listed in the org folder's `archived-sessions.idx`. These files are not a documented format: treat every field as optional, never crash on a bad file, and re-read a file only when its mtime or size changes. Join to rows by `cliSessionId`.
 3. Transcripts: `%USERPROFILE%\.claude\projects\*\<cliId>.jsonl` (find by glob, cache the path).
+4. The live session registry: `(CLAUDE_CONFIG_DIR or %USERPROFILE%\.claude)\sessions\<pid>.json` (`COS_SESSIONS_DIR` moves it). Only names matching `^\d{1,10}\.json$` under 64 KB are read; `*.key` files are never opened. Kept fields: `pid`, `sessionId`, `kind`, `entrypoint`, `status`, `name`, and `hasInbox` (whether `messagingSocketPath` is set; the pipe name itself is not kept). A row counts only when `claude agents --json` lists its `sessionId`. It feeds the I input of the action table.
 
 First match wins:
 
@@ -124,27 +173,31 @@ Parse the JSONL defensively: user rows with string content are prompts; user row
 
 | Method and path | Body or query | Answer |
 |---|---|---|
-| `GET /api/health` | | `{ "ok": true, "api": 1, "app": "chief-of-staff", "voice": VoiceStatus, "chief": { "connected": bool, "sessionId": "local_..." \| null, "cliId": "..." \| null, "busy": bool }, "settings": { "chiefName": "Chief", "wakeWord": "hey chief" } }` |
-| `GET /api/sessions` | | `{ "generatedAt": ms, "liveStale": bool, "counts": { "you": n, "active": n, "wait": n, "stale": n }, "sessions": [Session] }` |
+| `GET /api/health` | | Without a valid token: `{ "ok": true, "api": 1, "app": "chief-of-staff", "version": "0.3.0", "voice": VoiceStatus, "chief": { "connected": bool, "busy": bool }, "settings": { "chiefName": "Chief", "wakeWord": "hey chief" }, "jev": {...} }`. With a valid `X-COS-Token` it adds the Chief's ids and host, `"chief": { "connected", "sessionId": "local_..." \| null, "cliId": "..." \| null, "busy", "host": ChiefHost \| null }`, and `"desktop": { "source": "env" \| "appdata" \| "msix" \| "none", "files": n }`. It never answers 401 and never shows a path. |
+| `GET /api/sessions` | | `{ "generatedAt": ms, "liveStale": bool, "counts": { "you": n, "active": n, "wait": n, "stale": n }, "countsInView": {...}, "sessions": [Session], "desktop": { "source", "files", "root": "C:\\..." \| null } }` |
 | `GET /api/sessions/{id}` | | `Session` |
 | `GET /api/sessions/{id}/transcript` | `?limit=60&before=<uuid>` | `{ "turns": [Turn], "cursor": "<uuid>" \| null }` oldest first |
 | `GET /api/stream` | `?k=<token>` | SSE, section 7 |
 | `GET /api/chat` | | `{ "messages": [ChatMessage] }` last 100 |
 | `POST /api/chief/say` | `{ "text": "...", "source": "typed" \| "voice" }` | `{ "id": "msg_..." }` Adds a chat message and queues a `prompt` for the mod. 409 if no Chief is connected. |
-| `POST /api/sessions/{id}/reply` | `{ "text": "..." }` | `{ "actionId": "act_..." }` Queues `reply` for the mod. |
-| `POST /api/sessions/{id}/archive` | `{ "confirmed": bool }` | 409 `{ "needsConfirm": true, "reason": "..." }` when the session is `active` and not confirmed. Else queues `archive`. |
-| `POST /api/sessions/{id}/open` | | Runs `start "" "<link>"` (opens it in the desktop app). |
+| `POST /api/sessions/{id}/reply` | `{ "text": "..." }` | yes: `{ "actionId": "act_..." }`, queues `reply` for the mod. app: `{ "opened": true, "detail": "Opened it in the Claude app. Reply there." }`, nothing queued. no: 409 `{ "error": <note>, "unsupported": true }`. |
+| `POST /api/sessions/{id}/archive` | `{ "confirmed": bool, "reason"?: "..." }` | yes: 409 `{ "needsConfirm": true, "reason": "..." }` when the session or one of its children is `active` and not confirmed, else `{ "actionId" }` and queues `archive`. app: `{ "opened": true, "detail": "Opened it in the Claude app. Archive it there." }`. no: 409 unsupported. |
+| `POST /api/sessions/{id}/stop` | `{ "confirmed": bool, "reason"?: "..." }` | Background sessions only. yes: 409 `needsConfirm` (reason "<title> is working right now. Stopping it ends that turn. Its conversation is kept.") when the session or a child is active and not confirmed, else `{ "actionId" }` and queues `stop`; the mod runs `claude stop <bgId>`. no: 409 unsupported. |
+| `POST /api/sessions/{id}/open` | `{}` | `{ "ok": true }`. Opens a desktop session in the Claude app by its `claude://claude.ai/epitaxy/<local id>` link. Needs no Chief. 409 unsupported for cli and bg sessions. A failed open is a 500 "The Claude app did not open the session." |
 | `POST /api/voice/control` | `{ "listen": "wake" \| "ptt" \| "off", "speak": bool, "stop": bool, "pttDown": bool }` any subset | `VoiceStatus` |
 | `GET /api/mod/inbox` | `?wait=25&session=<local id>` | Long poll. `{ "items": [InboxItem] }` (empty after `wait` s). Only the Chief's session gets items. |
-| `POST /api/mod/hello` | `{ "cliId": "...", "isChief": bool }` | `{ "ok": true, "sessionId": "local_..." \| null, "settings": Settings }` The mod calls this when it becomes the Chief. `$.session.id()` in a mod returns the CLI session id, not the desktop `local_` id, so the server finds the desktop id by matching `cliSessionId` in the desktop session files. While another session holds the role (still polling, not archived), the answer is `409` with `{ "refused": true, "chief": { "sessionId": "local_..." | null, "title": "..." | null } }`. |
+| `POST /api/mod/hello` | `{ "cliId": "...", "isChief": bool, "host": ChiefHost, "options": {...} }` (a missing `host`, from an old mod, means `{ "surface": null, "caps": { "desktopSessions": true, "desktopStart": true } }`; absent caps keys mean false) | `{ "ok": true, "sessionId": "local_..." \| null, "settings": Settings }` The mod calls this when it becomes the Chief. `$.session.id()` in a mod returns the CLI session id, not the desktop `local_` id, so the server finds the desktop id by matching `cliSessionId` in the desktop session files. While another session holds the role (still polling, not archived), the answer is `409` with `{ "refused": true, "chief": { "sessionId": "local_..." | null, "title": "..." | null } }`. |
+| `POST /api/mod/caps` | `{ "cliId": "...", "host": ChiefHost }` | `{ "ok": true }`, or `{ "ok": true, "ignored": true }` when the caller is not the Chief. Updates the Chief's host, rebuilds the sessions (the actions follow it) and sends `sessions` and `chief` events. The mod calls it when its caps change. |
 | `POST /api/mod/reply` | `{ "text": "...", "turnId": "..." }` | Adds a Chief chat message, sends it to the voice daemon if `speak` is on. |
-| `POST /api/mod/result` | `{ "actionId": "...", "ok": bool, "detail": "..." }` | Pushes an `action` SSE event. |
+| `POST /api/mod/result` | `{ "actionId": "...", "outcome": ActionOutcomeKind, "detail": "...", "ok": bool }` | `{ "ok": true }`. Pushes an `action` SSE event. The server takes `outcome` when it is one of `done`, `failed`, `refused`, `needsConfirm`, `opened`, `handedOff`, `unsupported`; else `handedOff` for a legacy `handedOff: true`; else `done` for `ok: true`; else `failed`. It sets `ok = outcome == "done"` and ignores the `ok` that was sent. For a prompt item it is only the acknowledgement. |
 | `POST /api/mod/busy` | `{ "busy": bool, "cliId": str }` | The Chief's turn started or ended (drives the orb "Thinking"). Ignored unless `cliId` is the Chief's. |
 | `POST /api/mod/jev-outcome` | `{ "id": "msg_...", "route": "chief" \| "new_session", "model": "claude-..." \| null }` | What the Chief did with Jev's advice for that prompt: it started a session (the mod saw `start_session`) or its turn ended without one. Appended to `HOME\jev-log.jsonl`. |
 | `GET /api/voice/jobs` | `?wait=25` | Long poll for the voice daemon. `{ "jobs": [ { "id": "spk_...", "text": "...", "kind": "speak" \| "stop" \| "control" \| "ack" \| "quit" } ] }`. `control` carries any of `listen`, `speak`, `pttDown`; the server also sends one `control` job with all of `wakeWord`, `wakeAck` (`"chime"` \| `"word"` \| `"off"`), `fillers` (bool) and `chiefName`, first in the daemon's first poll and again whenever one of them changes. `ack` (no text, plus `filler`: `"lookup"` \| `"work"` \| `"chat"` from Jev's rules) asks for a short spoken filler such as "On it" at once, one that fits the kind of request when a fitting filler is cached: the server queues it when a voice `final` arrives, and for a typed `POST /api/chief/say` while `speak` is on, unless `fillers` is off or the voice is not installed. `quit` makes the daemon release the mic and GPU and exit; the server sends it on stop and waits 3 s before it ends the process, because on Windows `terminate()` runs no shutdown handler. |
 | `POST /api/voice/event` | VoiceEvent | The voice daemon reports. |
 
 Errors are `{ "error": "plain sentence" }` with 400, 401, 403, 404, 409, 413 or 500.
+
+Check order for reply, archive and stop: 404 for an unknown id; 409 for the Chief's own session; 409 unsupported (`no`); the app open answer (`app`); 409 needsConfirm; 409 when no Chief is connected ("No Chief is connected. Type /chief in a Claude Code session first."); queue the item.
 
 ### Other shapes
 
@@ -155,10 +208,15 @@ ChatMessage  { "id": "msg_...", "role": "chief" | "me", "source": "typed" | "voi
 JevDecision  { "model": "haiku" | "sonnet" | "opus", "route": "chief" | "new_session", "background": bool,
                "estimate_s": int, "filler": "lookup" | "work" | "chat", "source": "rules" | "user" | "local" | "hosted",
                "ms": float, "override": bool }
-InboxItem    { "id": "...", "type": "prompt", "text": "...", "jev": JevDecision, "hint": "Jev suggests: ..." }
-               // jev and hint only on console and voice prompts; the mod adds hint on its own line after text
-           | { "id": "act_...", "type": "archive", "sessionId": "local_...", "title": "...", "reason": "..." }
-           | { "id": "act_...", "type": "reply", "sessionId": "local_...", "title": "...", "text": "..." }
+InboxItem    { "id": "...", "type": "prompt", "text": "...", "from": "console" | "voice" | "notice", "jev": JevDecision, "hint": "Jev suggests: ..." }
+               // jev and hint only on console and voice prompts; the mod adds hint on its own line after text.
+               // from is set only by the server code path that queued the item, never from a request body:
+               // console = /api/chief/say typed, voice = the voice daemon's final, notice = a proactive notice.
+               // The mod treats console and voice as a press-level yes and notice (or a missing from) as none.
+           | { "id": "act_...", "type": "archive", "sessionId": "local_...", "title": "...", "kind": "desktop", "reason": "...", "confirmed": bool }
+           | { "id": "act_...", "type": "reply", "sessionId": "...", "title": "...", "kind": "desktop" | "cli" | "bg", "text": "..." }
+           | { "id": "act_...", "type": "stop", "sessionId": "bg_...", "title": "...", "kind": "bg", "reason": "...", "confirmed": bool }
+               // no via or target hints: the mod reads the session again before it acts
 VoiceStatus  { "state": "not-installed" | "starting" | "off" | "listening" | "hearing" | "thinking" | "speaking" | "error",
                "listen": "wake" | "ptt" | "off", "speak": bool, "device": "cuda" | "cpu" | null,
                "stt": "faster-whisper large-v3-turbo" | null, "tts": "chatterbox" | "kokoro" | null,
@@ -186,8 +244,11 @@ Phase 0 proved on this machine (cos-spike mod, 2026-10-16): `$.mcp.call('ccd_ses
 
 - **Becoming the Chief.** The `/chief` skill marks the session. The mod hooks `prompt.submit`; when the text starts with `/chief` (or the skill `chief-of-staff:chief` runs), it stores `chief:session = <its session id>` in `$.store`, ensures the app server runs (`$.process.run` `python <root>/server/app.py start`), posts `/api/mod/hello`, and opens the console URL in the browser. Only one Chief per computer: a new `/chief` in another session is refused while the Chief still holds the role, which means it polled the inbox in the last 60 s and its session is not archived. The mod checks `/api/health` before it claims, and the server refuses a second `/api/mod/hello`, so two sessions at once cannot both win. A refused session gets no persona, server start or inbox loop; its model is told which session is the Chief. A Chief that loses the role (a server restart race) shows a toast, clears `chief:session` and gets a notice turn saying so. The Chief's session is marked `isChief` by its desktop id or its CLI id, so it never shows as a session of its own.
 - **Persona.** In the Chief's session the mod adds one `prompt.compose` section (scope `session`) with the body of `agents/chief.md`, every `{name}` replaced by the `chief_name` setting (cleaned as in Settings, default "Chief"). The same file also works as `claude --agent chief-of-staff:chief`, where the name is Chief.
-- **Inbox loop.** `$.clock.after` loop: long-poll `GET /api/mod/inbox?wait=25`. `prompt` -> `$.prompt.submit({ text })` (queues a turn; never folded into a running one). `archive` -> `$.mcp.call('ccd_session_mgmt', 'archive_session', { session_id, reason })`. `reply` -> `$.mcp.call('ccd_session_mgmt', 'send_message', { session_id, message })`. Report each with `/api/mod/result`. If `$.mcp.call` is refused, fall back to `$.prompt.submit` asking the Chief to do it with its own tools. Back off 2 s doubling to 30 s when the server is down.
+- **Inbox loop.** `$.clock.after` loop: long-poll `GET /api/mod/inbox?wait=25`. `prompt` -> `$.prompt.submit({ text })` (queues a turn; never folded into a running one). For `archive`, `reply` and `stop` the mod reads the session again and follows its `actions` map (plan-a.md section 5.8): a desktop archive with D goes by `$.mcp.call('ccd_session_mgmt', 'archive_session', ...)`; a desktop reply with D by the desktop tool chain; a reply without D, and every cli or bg reply, by `$.session.send` to the `cliId`; a bg stop by `claude stop <bgId>` after a fresh busy check. `no` is reported as `refused` with the note; `app` on a console item is `unsupported`. Report each with `/api/mod/result` and an `outcome`. A refused or failed call is never reported as success: only `done` is `ok`. `handedOff` (the mod asked the Chief to do it with its own tools) is pending, and the mod posts a second, final result when the Chief's own call finishes. Back off 2 s doubling to 30 s when the server is down.
+- **Exactly once.** Prompt items the mod took and did not acknowledge go back after 60 s, at most 3 deliveries. Action items (`archive`, `reply`, `stop`) are never put back once taken; the server waits for the mod's result. An archive or stop that was never delivered expires after 120 s with outcome `expired` ("The Chief did not get to it within two minutes, so nothing was archived." or "...so nothing was stopped."). A taken item with no result after 600 s, and a `handedOff` item with no second result after 300 s, get outcome `expired` with "It may have run. Check the session." A real result that arrives after that is still published, with `late: true`. A second real result for the same id is not published.
 - **Replies.** `turn.complete` with `agentId === undefined` and `reason === 'answer'` in the Chief's session: strip the confirm line, post `/api/mod/reply`. `turn.start` and `turn.complete` post `/api/mod/busy`.
+- **Sending and stopping.** `$.session.send` gets `to` as the bare CLI id (the session's `cliId`), never a session name. The mod reads `claude agents --json` rows by `sessionId` (and `name` for its own start dedupe). A background row is `{ "pid", "id": "d8d55fa2", "cwd", "kind": "background", "startedAt", "sessionId": "<full uuid>", "name": "<exact --name>", "status": "busy" | "idle", "state": "working" | ... }`. After `claude stop <id>` the row leaves the list (it shows only with `--all`), so the session is no longer live.
+- **`cos_act` tool (the model's only way to act).** Input `{ "action": "archive" | "stop" | "reply" | "open" | "start", "id"?: "local_... | cli_... | bg_...", "text"?: str, "reason"?: str, "cwd"?: str, "title"?: str, "model"?: "haiku" | "sonnet" | "opus" }`; only `action` is required by the schema, and the mod refuses every action except `start` without an `id` ("Give the session id from cos_sessions."). There is no `confirmed` input: only Jay confirms. `text` is the reply's exact words or the new session's task; `cwd`, `title` and `model` are for `start` only. Result `{ "ok": bool, "outcome": ActionOutcomeKind, "detail": "...", "needsJay"?: "..." }`, where `ActionOutcomeKind` is `done | refused | failed | needsConfirm | opened | handedOff | unsupported | expired` and `ok` is true only for `done` (`expired` comes only from the server). `needsJay` says what Jay must do, for example "Archive it in the Claude app." or "Say yes to stop it while it works." The mod runs the same router for `cos_act` and for console items, follows the session's `actions` map (a `no` is `refused` with the note word for word), and refuses every action in a turn that another session's message started.
 - **Tool for the model.** Register a tool `cos_sessions` (no input, or `{ id }`) that returns `GET /api/sessions` compacted (id, title, state, stateReason, summary, needsAction, parentId, live, lastActivityAt), so the Chief answers "what needs me" without reading transcripts.
 - **voice-replies.** voice-replies 1.7.0 skips speaking when `HOME\run\server.json` has `chiefSessionId` equal to its session's id. The Chief's speech comes only from the voice daemon.
 
@@ -204,10 +265,10 @@ Events (`event:` name, `data:` JSON). Snapshot on connect. 15 s heartbeat commen
 | `voice` | `VoiceStatus` |
 | `level` | `{ "rms": 0.42 }` |
 | `partial` | `{ "text": "close the dp1" }` |
-| `action` | `{ "actionId": "...", "ok": bool, "detail": "..." }` |
+| `action` | `{ "actionId": "...", "ok": bool, "outcome": ActionOutcomeKind, "detail": "...", "pending"?: true, "late"?: true }`. `ok` is true only for `done`. `pending: true` comes only with `handedOff`, which is not final. `expired` is sent only by the server. `late: true` marks a real result after the server already sent `expired` for that id. |
 | `notify` | `{ "id": "...", "sessionId": "local_...", "kind": "you" \| "done" \| "stale", "text": "Plan PRO-921 is waiting on your vendor name decision." }` |
 | `jev` | `{ "id": "msg_...", "decision": JevDecision }` Jev's advice for one of Jay's messages, sent when it is ready (rules at once, a model within `jevTimeoutMs`). |
-| `chief` | `{ "connected": bool, "sessionId": "local_..." \| null, "busy": bool }` sent when the Chief connects, leaves, or starts or ends a turn. The snapshot's `chief` object has the same three fields. |
+| `chief` | `{ "connected": bool, "sessionId": "local_..." \| null, "cliId": "..." \| null, "busy": bool, "host": ChiefHost \| null }` sent when the Chief connects, leaves, changes its caps, or starts or ends a turn. The snapshot's `chief` object has the same fields. |
 
 ### Serving the console (added after the console build)
 
@@ -243,7 +304,7 @@ Within one batch, a session gets one line: its latest notice, except that "chang
 
 ## 10. Console
 
-Build `docs/mockup.html` for real: same layout, tokens and type. Control center graph (in-view sessions; the Chief as the core; parent-child links; animated dots from `activity` events; hover card with title, state, stateReason, summary; click opens the page view). Roster with state filters and the "N older sessions" row. Chief panel (orb tied to `VoiceStatus` and `level`, toggles for wake word, speak replies and push-to-talk with a hold-to-talk button, chat with confirm buttons, typed input). Page view (`#/s/<id>`: transcript with paging, reply box that posts `/reply`, Open in app, Ask Chief about it (sends "Tell me about <title>."), Archive with the confirm flow). Toast for `notify` events. Reconnect SSE with backoff 2 s doubling to 30 s and show "Reconnecting" in the header. Respect `prefers-reduced-motion`. Works at 1280 to 2560 wide and degrades to one column under 720.
+Build `docs/mockup.html` for real: same layout, tokens and type. Control center graph (in-view sessions; the Chief as the core; parent-child links; animated dots from `activity` events; hover card with title, state, stateReason, summary; click opens the page view). Roster with state filters and the "N older sessions" row. Chief panel (orb tied to `VoiceStatus` and `level`, toggles for wake word, speak replies and push-to-talk with a hold-to-talk button, chat with confirm buttons, typed input). Page view (`#/s/<id>`: transcript with paging, reply box that posts `/reply`, Open in app, Ask Chief about it (sends "Tell me about <title>."), Archive and Stop with the confirm flow). Every button follows the session's `actions`: `yes` shows it, `app` shows "Archive in the app" or "Reply in the app" (these open the Claude app), `no` hides it and the page shows the note. A server with no `actions` map (0.2.2 and older) keeps the old behavior: reply, archive and open for `local_` sessions only. Toast for `notify` events. Reconnect SSE with backoff 2 s doubling to 30 s and show "Reconnecting" in the header. Respect `prefers-reduced-motion`. Works at 1280 to 2560 wide and degrades to one column under 720.
 
 ## 11. Jev (server/cos/jev/)
 

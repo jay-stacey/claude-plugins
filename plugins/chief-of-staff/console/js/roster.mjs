@@ -34,7 +34,7 @@ export function initRoster({ open, hover }) {
 function row(x, child, now) {
   return h('button', {
     type: 'button',
-    class: `row ${stateClass(x.state)}${child ? ' child' : ''}${x.kind === 'background' ? ' bg' : ''}`,
+    class: `row ${stateClass(x.state)}${child ? ' child' : ''}${x.kind === 'bg' ? ' bg' : ''}`,
     'data-id': x.id,
     title: x.stateReason || '',
   },

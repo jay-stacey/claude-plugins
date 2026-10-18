@@ -24,7 +24,7 @@ from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Decision, 
 from .jev.engine import Jev
 from .jev.settings import read_jev_json
 from .notices import Notices, public
-from .sessions import ID_RE, SessionReader, now_ms
+from .sessions import ID_RE, LINK, SessionReader, now_ms, plan_actions
 from .transcripts import BackgroundWork, Tail, Transcript
 from .voice import Voice
 
@@ -37,9 +37,14 @@ IDLE_EXIT_S = 12 * 3600
 LIVE_ACTIVE_S = 5       # `claude agents --json` while a console or the Chief is connected
 LIVE_IDLE_S = 20        # and while nobody is
 SESSIONS_MIN_GAP_S = 2  # at most one full sessions event this often
-ACK_TIMEOUT_S = 60      # an inbox item the mod took and did not acknowledge goes back
-ARCHIVE_EXPIRY_S = 120  # an archive nobody ran by then is reported as not done
-MAX_DELIVERIES = 3
+ACK_TIMEOUT_S = 60      # a prompt the mod took and did not acknowledge goes back
+ARCHIVE_EXPIRY_S = 120  # an archive or stop the mod never took by then is reported as not done
+TAKEN_GIVEUP_S = 600    # an action the mod took and never reported on is then reported as expired
+HANDOFF_EXPIRY_S = 300  # a handed-off action with no second result by then is reported as expired
+SETTLED_KEEP_S = 600    # a real result's id is remembered this long, so a retry is not published twice
+UNSETTLED_KEEP_S = 3600 # an id the server reported expired, so a late real result is still published
+MAX_DELIVERIES = 3      # for prompts; an action is delivered once
+ACTION_TYPES = ("archive", "reply", "stop")
 FILES_EVERY_S = 10
 PULSE_EVERY_S = 1
 LEVEL_MIN_GAP_S = 0.1
@@ -52,6 +57,22 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.go
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
        "form-action 'none'; frame-ancestors 'none'")
 STATIC_RE = re.compile(r"^/static/((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)$")
+OUTCOMES = ("done", "failed", "refused", "needsConfirm", "opened", "handedOff", "unsupported")
+EXPIRED_TAKEN = "It may have run. Check the session."
+SURFACES = ("terminal", "desktop", "vscode", "mobile")
+CAP_KEYS = ("desktopSessions", "desktopListed", "desktopStart", "sendMessage", "listAgents", "cliStop", "cliStart")
+# An old mod sends no host: it runs in the desktop app with the desktop tools.
+LEGACY_HOST = {"surface": None, "caps": {k: k in ("desktopSessions", "desktopStart") for k in CAP_KEYS}}
+
+
+def _host(body):
+    """The Chief's {surface, caps} from a hello or caps body; unknown keys are dropped, missing caps are false."""
+    host = body.get("host")
+    if not isinstance(host, dict):
+        return LEGACY_HOST
+    caps = host.get("caps") if isinstance(host.get("caps"), dict) else {}
+    return {"surface": host.get("surface") if host.get("surface") in SURFACES else None,
+            "caps": {k: caps.get(k) is True for k in CAP_KEYS}}
 
 
 class HttpError(Exception):
@@ -71,6 +92,20 @@ def _text_field(body, key, required=True):
     if len(value) > MAX_TEXT:
         raise HttpError(400, f"The {key} is too long. Keep it under {MAX_TEXT} characters.")
     return value
+
+
+def default_open(link):
+    """Opens a claude:// link in the desktop app."""
+    if os.name == "nt":
+        os.startfile(link)        # noqa: the link is built from a checked id
+    else:
+        subprocess.Popen(["xdg-open", link], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def prompt_from(request):
+    """Where a prompt came from, set by the server code path, never by a request body: the mod trusts it."""
+    return "voice" if request.source == "voice" else "console"
 
 
 def write_json_atomic(path: Path, data):
@@ -98,7 +133,7 @@ class App:
         self.chat = deque(maxlen=200)
         self.lock = threading.RLock()
         self.build_lock = threading.Lock()
-        self.chief = {"sessionId": None, "cliId": None, "busy": False}
+        self.chief = {"sessionId": None, "cliId": None, "busy": False, "host": None}
         self.chief_poll_at = 0.0
         self.chief_polling = 0
         self.last_connected = False
@@ -116,11 +151,15 @@ class App:
         self.clock = time.time
         self.inflight = {}      # item id -> {"item", "deliveredAt", "tries"}
         self.queued_at = {}     # item id -> when it was first queued
+        self.handoffs = {}      # action id -> {"at", "type", "sessionId"}: handed off, waiting for its second result
+        self.settled = {}       # action id -> when its real result was published
+        self.unsettled = {}     # action id -> when the server published "expired" for it
         self.started_at = now_ms()
         self.ids = itertools.count(1)
         self.stopping = threading.Event()
         self.ready = threading.Event()
         self.server = None
+        self.open_url = default_open
         # Jev advises the Chief on each request. The hosted key lives in memory only.
         self.jev_key = None
         self.jev = Jev(self.settings, paths.home())
@@ -145,7 +184,14 @@ class App:
     def chief_public(self):
         with self.lock:
             return {"connected": self.chief_connected(), "sessionId": self.chief["sessionId"],
-                    "cliId": self.chief["cliId"], "busy": self.chief["busy"]}
+                    "cliId": self.chief["cliId"], "busy": self.chief["busy"], "host": self.chief["host"]}
+
+    def chief_caps(self):
+        """The connected Chief's caps, or None when no Chief is connected."""
+        with self.lock:
+            if not self.chief_connected():
+                return None
+            return (self.chief["host"] or LEGACY_HOST)["caps"]
 
     def voice_status(self):
         return self.voice.snapshot(busy=self.chief["busy"])
@@ -156,7 +202,8 @@ class App:
             return bool((cli and cli == c["cliId"]) or (session and c["sessionId"] and session == c["sessionId"]))
 
     def state_info(self):
-        return {"api": API, "port": self.port, "pid": os.getpid(), "token": self.token,
+        return {"api": API, "version": paths.plugin_version(), "port": self.port, "pid": os.getpid(),
+                "token": self.token,
                 "url": f"http://127.0.0.1:{self.port}/#{self.token}",
                 "chiefSessionId": self.chief["sessionId"], "chiefCliId": self.chief["cliId"],
                 "voicePid": self.voice.pid(), "startedAt": self.started_at}
@@ -176,7 +223,17 @@ class App:
     # ----------------------------------------------------------- sessions --
     def rebuild(self):
         with self.build_lock:
-            sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"])
+            with self.lock:
+                cli, local = self.chief["cliId"], self.chief["sessionId"]
+            if cli and not local:
+                # A hello that missed the desktop file (it never waits for a scan) learns the id here.
+                local = self.reader.find_local(cli)
+                if local:
+                    with self.lock:
+                        if self.chief["cliId"] == cli and not self.chief["sessionId"]:
+                            self.chief["sessionId"] = local
+            sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"],
+                                         caps=self.chief_caps())
             snap = self.reader.snapshot()
             body = json.dumps(snap["sessions"], sort_keys=True) + json.dumps(snap["liveStale"])
             now = self.clock()
@@ -243,34 +300,43 @@ class App:
             self.queued_at.pop(item_id, None)
         return entry
 
-    def fail_action(self, item, detail):
+    def fail_action(self, item, detail, outcome="expired"):
         self.queued_at.pop(item["id"], None)
-        if item.get("type") in ("archive", "reply"):
-            self.hub.publish("action", {"actionId": item["id"], "ok": False, "detail": detail})
+        if item.get("type") in ACTION_TYPES:
+            self.hub.publish("action", {"actionId": item["id"], "ok": False, "outcome": outcome, "detail": detail})
 
     def sweep_inbox(self):
-        """Puts back items the mod took and never acknowledged, and gives up on
-        archives nobody ran within two minutes, so the console stops waiting."""
+        """Prompts the mod took and never acknowledged go back, at most three times.
+
+        An action is delivered exactly once: once taken it is never put back, and the server
+        waits for the mod's result, giving up after ten minutes. An archive or stop the mod
+        never took within two minutes is reported as not done."""
         now = self.clock()
-        late_note = "The Chief did not get to it within two minutes, so nothing was archived."
+        late_note = {"archive": "The Chief did not get to it within two minutes, so nothing was archived.",
+                     "stop": "The Chief did not get to it within two minutes, so nothing was stopped."}
 
         def expired(item):
-            return item.get("type") == "archive" and now - self.queued_at.get(item["id"], now) > ARCHIVE_EXPIRY_S
+            return item.get("type") in late_note and now - self.queued_at.get(item["id"], now) > ARCHIVE_EXPIRY_S
 
         for item in self.inbox.pending():
             if expired(item):
                 self.inbox.drop(lambda x, iid=item["id"]: x["id"] == iid)
-                self.fail_action(item, late_note)
+                self.fail_action(item, late_note[item["type"]])
         with self.lock:
-            late = [(iid, e) for iid, e in self.inflight.items() if now - e["deliveredAt"] > ACK_TIMEOUT_S]
+            late = [(iid, e) for iid, e in self.inflight.items()
+                    if now - e["deliveredAt"] > (TAKEN_GIVEUP_S if e["item"].get("type") in ACTION_TYPES
+                                                 else ACK_TIMEOUT_S)]
             for iid, _ in late:
                 del self.inflight[iid]
         for iid, entry in late:
             item = entry["item"]
-            if expired(item):
-                self.fail_action(item, late_note)
+            if item.get("type") in ACTION_TYPES:
+                # It may have run: a late real result is still published (mod_result).
+                with self.lock:
+                    self.unsettled[iid] = now
+                self.fail_action(item, EXPIRED_TAKEN)
             elif entry["tries"] >= MAX_DELIVERIES:
-                self.fail_action(item, "The Chief did not confirm it after three tries.")
+                self.queued_at.pop(iid, None)
             else:
                 with self.lock:
                     self.inflight[iid] = {"item": item, "deliveredAt": float("inf"), "tries": entry["tries"]}
@@ -287,13 +353,14 @@ class App:
                                 notify_on=bool(self.settings.get("notify")), quiet=self.settings.get("quietHours", ""),
                                 local_minutes=local.hour * 60 + local.minute)
         if text:
-            self.queue_item({"id": self.new_id("ntc"), "type": "prompt", "text": text})
+            self.queue_item({"id": self.new_id("ntc"), "type": "prompt", "text": text, "from": "notice"})
 
     def tick_chief(self):
         """A `chief` event when the Chief's connection comes or goes (it stops polling)."""
         connected = self.chief_connected()
         if connected != self.last_connected:
             self.last_connected = connected
+            self.rebuild()                  # the actions depend on whether a Chief is there
             self.publish_chief()
 
     def pulse(self):
@@ -399,6 +466,7 @@ class App:
             self.tick_notices()
             self.tick_chief()
             self.sweep_inbox()
+            self.sweep_results()
 
         def watchdog():
             idle = time.time() - max(self.hub.last_client_at, self.last_mod_at)
@@ -467,10 +535,16 @@ class App:
             self.voice_jobs.put(job)
 
     # ---------------------------------------------------------------- API --
-    def health(self):
-        return {"ok": True, "api": API, "app": APP, "voice": self.voice_status(), "chief": self.chief_public(),
-                "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")},
-                "jev": {k: v for k, v in self.jev.health().items() if k in ("provider", "model", "fallbacks")}}
+    def health(self, full=True):
+        """Health needs no token. Without one it leaves out the Chief's ids, its host and the desktop source."""
+        chief = self.chief_public()
+        out = {"ok": True, "api": API, "app": APP, "version": paths.plugin_version(), "voice": self.voice_status(),
+               "chief": chief if full else {"connected": chief["connected"], "busy": chief["busy"]},
+               "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")},
+               "jev": {k: v for k, v in self.jev.health().items() if k in ("provider", "model", "fallbacks")}}
+        if full:
+            out["desktop"] = self.reader.desktop_source.info()
+        return out
 
     def session_or_404(self, sid):
         if not ID_RE.match(sid or ""):
@@ -482,7 +556,17 @@ class App:
 
     def require_chief(self):
         if not self.chief_connected():
-            raise HttpError(409, "No Chief is connected. Type /chief in a desktop session first.")
+            raise HttpError(409, "No Chief is connected. Type /chief in a Claude Code session first.")
+
+    def plan_action(self, s, action):
+        """"yes" or "app" for this action on this session (THE action table), else a 409."""
+        if s["isChief"]:
+            raise HttpError(409, "That is the Chief's own session.")
+        actions, notes = plan_actions(self.reader.action_input(s), self.chief_caps())
+        value = actions.get(action, "no")
+        if value == "no":
+            raise HttpError(409, notes.get(action) or "That session does not support this from here.", unsupported=True)
+        return value
 
     def say(self, body):
         text = _text_field(body, "text")
@@ -534,8 +618,8 @@ class App:
             self.jev.record(msg["id"], request, final, quick)
         except Exception:
             traceback.print_exc()
-        self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text, "jev": decision,
-                         "hint": hint_text(final)})
+        self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text, "from": prompt_from(request),
+                         "jev": decision, "hint": hint_text(final)})
 
     def jev_start_worker(self):
         with self.jev_lock:
@@ -554,7 +638,8 @@ class App:
                 # Never lose Jay's words: the prompt goes out without advice.
                 traceback.print_exc()
                 try:
-                    self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text})
+                    self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text,
+                                     "from": prompt_from(request)})
                 except Exception:
                     traceback.print_exc()
             finally:
@@ -598,34 +683,49 @@ class App:
 
     def reply(self, sid, body):
         s = self.session_or_404(sid)
+        if self.plan_action(s, "reply") == "app":
+            self.open_link(s)
+            return {"opened": True, "detail": "Opened it in the Claude app. Reply there."}
         text = _text_field(body, "text")
-        if s["isChief"]:
-            raise HttpError(409, "That is the Chief's own session. Talk to it in the chat instead.")
-        if not sid.startswith("local_"):
-            raise HttpError(409, "Only desktop sessions can get a reply from here.")
         self.require_chief()
         action = self.new_id("act")
-        self.queue_item({"id": action, "type": "reply", "sessionId": sid, "title": s["title"], "text": text})
+        self.queue_item({"id": action, "type": "reply", "sessionId": sid, "title": s["title"], "kind": s["kind"],
+                         "text": text})
         self.hub.publish("activity", {"kind": "chief", "to": sid})
         return {"actionId": action}
 
     def archive(self, sid, body):
         s = self.session_or_404(sid)
-        if s["isChief"]:
-            raise HttpError(409, "That is the Chief's own session. Archive it from the desktop app.")
-        if not sid.startswith("local_"):
-            raise HttpError(409, "Only desktop sessions can be archived from here.")
+        if self.plan_action(s, "archive") == "app":
+            self.open_link(s)
+            return {"opened": True, "detail": "Opened it in the Claude app. Archive it there."}
         busy = self.active_family(s)
         if busy and body.get("confirmed") is not True:
             why = (f"{s['title']} is working right now. Archiving it stops that work." if busy == "self" else
                    f"A helper session of {s['title']} is working right now. Archiving it can stop that work.")
             raise HttpError(409, why, needsConfirm=True, reason=why)
         self.require_chief()
+        return self.queue_action(s, "archive", body, "Archived from the Chief of Staff console")
+
+    def stop(self, sid, body):
+        """Stops a background session (the mod runs `claude stop <bgId>`). Its conversation is kept."""
+        s = self.session_or_404(sid)
+        self.plan_action(s, "stop")             # only ever "yes" or a 409
+        busy = self.active_family(s)
+        if busy and body.get("confirmed") is not True:
+            why = (f"{s['title']} is working right now. Stopping it ends that turn. Its conversation is kept."
+                   if busy == "self" else
+                   f"A helper session of {s['title']} is working right now. Stopping it can end that work.")
+            raise HttpError(409, why, needsConfirm=True, reason=why)
+        self.require_chief()
+        return self.queue_action(s, "stop", body, "Stopped from the Chief of Staff console")
+
+    def queue_action(self, s, kind_of, body, default_reason):
         action = self.new_id("act")
-        reason = _text_field(body, "reason", required=False) or "Archived from the Chief of Staff console"
-        self.queue_item({"id": action, "type": "archive", "sessionId": sid, "title": s["title"], "reason": reason,
-                         "confirmed": body.get("confirmed") is True})
-        self.hub.publish("activity", {"kind": "chief", "to": sid})
+        reason = _text_field(body, "reason", required=False) or default_reason
+        self.queue_item({"id": action, "type": kind_of, "sessionId": s["id"], "title": s["title"], "kind": s["kind"],
+                         "reason": reason, "confirmed": body.get("confirmed") is True})
+        self.hub.publish("activity", {"kind": "chief", "to": s["id"]})
         return {"actionId": action}
 
     def active_family(self, s):
@@ -639,18 +739,20 @@ class App:
         return None
 
     def open_session(self, sid):
+        """Opens a desktop session in the Claude app. Needs no Chief."""
         s = self.session_or_404(sid)
-        if not s.get("link"):
-            raise HttpError(409, "That session has no desktop link.")
-        try:
-            if os.name == "nt":
-                os.startfile(s["link"])        # noqa: the link is built from a checked id
-            else:
-                subprocess.Popen(["xdg-open", s["link"]], stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            raise HttpError(500, "The desktop app did not open the session.")
+        self.plan_action(s, "open")
+        self.open_link(s)
         return {"ok": True}
+
+    def open_link(self, s):
+        """Opens the session's deep link; a failure is a 500, never an "opened" answer."""
+        if not ID_RE.match(s["id"]) or not s["id"].startswith("local_"):
+            raise HttpError(409, "Only desktop sessions open in the Claude app.", unsupported=True)
+        try:
+            self.open_url(LINK.format(s["id"]))
+        except OSError:
+            raise HttpError(500, "The Claude app did not open the session.")
 
     def voice_control(self, body):
         listen = body.get("listen") if body.get("listen") in ("wake", "ptt", "off") else None
@@ -711,7 +813,7 @@ class App:
         if body.get("isChief") is False:
             with self.lock:
                 if self.chief["cliId"] == cli:
-                    self.chief.update(sessionId=None, cliId=None, busy=False)
+                    self.chief.update(sessionId=None, cliId=None, busy=False, host=None)
             self.save_state()
             self.rebuild()
             self.publish_chief()
@@ -722,7 +824,7 @@ class App:
         local = self.reader.local_id_for(cli)
         with self.lock:
             new_chief = self.chief["cliId"] != cli
-            self.chief.update(sessionId=local, cliId=cli, busy=False)
+            self.chief.update(sessionId=local, cliId=cli, busy=False, host=_host(body))
             self.chief_poll_at = time.time()
         if options is not None:
             before = {k: self.settings.get(k) for k in config.VOICE_KEYS}
@@ -757,6 +859,17 @@ class App:
             return None
         return {"sessionId": sid, "title": s["title"] if s else None}
 
+    def mod_caps(self, body):
+        """The Chief's tools changed: new caps, so new actions."""
+        if not self.is_chief_caller(None, _text_field(body, "cliId", False)):
+            return {"ok": True, "ignored": True}
+        with self.lock:
+            self.chief["host"] = _host(body)
+            self.chief_poll_at = time.time()
+        self.rebuild()
+        self.publish_chief()
+        return {"ok": True}
+
     def mod_reply(self, body):
         text = body.get("text")
         if not isinstance(text, str) or not text.strip():
@@ -780,10 +893,43 @@ class App:
         entry = self.ack(action)
         if entry and entry["item"].get("type") == "prompt":
             return {"ok": True}                 # a prompt's acknowledgement, not an action
-        event = {"actionId": action, "ok": bool(body.get("ok")),
-                 "detail": str(body.get("detail") or "")[:500]}
+        outcome = body.get("outcome")
+        if outcome not in OUTCOMES:
+            outcome = "handedOff" if body.get("handedOff") is True else "done" if body.get("ok") is True else "failed"
+        detail = str(body.get("detail") or "")[:500]
+        now = self.clock()
+        with self.lock:
+            if outcome == "handedOff":
+                # Not final: the mod posts a second result when the Chief's own call ends.
+                if action in self.settled or action in self.handoffs:
+                    return {"ok": True}
+                item = entry["item"] if entry else {}
+                self.handoffs[action] = {"at": now, "type": item.get("type"), "sessionId": item.get("sessionId")}
+                event = {"actionId": action, "ok": False, "pending": True, "outcome": outcome, "detail": detail}
+            else:
+                if action in self.settled:
+                    return {"ok": True}         # a retry of a result already published
+                self.handoffs.pop(action, None)
+                event = {"actionId": action, "ok": outcome == "done", "outcome": outcome, "detail": detail}
+                if self.unsettled.pop(action, None) is not None:
+                    event["late"] = True
+                self.settled[action] = now
         self.hub.publish("action", event)
         return {"ok": True}
+
+    def sweep_results(self):
+        """Hand-offs with no second result within five minutes are reported as expired."""
+        now = self.clock()
+        with self.lock:
+            late = [a for a, h in self.handoffs.items() if now - h["at"] > HANDOFF_EXPIRY_S]
+            for a in late:
+                del self.handoffs[a]
+                self.unsettled[a] = now
+            for keep, ids in ((SETTLED_KEEP_S, self.settled), (UNSETTLED_KEEP_S, self.unsettled)):
+                for a in [a for a, at in ids.items() if now - at > keep]:
+                    del ids[a]
+        for a in late:
+            self.hub.publish("action", {"actionId": a, "ok": False, "outcome": "expired", "detail": EXPIRED_TAKEN})
 
     def mod_busy(self, body):
         # Only the Chief's own turns count. A session that is still claiming the role posts
@@ -832,7 +978,8 @@ class App:
                 if self.chief_connected():
                     return self.say({"text": text, "source": "voice"})
                 self.add_chat("me", text.strip()[:MAX_TEXT], "voice")
-                self.add_chat("chief", "No Chief is connected yet. Type slash chief in a desktop session first.", "notice")
+                self.add_chat("chief", "No Chief is connected yet. Type slash chief in a Claude Code session first.",
+                              "notice")
         elif kind == "barge":
             # Jay talked over the Chief: what was still waiting to be said goes too.
             self.voice_jobs.drop(lambda j: j.get("kind") in ("speak", "ack"))
@@ -857,12 +1004,12 @@ class App:
 
 # ------------------------------------------------------------- routing -----
 
-SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|open))?$")
+SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|stop|open))?$")
 
 
 def route(app, method, path, query, body):
     if method == "GET" and path == "/api/sessions":
-        return app.reader.snapshot()
+        return dict(app.reader.snapshot(), desktop=app.reader.desktop_source.info(with_root=True))
     if method == "GET" and path == "/api/chat":
         with app.lock:
             return {"messages": list(app.chat)[-100:]}
@@ -888,6 +1035,8 @@ def route(app, method, path, query, body):
             return app.reply(sid, body)
         if method == "POST" and sub == "archive":
             return app.archive(sid, body)
+        if method == "POST" and sub == "stop":
+            return app.stop(sid, body)
         if method == "POST" and sub == "open":
             return app.open_session(sid)
     if method == "POST" and path == "/api/chief/say":
@@ -898,6 +1047,8 @@ def route(app, method, path, query, body):
         return app.mod_inbox(query)
     if method == "POST" and path == "/api/mod/hello":
         return app.mod_hello(body)
+    if method == "POST" and path == "/api/mod/caps":
+        return app.mod_caps(body)
     if method == "POST" and path == "/api/mod/reply":
         return app.mod_reply(body)
     if method == "POST" and path == "/api/mod/result":
@@ -991,7 +1142,10 @@ def make_handler(app):
                     self.guard(need_token=False)
                     if method != "GET":
                         raise HttpError(405, "Not allowed.")
-                    return self.send_json(200, app.health())
+                    # Never a 401 here: app.py checks health with no token. The token only adds detail.
+                    given = self.headers.get("X-COS-Token") or ""
+                    full = bool(given) and secrets.compare_digest(given.encode(), app.token.encode())
+                    return self.send_json(200, app.health(full))
                 if path == "/api/stream" and method == "GET":
                     self.guard(need_token=True, query=query)
                     return self.stream()

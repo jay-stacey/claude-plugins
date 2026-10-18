@@ -1,8 +1,8 @@
 ---
 name: chief-setup
-description: This skill should be used when the user asks to "set up the chief", "install chief of staff", "chief setup", "set up the chief of staff voice", "set up my wake word", "enroll the wake word", or "why can't the chief archive sessions". It checks the machine (Windows, Python, GPU), installs the local voice with server/setup.ps1, sets up Jev (the local, hosted or rules-only decision model), offers wake-word enrollment, explains and, after a yes, writes the permission rule that lets the Chief archive and message sessions, then starts the Chief once and checks it is healthy.
-when_to_use: Trigger phrases include "set up the chief", "set up Jev", "install chief of staff", "chief setup", "set up the voice for the chief", "enroll my wake word", "train hey chief on my voice", "the chief can't archive", "first time setup for the chief".
-argument-hint: "[check | voice | jev | enroll | permissions]"
+description: This skill should be used when the user asks to "set up the chief", "install chief of staff", "chief setup", "set up the chief of staff voice", "set up my wake word", "enroll the wake word", or "why can't the chief archive sessions". It checks the machine (Windows, Python, GPU), installs the local voice with server/setup.ps1, sets up Jev (the local, hosted or rules-only decision model), offers wake-word enrollment, explains and, after a yes, writes the permission rule that lets the Chief archive and message sessions, explains why the Chief can't archive, stop or message a session, then starts the Chief once and checks it is healthy.
+when_to_use: Trigger phrases include "set up the chief", "set up Jev", "install chief of staff", "chief setup", "set up the voice for the chief", "enroll my wake word", "train hey chief on my voice", "the chief can't archive", "the chief can't message", "why did the chief's action fail", "chief in the terminal", "first time setup for the chief".
+argument-hint: "[check | voice | jev | enroll | permissions | actions]"
 allowed-tools: Bash, PowerShell, Read, Write, Edit, AskUserQuestion
 ---
 
@@ -11,7 +11,7 @@ allowed-tools: Bash, PowerShell, Read, Write, Edit, AskUserQuestion
 Sets up the chief-of-staff plugin on this machine, for a new user or a new PC. Run the
 steps in order and tell the user, in short plain sentences, what each step found and
 what comes next. An argument runs one step only: `check` (step 1), `voice` (step 2),
-`jev` (step 3), `enroll` (step 4), `permissions` (step 5).
+`jev` (step 3), `enroll` (step 4), `permissions` (step 5), `actions` (step 6).
 
 `${CLAUDE_PLUGIN_ROOT}` is the plugin folder. `HOME` below is
 `%USERPROFILE%\.claude\chief-of-staff`.
@@ -20,7 +20,8 @@ what comes next. An argument runs one step only: `check` (step 1), `voice` (step
 
 Run these and report one line each:
 
-- Windows: `$env:OS` is `Windows_NT`. The voice and the desktop session files are Windows only today; on another system, say the console and typed chat still work and skip steps 2, 3 and 4.
+- Windows: `$env:OS` is `Windows_NT`. The voice is Windows only today. Terminal sessions work on any system. Desktop sessions are read on Windows. On another system, say the console and typed chat still work and skip steps 2, 3 and 4.
+- Claude Code: `claude --version` is 2.1.234 or later, which cross-session messages need on Windows. If it is older, say to run `claude update`.
 - Python 3.10 or later for the app server: `python --version` (then `py -3 --version`). Without it, say how to install it (python.org, tick "Add to PATH") and stop.
 - GPU: `powershell -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/server/setup.ps1" -CheckOnly`. It reports the NVIDIA card, its memory and driver, and which recipe it would pick: CUDA (Chatterbox voice, larger speech model) or CPU (Kokoro voice, smaller speech model). Say which and why in one sentence.
 
@@ -120,42 +121,81 @@ microphone.
 3. Run `"HOME\venv\Scripts\python.exe" "${CLAUDE_PLUGIN_ROOT}/server/voice/voiced.py" --enroll 5` and relay its prompts.
 4. If the command says `--enroll` is unknown, the installed voice is older: say so and skip.
 
-## 5. Allow the Chief to archive and message sessions
+## 5. Allow the Chief to act on sessions
 
-The Chief archives and messages other sessions with the desktop app's session tools. In
-auto mode, a request that arrives by voice or from the console is not typed in the
-session, so the app may refuse the call. A project permission rule fixes that. Explain
-this, show the exact file below, and ask before writing it. Never write it without a yes.
+The Chief acts on other sessions through one tool, `cos_act` (archive, stop, reply, open
+and start). In auto mode, a request that arrives by voice or from the console is not typed
+in the session, so the classifier may refuse the call. A permission rule fixes that.
 
-The file is `.claude\settings.json` in the folder the Chief's session runs in. Merge into
-an existing file instead of replacing it, keeping every other key and rule:
+1. Ask with AskUserQuestion where the Chief will run: Desktop app, Terminal, or Both.
+2. Find the target file. It is `.claude\settings.local.json` at the git repository root of
+   the Chief's folder when that folder is in a git repository
+   (`git -C <folder> rev-parse --show-toplevel`), else in the Chief's folder. It is
+   personal and stays out of git.
+3. Show the matching JSON from `references/permissions.md` (Desktop app or Both: `cos_act`
+   and the two desktop tools; Terminal: `cos_act` only), merged into the file as it is now.
+4. Say what the rule means, in these plain words: "With this rule, the Chief can reply to
+   sessions, stop background sessions, start background sessions, archive desktop sessions
+   and open desktop sessions without asking you each time. It asks you first only when the
+   session shows as working, or its helper session does. It does not ask for a session that
+   shows as idle or waiting, even if that session was in the middle of a task. There are
+   three levels of yes. First, a yes you type in the Chief's own session counts for
+   everything. Second, a yes you speak, type in the console chat, or give with a console
+   button answers only "it's working, stop or archive anyway?". When your own settings say
+   ask for a command or a message, type your yes in the Chief's session. Third, a message
+   from another session never counts as your yes, and the Chief does nothing in a turn that
+   another session started. It never deletes a session, and it never ends a terminal
+   session. The rule is written to .claude\settings.local.json in this folder, or at the
+   root of its git repository when it is in one. So it applies to every session started
+   there, and it stays out of git."
+5. Ask the yes or no question. Name the exact file path, and say "every session started in
+   this folder (or repository) gets this rule". Write the file only after a yes, merged as
+   `references/permissions.md` says. Never write it without a yes.
+6. Say in one sentence that no Bash rule is needed: the mod runs `claude stop` and
+   `claude --bg` itself with fixed arguments, so a Bash rule would only invite the Chief to
+   skip `cos_act` and its checks.
+7. Run `git -C <folder> check-ignore .claude/settings.local.json`. When the file is not
+   ignored, offer to add `.claude/settings.local.json` to that repository's `.gitignore`,
+   and add it only after a yes.
+8. An older install wrote the two desktop rules to `.claude\settings.json`. If they are
+   there, show those lines and offer to move them to the local file. Move them only after
+   a yes.
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__ccd_session_mgmt__archive_session",
-      "mcp__ccd_session_mgmt__send_message"
-    ]
-  }
-}
-```
+**Desktop Chief.** When the Chief runs in the desktop app, advise allow or deny rules, not
+ask rules, for `claude stop`, `claude --bg` and `SendMessage`. Say why in one sentence: in
+the desktop app the Chief cannot tell Jay's typed yes from other messages, so an ask rule
+always refuses. The `actions` check (step 6) reports any such ask rule in a desktop Chief's
+settings, with this fix.
 
-Say what it allows in plain words: sessions in this folder may archive and message other
-sessions without asking. The Chief's own rules still apply on top: it asks before archiving
-a session that is working, and the mod refuses that archive until the user says yes.
+Recommend running the Chief in its own folder, for example
+`%USERPROFILE%\.claude\chief-of-staff\desk`, because the rule reaches every session started
+in that folder. Offer to create that folder.
+
 If writing the file is refused (auto mode may block a change to its own permissions),
 give the user the file content and its path to create themselves. More:
 `references/permissions.md`.
 
-## 6. Start the Chief and check it
+## 6. Check why an action fails (`actions`)
 
-1. Tell the user to type `/chief` in the desktop session that should become the Chief.
+Read-only. It changes nothing. Run each check in the table in `references/permissions.md`
+("Why an action failed"): the server version, the desktop files the server sees, the host
+tools, the allow rule, ask rules on a desktop Chief, messaging turned off, the CLI version,
+`claude` on the PATH, and the last failures in `HOME\logs\mod.log`.
+
+Report one plain line per check. Then add one line for each action that does not work, with
+its fix. Never change a setting from this step. When a fix needs a settings change, offer
+the step that makes it (`/chief-setup permissions`), or say what Jay can change himself.
+
+## 7. Start the Chief and check it
+
+1. Tell the user to type `/chief` in the session that should become the Chief, in the
+   desktop app or a terminal.
    Do not run it from here when this session is not meant to be the Chief.
 2. Then check health: `python "${CLAUDE_PLUGIN_ROOT}/server/app.py" status`, and read
-   `http://127.0.0.1:<port>/api/health` (no token needed). Report: the server runs, a
-   Chief is connected, the voice state (`not-installed`, `starting`, `listening` and so on)
-   and the Chief's name and wake word from `settings`.
+   `http://127.0.0.1:<port>/api/health` (no token needed). Report: the server runs, its
+   `version`, a Chief is connected, the desktop files it sees (`desktop.source` and
+   `desktop.files` from `status`), the voice state (`not-installed`, `starting`,
+   `listening` and so on) and the Chief's name and wake word from `settings`.
 3. If the voice shows `error`, quote its `detail` and point to `HOME\logs\voiced.log`.
 
 End with one line on how to change the name, wake word and fillers:
@@ -164,4 +204,4 @@ End with one line on how to change the name, wake word and fillers:
 ## Additional resources
 
 - `references/voice-install.md`: what setup.ps1 installs, where, the recipes, and fixes for common failures.
-- `references/permissions.md`: why the rule is needed, how to merge it, and how to remove it.
+- `references/permissions.md`: why the rule is needed, the exact rules, how to merge them, the `actions` checks, and how to remove the rule.
