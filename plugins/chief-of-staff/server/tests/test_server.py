@@ -148,7 +148,10 @@ class Api(unittest.TestCase):
         status, said = self.call("POST", "/api/chief/say", {"text": "What needs me?", "source": "voice"})
         self.assertEqual(status, 200)
         status, inbox = self.call("GET", f"/api/mod/inbox?wait=1&session={CHIEF}&cli=cli-wait")
-        self.assertEqual(inbox["items"], [{"id": said["id"], "type": "prompt", "text": "What needs me?"}])
+        self.assertEqual([{k: i[k] for k in ("id", "type", "text")} for i in inbox["items"]],
+                         [{"id": said["id"], "type": "prompt", "text": "What needs me?"}])
+        self.assertEqual(inbox["items"][0]["jev"]["route"], "chief")
+        self.assertTrue(inbox["items"][0]["hint"].startswith("Jev suggests:"))
         chat = self.call("GET", "/api/chat")[1]["messages"]
         self.assertEqual((chat[-1]["role"], chat[-1]["source"]), ("me", "voice"))
         sessions = {s["id"]: s for s in self.call("GET", "/api/sessions")[1]["sessions"]}

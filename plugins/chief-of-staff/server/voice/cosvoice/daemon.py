@@ -66,6 +66,13 @@ class Clips:
     after the voice engine changes."""
 
     YES = "Yes?"
+    # Which default fillers suit each kind of request Jev sees (#29). A kind with no
+    # cached match, or Jay's own filler list, falls back to any filler.
+    KINDS = {
+        "lookup": ("Let me check.", "Checking now.", "Let me look.", "Okay, checking.", "One sec."),
+        "work": ("On it.", "Sure, give me a moment.", "Looking into it.", "Give me a second."),
+        "chat": ("One sec.", "Just a moment."),
+    }
 
     def __init__(self, tts, fillers: list[str]) -> None:
         self.tts = tts
@@ -116,10 +123,13 @@ class Clips:
         with self._lock:
             return self._cache.get(text)
 
-    def pick_filler(self):
-        """A cached filler that is not one of the last two played."""
+    def pick_filler(self, kind=None):
+        """A cached filler that is not one of the last two played, fitting the kind of
+        request when one is given and a fitting filler is cached."""
         with self._lock:
             ready = [f for f in self.fillers if f in self._cache]
+            fitting = [f for f in ready if f in self.KINDS.get(kind, ())]
+            ready = fitting or ready
             fresh = [f for f in ready if f not in self._recent[-2:]] or ready
             if not fresh:
                 return None, None
@@ -276,18 +286,18 @@ class Daemon:
             self.apply_settings(job)
             self.apply_control(job.get("listen"), job.get("speak"), job.get("pttDown"))
         elif kind == "ack":
-            self.ack(job.get("id"))
+            self.ack(job.get("id"), job.get("filler"))
         elif kind in ("quit", "shutdown"):
             LOG.info("quit job from the server")
             self.stop_event.set()
         else:
             LOG.warning("unknown job kind %r", kind)
 
-    def ack(self, job_id=None) -> bool:
+    def ack(self, job_id=None, kind=None) -> bool:
         """A short filler ("On it.") right away, unless something is already playing."""
         played = False
         if self.speak and not self.speaker.is_busy and not self.speaker.is_speaking:
-            text, clip = self.clips.pick_filler()
+            text, clip = self.clips.pick_filler(kind)
             if clip is not None:
                 played = self.speaker.play_clip(*clip)
                 LOG.info("filler %r%s", text, "" if played else " skipped")

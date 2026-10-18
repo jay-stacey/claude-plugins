@@ -587,3 +587,35 @@ test('/chief-setup is not /chief: it makes no Chief', async ($, on) => {
   expect(fake.store.get('chief:session')).toBe(undefined)
   expect(fake.posted('/api/mod/hello')).toEqual([])
 })
+
+test('Jev advice goes on its own line after Jay\'s words, and what the Chief did is reported', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  on('tool.call', { tool: 'mcp__ccd_session__start_session' }, () => ({ result: '{"session_id":"local_new"}' }) as never)
+  await becomeChief($, clock)
+  const jev = { model: 'opus', route: 'new_session', background: true, estimate_s: 1200, filler: 'work',
+    source: 'rules', ms: 0.2, override: false }
+  fake.inbox.push({ id: 'msg_1', type: 'prompt', text: 'Research the vendor options', jev,
+    hint: 'Jev suggests: start a new session. Advice only. Jay\'s words win.' })
+  await settle(clock)
+  expect(fake.prompts.at(-1)?.text).toBe(
+    'Research the vendor options\n\nJev suggests: start a new session. Advice only. Jay\'s words win.')
+
+  // The Chief starts a session: the route and model it chose are logged once.
+  await $.tool.call({ tool: 'mcp__ccd_session__start_session', model: 'claude-opus-5-5' } as never)
+  await $.turn.complete({ ...TURN, answer: 'Started it.' })
+  await settle(clock, 500)
+  expect(fake.posted('/api/mod/jev-outcome')).toEqual([{ id: 'msg_1', route: 'new_session', model: 'claude-opus-5-5' }])
+
+  // A prompt the Chief answers itself is logged as handled by the Chief when its turn ends.
+  fake.inbox.push({ id: 'msg_2', type: 'prompt', text: 'What needs me?', jev: { ...jev, route: 'chief' }, hint: 'Jev suggests.' })
+  await settle(clock)
+  await $.turn.complete({ ...TURN, turnId: 't2', answer: 'Nothing right now.' })
+  await settle(clock, 500)
+  expect(fake.posted('/api/mod/jev-outcome').at(-1)).toEqual({ id: 'msg_2', route: 'chief', model: null })
+
+  // A prompt without advice changes nothing.
+  fake.inbox.push({ id: 'msg_3', type: 'prompt', text: 'Thanks' })
+  await settle(clock)
+  expect(fake.prompts.at(-1)?.text).toBe('Thanks')
+})

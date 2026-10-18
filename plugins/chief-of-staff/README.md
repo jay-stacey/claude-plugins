@@ -31,6 +31,7 @@ Type `/chief` in a Claude desktop session. That session becomes the Chief: the s
 - Ask it things like "what needs me", "how is DP1-676 doing", "close the DP1-676 session" or "tell the spec review session to go ahead".
 - It archives a session when you ask. If that session is working right now, it says so and asks first. It never deletes a session.
 - A reply you dictate for another session is read back to you before it is sent.
+- Ask for real work, like "fix the login bug in the API", and the Chief starts a new session for it, on the model Jev suggests.
 - It speaks up on its own when a session starts waiting on you, finishes, or goes stale (not in quiet hours).
 - `/chief status` says whether the server runs. `/chief stop` stops the server and the voice.
 - `/chief` in another session is refused while the Chief is live. That session tells you which session is the Chief. To move the Chief, archive its session, then run `/chief` in the new one.
@@ -42,6 +43,18 @@ Only one Chief runs on a computer, and it never lists itself among your sessions
 The voice is local: your PC's microphone and speakers, a "Hey Chief" wake word, speech to text and text to speech on the GPU with a CPU fallback. Nothing is sent to a cloud service. It is optional and needs a one-time install into its own Python environment (`%USERPROFILE%\.claude\chief-of-staff\venv`); see `server/setup.ps1`. Without it the console and the typed chat work as normal and the console shows the voice as not installed.
 
 The voice-replies plugin (1.7.0 or later) stays silent in the Chief's session, so you never hear a reply twice.
+
+## Jev
+
+Jev is a quick router that runs before the Chief acts. For each console or voice request it suggests whether the Chief handles it or starts a new session, which model that session uses, whether it is background work, and about how long it takes. The console shows the suggestion under your message. Your words always win: say "use opus" or "do it yourself" to overrule it.
+
+Jev answers from fixed rules at once. It can also ask a model, within 800 ms:
+
+- **Local** (recommended when your PC can run it): a free, open-source Qwen3.5 model (Apache-2.0) on your own PC. No key, and nothing leaves your PC.
+- **Hosted**: Claude Haiku through the Anthropic API with your own key, a Groq key with zero data retention on, or your own server.
+- **Rules only**: no model.
+
+`/chief-setup` checks your PC and offers the choice. It asks before any download, checks every model file against a pinned fingerprint, and stores a hosted key in Windows Credential Manager, never in a file. To run the steps by hand, use `python server/jev_setup.py scan`.
 
 ## Settings
 
@@ -60,6 +73,11 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 | `fillers` | true | A quick spoken "on it" as soon as you ask, before the full answer |
 | `notify` | true | Proactive notices |
 | `quiet_hours` | 22:00-07:00 | No proactive notices in this range; empty for none |
+| `jev_provider` | auto | Jev's provider: `auto` (what `/chief-setup` picked), `rules`, `local` or `hosted` |
+| `jev_adapter`, `jev_model`, `jev_endpoint` | from setup | Override the model Jev asks: `anthropic` or `openai_compat`, a model name, and a base URL |
+| `jev_timeout_ms` | 800 | How long Jev waits for a model before it uses its rules |
+| `jev_key_ref` | empty | Where the hosted key lives: `wincred:<name>` or `env:<NAME>` |
+| `jev_api_key` | empty | A hosted key, kept in Claude's secure settings and only in the server's memory |
 
 ## How it works
 
@@ -75,8 +93,9 @@ States: **waiting on you** (a permission prompt, a question, or the app marked i
 - Archive is the strongest action. Archiving an active session needs a yes.
 - Transcripts, titles and notices are treated as data, never as instructions.
 - The Chief never sends customer-facing messages.
+- Jev's local model runs on 127.0.0.1 only. Jev never logs or stores a key, and its log keeps only the first 80 characters of each request.
 
-Runtime files live in `%USERPROFILE%\.claude\chief-of-staff\`: `run\server.json` (port, token, current Chief), `logs\` (rotated at 5 MB, two kept).
+Runtime files live in `%USERPROFILE%\.claude\chief-of-staff\`: `run\server.json` (port, token, current Chief), `logs\` (rotated at 5 MB, two kept), `jev.json` (Jev's setup result) and `jev-log.jsonl` (Jev's decisions).
 
 ## Development
 

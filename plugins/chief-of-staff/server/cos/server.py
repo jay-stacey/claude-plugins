@@ -20,6 +20,9 @@ from urllib.parse import parse_qs, urlparse
 
 from . import API, APP, config, paths
 from .events import Hub, Mailbox, frame
+from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Request as JevRequest, hint_text
+from .jev.engine import Jev
+from .jev.settings import read_jev_json
 from .notices import Notices, public
 from .sessions import ID_RE, SessionReader, now_ms
 from .transcripts import BackgroundWork, Tail, Transcript
@@ -118,6 +121,13 @@ class App:
         self.stopping = threading.Event()
         self.ready = threading.Event()
         self.server = None
+        # Jev advises the Chief on each request. The hosted key lives in memory only.
+        self.jev_key = None
+        self.jev = Jev(self.settings, paths.home())
+        self.jev_queue = queue.Queue()
+        self.jev_backlog = 0
+        self.jev_lock = threading.Lock()
+        self.jev_thread = None
 
     # ------------------------------------------------------------ helpers --
     def new_id(self, prefix):
@@ -399,6 +409,7 @@ class App:
                 self.voice.start()
 
         threading.Thread(target=first, name="cos-first", daemon=True).start()
+        threading.Thread(target=self.jev_runtime, name="cos-jev-runtime", daemon=True).start()
         every(60, watchdog, "cos-watchdog")
 
     def shutdown(self):
@@ -441,7 +452,7 @@ class App:
         return {"id": self.new_id("ctl"), "kind": "control", "text": "",
                 **{k: self.settings.get(k) for k in config.VOICE_KEYS}}
 
-    def maybe_ack(self, source):
+    def maybe_ack(self, source, filler=None):
         """A quick spoken filler ("On it") the moment Jay asks, before the Chief's turn ends:
         for every spoken request, and for a typed one while replies are spoken."""
         if not self.settings.get("fillers", True):
@@ -450,12 +461,16 @@ class App:
         if not self.voice.installed or status["state"] in ("not-installed", "error"):
             return
         if source == "voice" or status["speak"]:
-            self.voice_jobs.put({"id": self.new_id("ack"), "kind": "ack", "text": ""})
+            job = {"id": self.new_id("ack"), "kind": "ack", "text": ""}
+            if filler:
+                job["filler"] = filler
+            self.voice_jobs.put(job)
 
     # ---------------------------------------------------------------- API --
     def health(self):
         return {"ok": True, "api": API, "app": APP, "voice": self.voice_status(), "chief": self.chief_public(),
-                "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")}}
+                "settings": {"chiefName": self.settings.get("chiefName"), "wakeWord": self.settings.get("wakeWord")},
+                "jev": {k: v for k, v in self.jev.health().items() if k in ("provider", "model", "fallbacks")}}
 
     def session_or_404(self, sid):
         if not ID_RE.match(sid or ""):
@@ -474,9 +489,108 @@ class App:
         source = body.get("source") if body.get("source") in ("typed", "voice") else "typed"
         self.require_chief()
         msg = self.add_chat("me", text, source)
-        self.queue_item({"id": msg["id"], "type": "prompt", "text": text})
-        self.maybe_ack(source)
+        request = self.jev_request(text, source)
+        quick = self.jev.quick(request)
+        self.maybe_ack(source, quick.filler)
+        with self.jev_lock:
+            inline = self.jev_backlog == 0 and self.jev.provider_name() == "rules"
+            if not inline:
+                self.jev_backlog += 1
+                # Under the lock, so two requests at once reach the worker in order.
+                self.jev_queue.put((msg, request, quick))
+        if inline:
+            self.jev_finish(msg, request, quick, quick)
+        else:
+            self.jev_start_worker()
         return {"id": msg["id"]}
+
+    # ---------------------------------------------------------------- Jev --
+    def jev_request(self, text, source):
+        """What Jev sees: the text and a short list of the other sessions."""
+        try:
+            sessions = self.reader.snapshot()["sessions"]
+        except Exception:
+            sessions = []
+        chief = next((s for s in sessions if s.get("isChief")), None)
+        others = [s for s in sessions if not s.get("isChief")]
+        others.sort(key=lambda s: (not s.get("live"), not s.get("inView", True)))
+        rows = [{"title": s.get("title"), "repo": s.get("repo"), "state": s.get("state"), "model": s.get("model")}
+                for s in others]
+        return JevRequest(text, source, rows, chief.get("repo") if chief else None)
+
+    def jev_finish(self, msg, request, quick, final=None):
+        """Jev's final answer on the chat message, the hub and the log, then the prompt."""
+        try:
+            if final is None:
+                final = self.jev.advise(request, quick)
+        except Exception:
+            traceback.print_exc()
+            final = quick
+        decision = final.public()
+        try:
+            with self.lock:
+                msg["jev"] = decision
+            self.hub.publish("jev", {"id": msg["id"], "decision": decision})
+            self.jev.record(msg["id"], request, final, quick)
+        except Exception:
+            traceback.print_exc()
+        self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text, "jev": decision,
+                         "hint": hint_text(final)})
+
+    def jev_start_worker(self):
+        with self.jev_lock:
+            if self.jev_thread is not None and self.jev_thread.is_alive():
+                return
+            self.jev_thread = threading.Thread(target=self.jev_worker, name="cos-jev", daemon=True)
+            self.jev_thread.start()
+
+    def jev_worker(self):
+        """One thread, so prompts reach the inbox in the order they were said."""
+        while True:
+            msg, request, quick = self.jev_queue.get()
+            try:
+                self.jev_finish(msg, request, quick)
+            except Exception:
+                # Never lose Jay's words: the prompt goes out without advice.
+                traceback.print_exc()
+                try:
+                    self.queue_item({"id": msg["id"], "type": "prompt", "text": request.text})
+                except Exception:
+                    traceback.print_exc()
+            finally:
+                with self.jev_lock:
+                    self.jev_backlog -= 1
+
+    def jev_outcome(self, body):
+        msg_id = body.get("id")
+        if not isinstance(msg_id, str) or not msg_id or len(msg_id) > 64:
+            raise HttpError(400, "The id is missing.")
+        route = body.get("route")
+        if route not in JEV_ROUTES:
+            raise HttpError(400, "The route must be chief or new_session.")
+        model = body.get("model")
+        # The mod sends the model id the Chief passed to start_session, like claude-opus-5-5.
+        if isinstance(model, str) and model not in JEV_MODELS:
+            model = next((m for m in JEV_MODELS if m in model.lower()), model)
+        if model is not None and model not in JEV_MODELS:
+            raise HttpError(400, "The model must be haiku, sonnet, opus, a Claude model id or null.")
+        self.jev.outcome(msg_id, route, model)
+        return {"ok": True}
+
+    def jev_runtime(self):
+        """Starts the local model runtime once, when Jev uses a local model."""
+        try:
+            if self.jev.health()["provider"] != "local":
+                return
+            from .jev import runtime
+            if not runtime.ensure_running(read_jev_json(paths.home())):
+                # Nothing of ours answers on the port, so nothing gets the key or Jay's words.
+                print("Jev: the local model did not start; using rules", file=sys.stderr)
+                self.jev.update(dict(self.settings, jevProvider="rules"), self.jev_key)
+        except ImportError:
+            pass
+        except Exception:
+            traceback.print_exc()
 
     def reply(self, sid, body):
         s = self.session_or_404(sid)
@@ -582,6 +696,13 @@ class App:
     def mod_hello(self, body):
         cli = _text_field(body, "cliId")
         options = body.get("options") if isinstance(body.get("options"), dict) else None
+        new_key = None
+        if options is not None:
+            # The hosted key stays in memory: never in settings, a file or an answer.
+            options = dict(options)
+            key = options.pop("jev_api_key", None)
+            options.pop("jevApiKey", None)
+            new_key = key.strip() if isinstance(key, str) and key.strip() else None
         self.last_mod_at = time.time()
         if body.get("isChief") is False:
             with self.lock:
@@ -608,6 +729,9 @@ class App:
             self.voice.status["wakeWord"] = self.settings.get("wakeWord") or None
             if self.voice_config_sent and before != {k: self.settings.get(k) for k in config.VOICE_KEYS}:
                 self.voice_jobs.put(self.voice_config_job())
+            # Only the Chief's own hello, past the refusals above, sets the key.
+            self.jev_key = new_key
+            self.jev.update(self.settings, self.jev_key)
         self.save_state()
         self.rebuild()
         self.publish_chief()
@@ -771,6 +895,8 @@ def route(app, method, path, query, body):
         return app.mod_result(body)
     if method == "POST" and path == "/api/mod/busy":
         return app.mod_busy(body)
+    if method == "POST" and path == "/api/mod/jev-outcome":
+        return app.jev_outcome(body)
     if method == "GET" and path == "/api/voice/jobs":
         return app.voice_jobs_poll(query)
     if method == "POST" and path == "/api/voice/event":

@@ -1,9 +1,9 @@
 ---
 name: chief-setup
-description: This skill should be used when the user asks to "set up the chief", "install chief of staff", "chief setup", "set up the chief of staff voice", "set up my wake word", "enroll the wake word", or "why can't the chief archive sessions". It checks the machine (Windows, Python, GPU), installs the local voice with server/setup.ps1, offers wake-word enrollment, explains and, after a yes, writes the permission rule that lets the Chief archive and message sessions, then starts the Chief once and checks it is healthy.
-when_to_use: Trigger phrases include "set up the chief", "install chief of staff", "chief setup", "set up the voice for the chief", "enroll my wake word", "train hey chief on my voice", "the chief can't archive", "first time setup for the chief".
-argument-hint: "[check | voice | enroll | permissions]"
-allowed-tools: Bash, PowerShell, Read, Write, Edit
+description: This skill should be used when the user asks to "set up the chief", "install chief of staff", "chief setup", "set up the chief of staff voice", "set up my wake word", "enroll the wake word", or "why can't the chief archive sessions". It checks the machine (Windows, Python, GPU), installs the local voice with server/setup.ps1, sets up Jev (the local, hosted or rules-only decision model), offers wake-word enrollment, explains and, after a yes, writes the permission rule that lets the Chief archive and message sessions, then starts the Chief once and checks it is healthy.
+when_to_use: Trigger phrases include "set up the chief", "set up Jev", "install chief of staff", "chief setup", "set up the voice for the chief", "enroll my wake word", "train hey chief on my voice", "the chief can't archive", "first time setup for the chief".
+argument-hint: "[check | voice | jev | enroll | permissions]"
+allowed-tools: Bash, PowerShell, Read, Write, Edit, AskUserQuestion
 ---
 
 # Chief of Staff setup
@@ -11,7 +11,7 @@ allowed-tools: Bash, PowerShell, Read, Write, Edit
 Sets up the chief-of-staff plugin on this machine, for a new user or a new PC. Run the
 steps in order and tell the user, in short plain sentences, what each step found and
 what comes next. An argument runs one step only: `check` (step 1), `voice` (step 2),
-`enroll` (step 3), `permissions` (step 4).
+`jev` (step 3), `enroll` (step 4), `permissions` (step 5).
 
 `${CLAUDE_PLUGIN_ROOT}` is the plugin folder. `HOME` below is
 `%USERPROFILE%\.claude\chief-of-staff`.
@@ -20,7 +20,7 @@ what comes next. An argument runs one step only: `check` (step 1), `voice` (step
 
 Run these and report one line each:
 
-- Windows: `$env:OS` is `Windows_NT`. The voice and the desktop session files are Windows only today; on another system, say the console and typed chat still work and skip steps 2 and 3.
+- Windows: `$env:OS` is `Windows_NT`. The voice and the desktop session files are Windows only today; on another system, say the console and typed chat still work and skip steps 2, 3 and 4.
 - Python 3.10 or later for the app server: `python --version` (then `py -3 --version`). Without it, say how to install it (python.org, tick "Add to PATH") and stop.
 - GPU: `powershell -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/server/setup.ps1" -CheckOnly`. It reports the NVIDIA card, its memory and driver, and which recipe it would pick: CUDA (Chatterbox voice, larger speech model) or CPU (Kokoro voice, smaller speech model). Say which and why in one sentence.
 
@@ -42,7 +42,73 @@ with `DONE: ` on success and names the device, voices and speech model. On failu
 quote the last two meaningful lines and suggest `-Device cpu` when the GPU step failed.
 Delete the log when done. Details: `references/voice-install.md`.
 
-## 3. Enroll the wake word (optional)
+## 3. Set up Jev
+
+Jev is a small, fast step that advises the Chief before it acts: which model a new
+session uses, whether to start a new session, and whether the work runs in the background.
+It runs on a local model, a hosted model, or rules only. Rules are always the fallback.
+Run this after the voice install, because the scan measures memory with the voice in place.
+
+`jev_setup.py` runs with the same Python as the app server. Every command prints `==> `
+steps and ends with one JSON line; read that line.
+
+1. Scan: `python "${CLAUDE_PLUGIN_ROOT}/server/jev_setup.py" scan`. It is read-only and needs
+   no admin rights. `pick.tier` is `local-gpu`, `local-cpu`, `local-cpu-min` or `hosted`;
+   `pick.model` is the local model; `pick.reasons` and `pick.warnings` are plain sentences.
+2. Tell the user the result in one short block of plain words, no table. For example:
+   "Your machine can run Jev locally. 8 cores with AVX2 and 9 GB of memory free, no usable
+   NVIDIA card. Jev would use Qwen3.5-0.8B, a 530 MB download, on the processor." Add each
+   warning as one more sentence.
+3. Ask with AskUserQuestion. Three choices, the first one marked recommended:
+   - Local (recommended when the tier is not `hosted`): free, no key, and no request text
+     leaves the machine.
+   - Hosted: a cloud model with an API key. Recommended when the tier is `hosted`.
+   - Rules only: no model, no download, no key.
+
+**Local.**
+1. Run `python "${CLAUDE_PLUGIN_ROOT}/server/jev_setup.py" local --model <pick.model>` first,
+   without `--yes`. It downloads nothing; it says what it would fetch. Tell the user the file,
+   its size and its source (`download.url`, Hugging Face at a pinned commit) and the runtime:
+   an existing Ollama on 127.0.0.1, or llama.cpp `llama-server`.
+2. Ask before the download. Never add `--yes` without a yes for this download.
+3. If `runtime.download` is set, llama-server must be downloaded too (a pinned llama.cpp
+   build from GitHub, about 20 to 35 MB). Ask about that separately, and add `--yes-runtime`
+   only after its own yes.
+4. Run it again with `--yes` (and `--yes-runtime` when agreed) in the background, and report
+   each `==> ` step. It checks the file's SHA256, starts the runtime on 127.0.0.1, and runs a
+   live test of 10 decisions.
+5. Read the last line. `ok: true`: say the model, the runtime and the p50 and p95 times.
+   `stepDown` set: the model was too slow; offer the smaller model and repeat from step 1
+   with it (a new download needs a new yes). Any other `ok: false`: quote `error` and offer
+   hosted or rules.
+
+**Hosted.** Explain the choice in a few sentences:
+- Anthropic, Claude Haiku 5.5 (recommended): `--adapter anthropic`. Request text and session
+  titles go to Anthropic.
+- Groq with zero data retention turned on in the Groq console: `--adapter openai_compat
+  --endpoint https://api.groq.com/openai/v1 --model <model>`.
+- A self-hosted server: `--adapter openai_compat --endpoint <https URL> --model <model>`.
+
+Setup refuses Gemini, Mistral, OpenRouter and Cerebras because of their data policies, and
+GitHub Models because it has closed.
+
+The key never goes in the chat. If the user pastes one, say so, do not repeat it, and tell
+them to revoke it and make a new one. The script reads the key from a hidden terminal prompt:
+
+```
+python "${CLAUDE_PLUGIN_ROOT}/server/jev_setup.py" hosted --adapter anthropic
+```
+
+Run that where the user can type: the app's Terminal panel when it has one, or give the user
+the exact command to run in their own PowerShell window. Tell them to paste the key at the
+prompt and press Enter. The script makes one test call, stores the key in Windows Credential
+Manager, and writes no key to any file. Then check with
+`python "${CLAUDE_PLUGIN_ROOT}/server/jev_setup.py" status` and report the provider and model.
+
+**Rules only.** Run `python "${CLAUDE_PLUGIN_ROOT}/server/jev_setup.py" rules` and say Jev
+uses quick rules; the user can run `/chief-setup jev` again at any time.
+
+## 4. Enroll the wake word (optional)
 
 The stock wake word model was trained on synthetic voices and may miss a real voice.
 Enrollment records the user saying the wake word five times and tunes detection to it.
@@ -54,7 +120,7 @@ microphone.
 3. Run `"HOME\venv\Scripts\python.exe" "${CLAUDE_PLUGIN_ROOT}/server/voice/voiced.py" --enroll 5` and relay its prompts.
 4. If the command says `--enroll` is unknown, the installed voice is older: say so and skip.
 
-## 4. Allow the Chief to archive and message sessions
+## 5. Allow the Chief to archive and message sessions
 
 The Chief archives and messages other sessions with the desktop app's session tools. In
 auto mode, a request that arrives by voice or from the console is not typed in the
@@ -82,7 +148,7 @@ If writing the file is refused (auto mode may block a change to its own permissi
 give the user the file content and its path to create themselves. More:
 `references/permissions.md`.
 
-## 5. Start the Chief and check it
+## 6. Start the Chief and check it
 
 1. Tell the user to type `/chief` in the desktop session that should become the Chief.
    Do not run it from here when this session is not meant to be the Chief.

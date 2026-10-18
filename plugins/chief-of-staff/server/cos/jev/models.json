@@ -1,0 +1,35 @@
+{
+  "note": "Pinned local Jev models. Values come from the Hugging Face API tree listing (lfs.oid is the SHA256) on 2026-10-17. Qwen publishes no GGUF for Qwen3.5-0.8B or Qwen3.5-2B, so the files come from unsloth, a quantizer that converts the official Qwen weights without changing them. Change a pin only with a new commit, size and SHA256 from the same listing.",
+  "models": [
+    {
+      "id": "qwen3.5-0.8b",
+      "publisher": "unsloth",
+      "repo": "unsloth/Qwen3.5-0.8B-GGUF",
+      "commit": "6ab461498e2023f6e3c1baea90a8f0fe38ab64d0",
+      "file": "Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "sizeBytes": 532517120,
+      "license": "Apache-2.0",
+      "params": "0.8B",
+      "quant": "Q4_K_M",
+      "baseModel": "Qwen/Qwen3.5-0.8B",
+      "baseCommit": "2fc06364715b967f1860aea9cf38778875588b17",
+      "source": "Q4_K_M GGUF of Qwen/Qwen3.5-0.8B by unsloth. The base model card and LICENSE file say Apache-2.0, and the GGUF card links the same license. Qwen has no official GGUF of this model. Text only: the vision projector (mmproj) is not used."
+    },
+    {
+      "id": "qwen3.5-2b",
+      "publisher": "unsloth",
+      "repo": "unsloth/Qwen3.5-2B-GGUF",
+      "commit": "f6d5376be1edb4d416d56da11e5397a961aca8ae",
+      "file": "Qwen3.5-2B-Q4_K_M.gguf",
+      "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+      "sizeBytes": 1280835840,
+      "license": "Apache-2.0",
+      "params": "2B",
+      "quant": "Q4_K_M",
+      "baseModel": "Qwen/Qwen3.5-2B",
+      "baseCommit": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+      "source": "Q4_K_M GGUF of Qwen/Qwen3.5-2B by unsloth. The base model card and LICENSE file say Apache-2.0, and the GGUF card links the same license. Qwen has no official GGUF of this model. Text only: the vision projector (mmproj) is not used."
+    }
+  ]
+}
