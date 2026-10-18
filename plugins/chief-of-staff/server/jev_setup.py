@@ -425,11 +425,14 @@ def ollama_import(exe, model_id, gguf, runner=subprocess.run):
     name = f"jev-{model_id}"
     mf = modelfile_path(model_id)
     mf.parent.mkdir(parents=True, exist_ok=True)
-    mf.write_text(f"FROM {Path(gguf).resolve()}\nPARAMETER temperature 0\n", encoding="utf-8")
+    # num_ctx matches llama-server's -c 4096: the prompt with its examples is about 1,300 tokens
+    # and 20 sessions add up to 900. Ollama's default is the model's full window (5 GB here).
+    mf.write_text(f"FROM {Path(gguf).resolve()}\nPARAMETER temperature 0\nPARAMETER num_ctx 4096\n",
+                  encoding="utf-8")
     step(f"Importing the model into Ollama as {name}")
     env = dict(os.environ, OLLAMA_HOST=f"127.0.0.1:{OLLAMA_PORT}")
     try:
-        r = runner([str(exe), "create", name, "-f", str(mf)], capture_output=True, text=True, timeout=900,
+        r = runner([str(exe), "create", name, "-f", str(mf)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
                    env=env, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as err:
         raise SetupError(f"ollama create did not run: {type(err).__name__}") from None
@@ -458,7 +461,7 @@ def runtime_config(plan, model_id, gguf, tier):
                 "runtime": {"kind": "ollama", "exe": plan["exe"], "args": ["serve"], "port": OLLAMA_PORT,
                             "apiKeyRef": None}}
     args = ["-m", str(Path(gguf).resolve()), "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
-            "-c", "2048", "--jinja", "--alias", model_id, "--no-webui"]
+            "-c", "4096", "--jinja", "--alias", model_id, "--no-webui"]
     if tier == "local-gpu":
         args += ["-ngl", "99"]
     return {"endpoint": f"http://127.0.0.1:{LLAMA_PORT}/v1", "model": model_id,
@@ -486,9 +489,11 @@ def live_test(cfg, key, samples=None):
     if cfg["runtime"]["kind"] == "llama_server" and not serves_model(cfg, key):
         raise SetupError(f"something else answers on 127.0.0.1:{cfg['runtime']['port']} (another llama-server "
                          "or an old key); close it and run again")
-    step("Live test: one warm-up, then 10 decisions")
+    # 30 calls, so p95 is not just the single slowest call (with 10 it is the maximum).
+    samples = samples or list(bench.SAMPLES) * 3
+    step(f"Live test: two warm-ups, then {len(samples)} decisions")
     provider = providers.OpenAICompatProvider(cfg["endpoint"], cfg["model"], key, name="local")
-    return bench.run(provider, samples or bench.SAMPLES, warmups=1)
+    return bench.run(provider, samples, warmups=2)
 
 
 def _dry_run(entry, plan, pick, have_model):
