@@ -176,6 +176,15 @@ class App:
     # ----------------------------------------------------------- sessions --
     def rebuild(self):
         with self.build_lock:
+            with self.lock:
+                cli, local = self.chief["cliId"], self.chief["sessionId"]
+            if cli and not local:
+                # A hello that missed the desktop file (it never waits for a scan) learns the id here.
+                local = self.reader.find_local(cli)
+                if local:
+                    with self.lock:
+                        if self.chief["cliId"] == cli and not self.chief["sessionId"]:
+                            self.chief["sessionId"] = local
             sessions = self.reader.build(self.settings, self.chief["sessionId"], chief_cli=self.chief["cliId"])
             snap = self.reader.snapshot()
             body = json.dumps(snap["sessions"], sort_keys=True) + json.dumps(snap["liveStale"])
@@ -862,7 +871,7 @@ SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|op
 
 def route(app, method, path, query, body):
     if method == "GET" and path == "/api/sessions":
-        return app.reader.snapshot()
+        return dict(app.reader.snapshot(), desktop=app.reader.desktop_source.info(with_root=True))
     if method == "GET" and path == "/api/chat":
         with app.lock:
             return {"messages": list(app.chat)[-100:]}

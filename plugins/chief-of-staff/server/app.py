@@ -232,13 +232,37 @@ def spawn(args):
     raise SystemExit(f"The server did not start within 5 seconds. See {log_path}.")
 
 
+def server_desktop(info):
+    """The running server's desktop folder {source, files, root}, or None."""
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{int(info.get('port'))}/api/sessions",
+                                     headers={"X-COS-Token": info.get("token") or ""})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            desktop = json.loads(r.read()).get("desktop")
+        return desktop if isinstance(desktop, dict) else None
+    except Exception:
+        return None
+
+
+def local_desktop():
+    """The desktop folder as this machine resolves it now, without a server."""
+    from cos.sessions import DesktopSource
+    source = DesktopSource()
+    source.scan()
+    return dict(source.info(with_root=True), desktopLocal=True)
+
+
 def cmd_status(args):
     info = read_info()
     if not info:
-        return {"running": False}
-    return {"running": healthy(info.get("port")), "url": info.get("url"), "port": info.get("port"),
+        return {"running": False, "version": paths.plugin_version(), "desktop": local_desktop()}
+    running = healthy(info.get("port"))
+    desktop = server_desktop(info) if running else None
+    return {"running": running, "url": info.get("url"), "port": info.get("port"),
             "pid": info.get("pid"), "chiefSessionId": info.get("chiefSessionId"),
-            "voicePid": info.get("voicePid"), "startedAt": info.get("startedAt")}
+            "voicePid": info.get("voicePid"), "startedAt": info.get("startedAt"),
+            "version": info.get("version") or paths.plugin_version(),
+            "desktop": desktop or local_desktop()}
 
 
 def cmd_stop(args):

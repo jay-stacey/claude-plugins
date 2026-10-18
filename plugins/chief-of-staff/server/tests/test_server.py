@@ -134,7 +134,8 @@ class Api(unittest.TestCase):
     def test_sessions_and_one_session_and_transcript(self):
         status, body = self.call("GET", "/api/sessions")
         self.assertEqual(status, 200)
-        self.assertEqual(set(body), {"generatedAt", "liveStale", "counts", "countsInView", "sessions"})
+        self.assertEqual(set(body), {"generatedAt", "liveStale", "counts", "countsInView", "sessions", "desktop"})
+        self.assertEqual(body["desktop"], {"source": "env", "files": 7, "root": str(self.box.dir / "desktop")})
         states = {s["id"]: s["state"] for s in body["sessions"]}
         self.assertEqual(states[AAA], "active")
         self.assertEqual(states[BBB], "you")

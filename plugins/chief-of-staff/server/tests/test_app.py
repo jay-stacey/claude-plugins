@@ -42,7 +42,9 @@ class Lifecycle(unittest.TestCase):
                 self.assertIsNone(info["chiefSessionId"])
                 again = run("start", "--port", str(port))
                 self.assertTrue(again["already_running"])
-                self.assertTrue(run("status")["running"])
+                status = run("status")
+                self.assertTrue(status["running"])
+                self.assertEqual(status["desktop"], {"source": "env", "files": 7, "root": str(box.dir / "desktop")})
                 req = urllib.request.Request(f"http://127.0.0.1:{info['port']}/api/sessions",
                                              headers={"X-COS-Token": info["token"]})
                 with urllib.request.urlopen(req, timeout=10) as r:
@@ -54,7 +56,10 @@ class Lifecycle(unittest.TestCase):
                 blocker.close()
             self.assertTrue(stopped["stopped"])
             self.assertFalse((box.dir / "home" / "run" / "server.json").exists())
-            self.assertEqual(run("status"), {"running": False})
+            down = run("status")
+            self.assertFalse(down["running"])
+            self.assertEqual(down["desktop"], {"source": "env", "files": 7, "root": str(box.dir / "desktop"),
+                                               "desktopLocal": True})
             self.assertFalse(run("stop")["stopped"])
 
 

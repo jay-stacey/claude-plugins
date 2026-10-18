@@ -77,20 +77,73 @@ class AgentsSource:
         return self.rows
 
 
-class DesktopSource:
-    """The desktop app's local_*.json files, cached by mtime."""
+ARCHIVED = object()         # a cache entry for a file the archive index names; never opened
+IDX_NAME = "archived-sessions.idx"
+IDX_MAX = 1024 * 1024
+ROOT_EVERY_S = 60
+FILES_RETRY_S = 10          # a hello's miss reads the files again at most this often
 
-    def __init__(self, root=None):
+
+class DesktopSource:
+    """The desktop app's local_*.json files, cached by real path, mtime and size.
+
+    The folder is resolved again at most once a minute (every scan while none is
+    found). Files the org's archived-sessions.idx names are not opened."""
+
+    def __init__(self, root=None, clock=time.monotonic):
         self.root = Path(root) if root else None
-        self.cache = {}     # path -> (mtime_ns, record or None)
+        self.clock = clock
+        self.cache = {}     # real path -> (mtime_ns, size, record or None or ARCHIVED)
+        self.idx = {}       # org folder -> (mtime_ns, size, set of archived ids)
+        self.source = "env" if self.root else "none"
+        self.current = self.root
+        self.resolved_at = None
+        self.count = 0
+
+    def root_now(self):
+        """(source, folder or None)."""
+        if self.root is not None:
+            return "env", self.root
+        now = self.clock()
+        if self.resolved_at is None or self.current is None or now - self.resolved_at >= ROOT_EVERY_S:
+            self.source, self.current = paths.resolve_desktop_root()
+            self.resolved_at = now
+        return self.source, self.current
+
+    def archived_ids(self, org_path):
+        """The ids archived-sessions.idx lists ({"v": 1, "archived": [ids]}); a bad or missing file is none."""
+        path = os.path.join(org_path, IDX_NAME)
+        try:
+            st = os.stat(path)
+        except OSError:
+            self.idx.pop(org_path, None)
+            return set()
+        hit = self.idx.get(org_path)
+        if hit and hit[:2] == (st.st_mtime_ns, st.st_size):
+            return hit[2]
+        ids = set()
+        if st.st_size <= IDX_MAX:
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                listed = data.get("archived") if isinstance(data, dict) else None
+                if isinstance(listed, list):
+                    ids = {x for x in listed if isinstance(x, str) and ID_RE.match(x)}
+            except (OSError, ValueError):
+                ids = set()
+        self.idx[org_path] = (st.st_mtime_ns, st.st_size, ids)
+        return ids
 
     def scan(self):
-        root = self.root or paths.desktop_root()
+        _, root = self.root_now()
         seen = {}
-        try:
-            accounts = list(os.scandir(root))
-        except OSError:
-            accounts = []
+        orgs_seen = set()
+        accounts = []
+        if root is not None:
+            try:
+                accounts = list(os.scandir(root))
+            except OSError:
+                accounts = []
         for acc in accounts:
             if not acc.is_dir():
                 continue
@@ -105,23 +158,43 @@ class DesktopSource:
                     files = list(os.scandir(org.path))
                 except OSError:
                     continue
+                orgs_seen.add(org.path)
+                archived = self.archived_ids(org.path)
+                # One real path per folder, so two paths to the same files share the cache.
+                real_org = os.path.realpath(org.path)
                 for f in files:
                     if not (f.name.startswith("local_") and f.name.endswith(".json")):
                         continue
                     try:
-                        mtime = f.stat().st_mtime_ns
+                        st = f.stat()
                     except OSError:
                         continue
-                    hit = self.cache.get(f.path)
-                    if hit and hit[0] == mtime:
-                        seen[f.path] = hit
+                    key = os.path.join(real_org, f.name)
+                    stamp = (st.st_mtime_ns, st.st_size)
+                    if f.name[:-5] in archived:
+                        seen[key] = stamp + (ARCHIVED,)
                         continue
-                    seen[f.path] = (mtime, read_desktop_file(f.path))
+                    hit = self.cache.get(key)
+                    if hit and hit[:2] == stamp and hit[2] is not ARCHIVED:
+                        seen[key] = hit
+                        continue
+                    seen[key] = stamp + (read_desktop_file(f.path),)
         self.cache = seen
+        for org in list(self.idx):
+            if org not in orgs_seen:
+                del self.idx[org]
         out = {}
-        for _, rec in seen.values():
-            if rec and not rec.get("isArchived"):
+        for *_, rec in seen.values():
+            if rec and rec is not ARCHIVED and not rec.get("isArchived"):
                 out[rec["sessionId"]] = rec
+        self.count = len(out)
+        return out
+
+    def info(self, with_root=False):
+        """{source, files} for health; the folder only when asked (it holds the user name)."""
+        out = {"source": self.source if self.current is not None else "none", "files": self.count}
+        if with_root:
+            out["root"] = str(self.current) if self.current is not None else None
         return out
 
 
@@ -458,8 +531,15 @@ class SessionReader:
         self.background = {}
         self.sessions = []
         self.generated_at = 0
+        self.files_lock = threading.Lock()      # one desktop scan at a time
+        self.files_at = 0.0
 
     def refresh_files(self):
+        with self.files_lock:
+            self._refresh_files()
+
+    def _refresh_files(self):
+        self.files_at = time.monotonic()
         desktop = self.desktop_source.scan()
         mtimes = {}
         for rec in desktop.values():
@@ -525,15 +605,21 @@ class SessionReader:
         with self.lock:
             return next((s for s in self.sessions if s["id"] == sid), None)
 
+    def find_local(self, cli):
+        """The desktop id for a CLI session id from the current files, or None."""
+        with self.lock:
+            return next((sid for sid, rec in self.desktop.items() if rec.get("cliSessionId") == cli), None)
+
     def local_id_for(self, cli):
-        """The desktop id for a CLI session id, reading the files again on a miss."""
-        def find():
-            with self.lock:
-                return next((sid for sid, rec in self.desktop.items() if rec.get("cliSessionId") == cli), None)
-        hit = find()
-        if hit is None:
-            self.refresh_files()
-            hit = find()
+        """The desktop id for a CLI session id. A miss reads the files again only when the last
+        read is over 10 s old and no scan runs now, so a terminal Chief's hello never waits."""
+        hit = self.find_local(cli)
+        if hit is None and time.monotonic() - self.files_at > FILES_RETRY_S and self.files_lock.acquire(blocking=False):
+            try:
+                self._refresh_files()
+            finally:
+                self.files_lock.release()
+            hit = self.find_local(cli)
         return hit
 
     def transcript_path(self, cli):

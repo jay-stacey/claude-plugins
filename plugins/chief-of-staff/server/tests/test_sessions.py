@@ -181,8 +181,8 @@ class Reader(unittest.TestCase):
             first = src.scan()
             cached = dict(src.cache)
             src.scan()
-            self.assertEqual({k: v[0] for k, v in cached.items()}, {k: v[0] for k, v in src.cache.items()})
-            self.assertIs(next(iter(cached.values()))[1], src.cache[next(iter(cached))][1])
+            self.assertEqual({k: v[:2] for k, v in cached.items()}, {k: v[:2] for k, v in src.cache.items()})
+            self.assertIs(next(iter(cached.values()))[2], src.cache[next(iter(cached))][2])
             self.assertIn(AAA, first)
 
 
