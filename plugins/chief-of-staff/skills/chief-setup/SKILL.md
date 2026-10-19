@@ -151,9 +151,10 @@ in the session, so the classifier may refuse the call. A permission rule fixes t
 5. Ask the yes or no question. Name the exact file path, and say "every session started in
    this folder (or repository) gets this rule". Write the file only after a yes, merged as
    `references/permissions.md` says. Never write it without a yes.
-6. Say in one sentence that no Bash rule is needed: the mod runs `claude stop` and
-   `claude --bg` itself with fixed arguments, so a Bash rule would only invite the Chief to
-   skip `cos_act` and its checks.
+6. Say in one sentence that background stops need one more rule, `Bash(claude stop *)`:
+   the mod runs `claude stop` itself, but Claude Code asks about that command when no rule
+   exists. Offer to add it to the same `allow` list, only after a yes. It does not skip the
+   Chief's checks. No rule is needed for `claude --bg`.
 7. Run `git -C <folder> check-ignore .claude/settings.local.json`. When the file is not
    ignored, offer to add `.claude/settings.local.json` to that repository's `.gitignore`,
    and add it only after a yes.
@@ -164,16 +165,18 @@ in the session, so the classifier may refuse the call. A permission rule fixes t
 **Desktop Chief.** When the Chief runs in the desktop app, advise allow or deny rules, not
 ask rules, for `claude stop`, `claude --bg` and `SendMessage`. Say why in one sentence: in
 the desktop app the Chief cannot tell Jay's typed yes from other messages, so an ask rule
-always refuses. The `actions` check (step 6) reports any such ask rule in a desktop Chief's
-settings, with this fix.
+(or no rule, which counts as ask) refuses until he has typed in the Chief's session. The
+`actions` check (step 6) reports any such ask rule in a desktop Chief's settings, with this
+fix.
 
 Recommend running the Chief in its own folder, for example
 `%USERPROFILE%\.claude\chief-of-staff\desk`, because the rule reaches every session started
 in that folder. Offer to create that folder.
 
 If writing the file is refused (auto mode may block a change to its own permissions),
-give the user the file content and its path to create themselves. More:
-`references/permissions.md`.
+give the user the exact JSON to paste, with its path, including `Bash(claude stop *)` when
+they said yes to it, and tell them to keep any keys already in the file. The paste block is
+in `references/permissions.md` ("The stop rule"). More: `references/permissions.md`.
 
 ## 6. Check why an action fails (`actions`)
 

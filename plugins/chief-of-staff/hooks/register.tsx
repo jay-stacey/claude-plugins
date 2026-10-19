@@ -59,6 +59,7 @@ const NO_WORDS = /\b(no|nope|not|don't|dont|do not|wait|stop|leave|cancel|keep)\
 const SERVER_PROMPT = /^\[(Notice|Action)\b/
 const NOTICE_PROMPT = /^\[Notice\b/
 // A hint, not a wall (plan D9): it steers a model that reaches for the shell back to cos_act.
+// runsKillCommand applies it to the parts of a command that run, not to quoted text.
 const KILL_COMMAND = /\bclaude(?:\.exe|\.cmd)?["']?(?:\s+--?[\w-]+(?:[= ][^\s]+)?)*\s+(?:stop|kill|rm|respawn)\b|\b(?:taskkill|stop-process|spps|pkill|killall|tskill)\b|\.kill\s*\(|\bwmic\b[^\n]*\bprocess\b|(?:^|[;&|(]\s*)kill\s+-?\w/i
 const SHELL_REFUSAL = 'The Chief does not stop, remove or kill sessions or processes from the shell. Use the ' +
   'cos_act tool: it checks whether the session is working and asks Jay first.'
@@ -377,7 +378,91 @@ export const register: Register = (on, opts) => {
 }
 
 function isShellAllowed(command: unknown): boolean {
-  return !isChief || !KILL_COMMAND.test(String(command ?? ''))
+  return !isChief || !runsKillCommand(String(command ?? ''))
+}
+
+// Programs that run text they are given, so text near them can be a command.
+const INTERPRETER = /\b(?:bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression|eval|xargs|start-process|python[\d.]*|node|ruby|perl|source|wsl)\b/i
+
+// Whether the command would run a stop, remove or kill, not merely mention one: text in a
+// quoted string, a heredoc, a here-string or a comment is data unless an interpreter (bash -c,
+// powershell -Command, iex, a pipe into bash) or a $( ) runs it.
+export function runsKillCommand(command: string): boolean {
+  const text = withoutDataBodies(command)
+  return commandSegments(text).some(seg => KILL_COMMAND.test(INTERPRETER.test(seg.blank) ? seg.raw : seg.blank))
+}
+
+// Drops the body of a heredoc (<<EOF) or PowerShell here-string (@' ... '@), unless the line
+// that opens it names an interpreter that would run the body.
+function withoutDataBodies(command: string): string {
+  const lines = command.split(/\r?\n/)
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    out.push(line)
+    const heredoc = /<<-?\s*(['"]?)([A-Za-z_][\w-]*)\1/.exec(line)
+    const hereString = /@(['"])\s*$/.exec(line)
+    if (heredoc === null && hereString === null) continue
+    const isEnd = (l: string) => (heredoc !== null ? l.trim() === heredoc[2] : l.startsWith(`${hereString![1]}@`))
+    let end = i + 1
+    while (end < lines.length && !isEnd(lines[end]!)) end++
+    if (!INTERPRETER.test(line)) {
+      i = Math.min(end, lines.length - 1)
+      if (end < lines.length) out.push(lines[end]!)
+    }
+  }
+  return out.join('\n')
+}
+
+// Splits a command at ; & | ( ) and newlines outside quotes, and drops # comments. Each part has
+// its text as written (raw) and with quoted strings emptied (blank). A quoted string stays when
+// it is the command's own name, or a double-quoted string holds $( ) or a backtick.
+function commandSegments(command: string): { raw: string; blank: string }[] {
+  const segments: { raw: string; blank: string }[] = []
+  let raw = ''
+  let blank = ''
+  const flush = () => {
+    if (blank.trim() !== '' || raw.trim() !== '') segments.push({ raw, blank })
+    raw = ''
+    blank = ''
+  }
+  let quote: string | null = null
+  let held = ''
+  let atStart = false
+  const close = (isOpen: boolean) => {
+    const q = quote!
+    const keep = atStart || isOpen || (q === '"' && /\$\(|`/.test(held))
+    raw += q + held + (isOpen ? '' : q)
+    blank += keep ? q + held + (isOpen ? '' : q) : q + q
+    quote = null
+  }
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    if (quote === null) {
+      if (c === "'" || c === '"') {
+        quote = c
+        held = ''
+        atStart = blank.trim() === ''
+      } else if (c === '#' && (blank === '' || /\s$/.test(blank))) {
+        while (i + 1 < command.length && command[i + 1] !== '\n') i++
+      } else if (/[;&|\n\r()]/.test(c)) {
+        flush()
+      } else {
+        raw += c
+        blank += c
+      }
+    } else if (c === quote) {
+      close(false)
+    } else if (c === '\\' && quote === '"' && command[i + 1] === '"') {
+      held += c + '"'
+      i++
+    } else {
+      held += c
+    }
+  }
+  if (quote !== null) close(true)
+  flush()
+  return segments
 }
 
 // ------------------------------------------------------- who counts as Jay ---
@@ -552,10 +637,12 @@ async function checkVerdict(
   if (decision === 'ask') {
     if (await peekApproval($, id, verb, 'typed')) return null
     if (isDesktopChief() && !hasTypedOrigin) {
+      const rule = tool === 'Bash' ? `Bash(${String((input as { command?: unknown }).command ?? '').split(' ').slice(0, 2).join(' ')} *)` : tool
       return {
         outcome: 'refused',
         detail: 'Your settings ask before this runs. In the desktop app the Chief cannot tell your typed yes from ' +
-          'other messages. Use /chief-setup permissions to set this to allow or deny.',
+          `other messages. Add "${rule}" to permissions.allow in .claude/settings.local.json (or run ` +
+          '/chief-setup permissions), or to permissions.deny to keep it off.',
         needsJay: 'Run /chief-setup permissions.',
       }
     }
@@ -835,13 +922,28 @@ async function stopBackground($: EngineInterface, s: ChiefSession, isConfirmed: 
       needsJay: 'Say yes to stop it while it works.',
     }
   }
-  useApproval(s.id, 'stop')
+  const used = useApproval(s.id, 'stop')
+  // A stop that did not happen puts Jay's yes back, so a retry needs no new yes.
+  const keepYes = () => {
+    if (used !== undefined) approvals.set(keyOf(s.id, 'stop'), used)
+  }
   try {
     const run = await $.process.run(['claude', 'stop', bgId], { timeoutMs: STOP_TIMEOUT_MS })
     if (run.exitCode === 0) return { outcome: 'done', detail: 'Stopped. Its conversation is kept, so it can be resumed.' }
     const line = (run.stderr.trim() || run.stdout.trim()).split(/\r?\n/)[0] ?? ''
-    return { outcome: 'failed', detail: `claude stop did not stop it: ${cleanLine(line, 160)}` }
+    // claude may fail to confirm a stop that worked, or a job whose process is gone: look again.
+    const after = await agentRows($)
+    if (after !== null && !after.some(r => r.sessionId === s.cliId)) {
+      return { outcome: 'done', detail: 'It is no longer running. Its conversation is kept, so it can be resumed.' }
+    }
+    keepYes()
+    return {
+      outcome: 'failed',
+      detail: `claude stop did not stop it: ${cleanLine(line, 160)}. It is still listed. Try again in a moment; your yes still counts for 2 minutes. ` +
+        `If it keeps failing, its process may be gone while its record stays: run claude stop ${bgId} in a terminal.`,
+    }
   } catch (err) {
+    keepYes()
     log($, `claude stop: ${String(err)}`)
     return { outcome: 'failed', detail: 'The claude command was not found, so it was not stopped.' }
   }
@@ -1568,7 +1670,9 @@ async function now($: EngineInterface): Promise<number> {
 
 // One line of text from elsewhere, safe for a log line: no newlines, quotes or brackets.
 function cleanLine(text: unknown, max: number): string {
-  const line = String(text ?? '').replace(UNSAFE_TITLE, ' ').replace(/\s+/g, ' ').trim()
+  // An apostrophe inside a word (couldn't) is harmless: keep it, so messages read right.
+  const line = String(text ?? '').replace(/(\p{L})['\u2019](\p{L})/gu, '$1\uE000$2').replace(UNSAFE_TITLE, ' ')
+    .replace(/\s+/g, ' ').trim().replace(/\uE000/g, "'")
   return line.length <= max ? line : line.slice(0, max)
 }
 

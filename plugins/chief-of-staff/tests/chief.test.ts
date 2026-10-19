@@ -914,7 +914,40 @@ test('a failed claude stop is reported failed with its error', async ($, on) => 
   await becomeChief($, clock)
   fake.inbox.push({ id: 'act_1', type: 'stop', sessionId: 'bg_d', title: 'x' })
   await settle(clock)
-  expect(lastResult(fake)).toMatchObject({ outcome: 'failed', detail: 'claude stop did not stop it: no such session' })
+  expect(lastResult(fake)).toMatchObject({ outcome: 'failed' })
+  expect(String(lastResult(fake).detail)).toContain('claude stop did not stop it: no such session. It is still listed.')
+})
+
+test("a claude stop that fails keeps Jay's yes, so a retry needs no new yes (and the apostrophe stays)", async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  fake.state.verdict = tool => (tool === 'Bash' ? 'ask' : 'allow')
+  fake.state.stopExit = 1
+  fake.state.stopStderr = "couldn't confirm w1 was stopped"
+  await becomeChief($, clock)
+  expect((await askToStop($, 'bg_w', 't1')).outcome).toBe('needsConfirm')
+  await jay($, 'Stop anyway', 't2')
+  const first = await act($, { action: 'stop', id: 'bg_w' })
+  expect(first.outcome).toBe('failed')
+  expect(String(first.detail)).toContain("couldn't confirm w1 was stopped")
+  fake.state.stopExit = 0
+  expect((await act($, { action: 'stop', id: 'bg_w' })).outcome).toBe('done')
+  expect(fake.claudeRuns('stop').length).toBe(2)
+})
+
+test('a claude stop that fails for a job that is no longer listed is reported done', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  fake.state.stopExit = 1
+  fake.state.stopStderr = "couldn't confirm d1 was stopped"
+  await becomeChief($, clock)
+  // The first agents read (the busy check) sees the job; the one after the failure does not.
+  fake.inbox.push({ id: 'act_1', type: 'stop', sessionId: 'bg_d', title: 'x' })
+  fake.state.agents = [{ sessionId: 'd', name: 'docs-d', status: 'idle' }]
+  const before = fake.state.agents
+  Object.defineProperty(fake.state, 'agents', { get: () => (fake.claudeRuns('stop').length > 0 ? [] : before), configurable: true })
+  await settle(clock)
+  expect(lastResult(fake)).toMatchObject({ outcome: 'done' })
 })
 
 test('a background id that could be read as a flag is never passed to claude', async ($, on) => {
@@ -1129,6 +1162,42 @@ test("the Chief's shell cannot stop, remove or kill sessions", async ($, on) => 
   expect(String((await call('PowerShell', 'Stop-Process -Id 12')).deny)).toContain('Use the cos_act tool')
   await call('Bash', 'claude agents --json')
   expect(ran).toEqual(['claude agents --json'])
+})
+
+test('the shell guard blocks commands that run a stop, not text that mentions one', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const ran: string[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => (ran.push(e.command), { result: 'ran' }) as never)
+  on('tool.call', { tool: 'PowerShell' }, ($, e) => (ran.push(e.command), { result: 'ran' }) as never)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  const call = (tool: string, command: string) => $.tool.call({ tool, command } as never) as Promise<{ deny?: string }>
+  const allowed = [
+    "Select-String -Path .claude\\settings.json -Pattern 'Bash\\(claude stop'",
+    'Select-String -Pattern "claude stop" -Path a.json,b.json',
+    'grep -rn "claude stop" ~/.claude',
+    ["gh issue create --title t --body \"$(cat <<'EOF'", "claude stop did not stop it: couldn't confirm", 'EOF', ')"'].join('\n'),
+    ["gh issue create --body @'", 'claude stop w1', "'@"].join('\n'),
+    'echo hello # claude stop w1',
+    'git log --grep="taskkill"',
+  ]
+  for (const command of allowed) expect(await call('PowerShell', command)).toEqual({ result: 'ran' })
+  const blocked = [
+    'claude stop w1',
+    'echo hi && claude stop w1',
+    'ls | foreach { claude stop $_ }',
+    'bash -c "claude stop w1"',
+    'powershell -Command "taskkill /F /PID 4"',
+    '& "claude.exe" stop w1',
+    'echo "$(claude stop w1)"',
+    ['cat <<EOF | bash', 'claude stop w1', 'EOF'].join('\n'),
+    'kill 12',
+    'Stop-Process -Id 12',
+  ]
+  for (const command of blocked) {
+    expect(String((await call('PowerShell', command)).deny)).toContain('Use the cos_act tool')
+  }
+  expect(ran.length).toBe(allowed.length)
 })
 
 test('in another session the shell hint stays out of the way', async ($, on) => {

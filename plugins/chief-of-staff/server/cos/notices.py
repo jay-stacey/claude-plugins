@@ -130,6 +130,7 @@ class Notices:
         self.stale_day = day
         self.save()
         stale = [s for s in sessions if s["state"] == "stale" and not s.get("isChief")
+                 and not s.get("otherAccount")      # the app cannot archive another account's session
                  and (s.get("inView") or s.get("prState") in ("MERGED", "CLOSED"))]
         if not stale:
             return None

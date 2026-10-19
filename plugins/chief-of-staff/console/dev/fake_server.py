@@ -825,7 +825,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.static(path[len("/static/"):])
         if method == "GET" and path == "/api/health":
             h = self.hub
-            body = {"ok": True, "api": 1, "version": "0.3.0", "voice": h.voice, "settings": h.settings,
+            body = {"ok": True, "api": 1, "version": "0.3.1", "voice": h.voice, "settings": h.settings,
                     "chief": {"connected": h.chief["connected"], "busy": h.chief["busy"]}}
             if self.token_ok(query):
                 # Only with the token: the Chief's ids and host, and where the desktop files are found.

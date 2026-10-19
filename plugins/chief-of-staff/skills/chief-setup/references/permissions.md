@@ -31,6 +31,9 @@ Desktop app Chief, or both hosts:
 }
 ```
 
+To stop background sessions without a question each time, also add `Bash(claude stop *)`
+(the stop rule below). Without any rule for it, Claude Code asks before the stop runs.
+
 Terminal Chief:
 
 ```json
@@ -48,11 +51,44 @@ so a rule cannot narrow it to some actions. The mod's own checks limit what it d
 
 Rules not added, and why:
 
-- `Bash(claude stop *)` and `Bash(claude --bg *)`: the mod runs these itself with fixed
-  arguments. A rule would invite the Chief to skip `cos_act` and its busy check.
+- `Bash(claude --bg *)`: the mod runs it itself with fixed arguments. A rule would invite
+  the Chief to skip `cos_act` and its checks.
 - `Bash(claude rm *)`: never allowed. The Chief never removes a background session.
 - `SendMessage` and `ListAgents`: replies use the engine's cross-session send, and
   same-machine messages need no prompt. There is no `SendMessage` allow rule.
+
+## The stop rule (`Bash(claude stop *)`)
+
+The mod runs `claude stop <id>` itself, but Claude Code still checks that command against
+the user's rules. With no rule, the answer is "ask", which a desktop Chief cannot satisfy
+reliably (see "Desktop Chief and ask rules"). So to let `cos_act` stop background sessions,
+add this to `permissions.allow`:
+
+```json
+"Bash(claude stop *)"
+```
+
+This does not skip the Chief's checks. The mod still asks the user first, in the Chief's
+session, when the session is working, and `cos_act` is still the only way the Chief stops a
+session: the shell guard refuses a shell `claude stop`. Add the rule to `permissions.deny`
+instead to keep the Chief from stopping anything.
+
+If auto mode refuses the edit of `.claude\settings.local.json` (it counts as the Chief
+changing its own permissions), give the user this to paste into the file, and keep any
+other keys already there:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__chief-of-staff__cos_act",
+      "mcp__ccd_session_mgmt__archive_session",
+      "mcp__ccd_session_mgmt__send_message",
+      "Bash(claude stop *)"
+    ]
+  }
+}
+```
 
 ## Where it goes
 
@@ -82,11 +118,18 @@ create the file themselves.
 
 ## Desktop Chief and ask rules
 
-In the desktop app, the Chief cannot tell the user's typed yes from other messages. So when
-the user's settings say ask for `claude stop`, `claude --bg` or `SendMessage`, `cos_act`
-refuses with "Your settings ask before this runs. In the desktop app the Chief cannot tell
-your typed yes from other messages. Use /chief-setup permissions to set this to allow or
-deny." For a desktop Chief, advise an allow or a deny rule for these instead of an ask rule.
+In the desktop app, the Chief cannot tell the user's typed yes from other messages. When the
+user's settings ask for `claude stop`, `claude --bg` or `SendMessage` (an unset rule counts as
+ask), `cos_act` acts as follows:
+
+- Before the user has typed anything in the Chief's session, it refuses with "Your settings
+  ask before this runs", and the message gives the exact rule to add.
+- After the user has typed in the Chief's session, it returns `needsConfirm`. One typed yes
+  in answer to the Chief's question covers every action in that question, and an action that
+  fails after the yes (for example a stop that does not confirm) keeps that yes for 2
+  minutes, so a retry needs no new yes.
+
+For a desktop Chief, advise an allow or a deny rule for these instead of relying on the ask.
 
 ## What stays safe
 

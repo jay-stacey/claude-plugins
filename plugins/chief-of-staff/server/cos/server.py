@@ -57,6 +57,8 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.go
        "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
        "form-action 'none'; frame-ancestors 'none'")
 STATIC_RE = re.compile(r"^/static/((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)$")
+ARCHIVE_NOT_FOUND = ("The Claude app could not find this session, so it was not archived. "
+                     "It most likely belongs to another Claude account than the one signed in now.")
 OUTCOMES = ("done", "failed", "refused", "needsConfirm", "opened", "handedOff", "unsupported")
 EXPIRED_TAKEN = "It may have run. Check the session."
 SURFACES = ("terminal", "desktop", "vscode", "mobile")
@@ -897,6 +899,9 @@ class App:
         if outcome not in OUTCOMES:
             outcome = "handedOff" if body.get("handedOff") is True else "done" if body.get("ok") is True else "failed"
         detail = str(body.get("detail") or "")[:500]
+        if (entry and entry["item"].get("type") == "archive" and outcome in ("failed", "refused")
+                and "not found" in detail.lower()):
+            detail = ARCHIVE_NOT_FOUND
         now = self.clock()
         with self.lock:
             if outcome == "handedOff":

@@ -27,7 +27,7 @@ DESKTOP_ENTRYPOINTS = {"claude-desktop", "claude-desktop-3p", "local-agent"}
 BG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")   # never a flag such as --all
 BG_DONE = {"done", "stopped", "failed"}
 ACTION_KEYS = ("reply", "archive", "stop", "open")
-FACT_KEYS = ("_bgState", "_inbox", "_desktopHost")       # what plan_actions reads beyond the published fields
+FACT_KEYS = ("_bgState", "_inbox", "_desktopHost", "_otherAccount")       # what plan_actions reads beyond the published fields
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -142,6 +142,7 @@ class DesktopSource:
     def scan(self):
         _, root = self.root_now()
         seen = {}
+        owner = {}          # file key -> account folder name
         orgs_seen = set()
         accounts = []
         if root is not None:
@@ -175,6 +176,7 @@ class DesktopSource:
                     except OSError:
                         continue
                     key = os.path.join(real_org, f.name)
+                    owner[key] = acc.name
                     stamp = (st.st_mtime_ns, st.st_size)
                     if f.name[:-5] in archived:
                         seen[key] = stamp + (ARCHIVED,)
@@ -188,12 +190,37 @@ class DesktopSource:
         for org in list(self.idx):
             if org not in orgs_seen:
                 del self.idx[org]
+        current = self.current_account(root, {n.name for n in accounts if n.is_dir()})
         out = {}
-        for *_, rec in seen.values():
+        for key, (*_, rec) in seen.items():
             if rec and rec is not ARCHIVED and not rec.get("isArchived"):
+                if current is not None and owner.get(key) != current:
+                    rec = dict(rec, otherAccount=True)
                 out[rec["sessionId"]] = rec
         self.count = len(out)
         return out
+
+    def current_account(self, root, folders):
+        """The account folder name the desktop app is signed in to now, or None when unknown.
+
+        The app writes config.json beside claude-code-sessions with `lastKnownAccountUuid`.
+        It counts only when it names one of the account folders (compared without case).
+        Anything else (no file, no key, no match, only one account folder) gives None, and
+        then every session counts as the current account's."""
+        if root is None or len(folders) < 2:
+            return None
+        try:
+            with open(os.path.join(os.path.dirname(str(root)), "config.json"), "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return None
+        uuid = data.get("lastKnownAccountUuid") if isinstance(data, dict) else None
+        if not isinstance(uuid, str) or not uuid:
+            return None
+        for name in folders:
+            if name.lower() == uuid.lower():
+                return name
+        return None
 
     def info(self, with_root=False):
         """{source, files} for health; the folder only when asked (it holds the user name)."""
@@ -220,6 +247,7 @@ def read_desktop_file(path):
             "model", "effort", "permissionMode", "branch", "prs", "prNumber", "prState", "spawnedFrom",
             "postTurnSummary", "turnWrapUp", "lastTurnReport", "scheduledTaskId", "worktreePath")
     rec = {k: data.get(k) for k in keep if k in data}
+    rec.pop("otherAccount", None)
     rec["sessionId"] = sid
     return rec
 
@@ -470,6 +498,7 @@ def ago(ms):
 
 
 NOTE_CHIEF = "This is the Chief of Staff session."
+NOTE_OTHER_ACCOUNT = "This session belongs to another Claude account. The app that is signed in now cannot archive it."
 NOTE_NO_CHIEF = "No Chief is connected. Type /chief in a Claude Code session first."
 
 
@@ -497,6 +526,8 @@ def plan_actions(s, caps):
         put("open", "yes")
     else:
         put("open", "no", "Only desktop sessions open in the Claude app.")
+    if kind == "desktop" and s.get("_otherAccount"):                             # rule 2a
+        put("archive", "no", NOTE_OTHER_ACCOUNT)
     if kind != "bg":                                                             # rule 3
         put("stop", "no", "Only background sessions can be stopped.")
     if kind == "cli":                                                            # rule 4
@@ -602,7 +633,7 @@ def build_sessions(desktop, agent_rows, settings, now, chief_id=None, transcript
     for s in sessions:
         if facts is not None:
             facts[s["id"]] = {k: s.get(k) for k in FACT_KEYS}
-        for key in ("_bgState", "_background", "_live_kind", "_inbox", "_desktopHost"):
+        for key in ("_bgState", "_background", "_live_kind", "_inbox", "_desktopHost", "_otherAccount"):
             s.pop(key, None)
     sessions.sort(key=lambda s: -(s["lastActivityAt"] or 0))
     return sessions
@@ -651,12 +682,14 @@ def _session(local_id, cli, rec, row, transcript_info, chief_id, chief_cli=None,
         "summary": summary_of(rec),
         "needsAction": _text(pts.get("needs_action")),
         "appStatus": _text(pts.get("status_category")),
+        "otherAccount": bool(rec.get("otherAccount")),
         "isChief": bool((chief_id and local_id == chief_id) or (chief_cli and cli == chief_cli)),
         "link": LINK.format(local_id) if local_id.startswith("local_") else None,
         "_bgState": bg_state,
         "_live_kind": kind,
         "_inbox": bool(reg.get("hasInbox")),
         "_desktopHost": reg.get("entrypoint") in DESKTOP_ENTRYPOINTS,
+        "_otherAccount": bool(rec.get("otherAccount")),
     }
 
 
