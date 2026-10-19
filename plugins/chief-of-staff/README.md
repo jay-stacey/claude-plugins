@@ -1,6 +1,6 @@
 # Chief of Staff
 
-Version 0.3.0.
+Version 0.3.1.
 
 A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A local console shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
