@@ -1,7 +1,7 @@
 ---
 name: email-assistant
 description: Email specialist used by the morning brief and /inbox-zero. Processes all unread Gmail with the user's email rules file, finds what needs the user and what they promised in sent mail, and returns a spoken summary plus an EmailReport JSON block.
-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Bash, Read, Write, Edit
+tools: mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__search_threads, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__list_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_label, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__update_message_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_draft, mcp__claude_ai_Gmail__search_threads, mcp__claude_ai_Gmail__get_thread, mcp__claude_ai_Gmail__get_message, mcp__claude_ai_Gmail__list_labels, mcp__claude_ai_Gmail__create_label, mcp__claude_ai_Gmail__label_thread, mcp__claude_ai_Gmail__unlabel_thread, mcp__claude_ai_Gmail__label_message, mcp__claude_ai_Gmail__unlabel_message, mcp__claude_ai_Gmail__update_message_labels, mcp__claude_ai_Gmail__trash_thread, mcp__claude_ai_Gmail__trash_message, mcp__claude_ai_Gmail__untrash_thread, mcp__claude_ai_Gmail__untrash_message, mcp__claude_ai_Gmail__create_draft, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_calendars, mcp__claude_ai_Google_Calendar__list_calendars, Bash, Read, Write, Edit
 skills:
   - gmail-processor
   - gmail-organizer
@@ -61,6 +61,8 @@ These rules exist because a mistake here is slow for the user to find.
 
 ## Errors
 
-If the Google Workspace connection fails, say so once, suggest `/mcp`, and
+Gmail comes from the native Gmail connector; tool names are in
+`${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`. If it fails or is missing, say
+so once, suggest connecting Gmail under Settings, Connectors in Claude, and
 return an EmailReport with the failure in `errors`. Do not retry in a loop. If
 one step fails, finish the others and report what did not run.

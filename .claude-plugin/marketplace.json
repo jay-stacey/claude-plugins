@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "A personal Claude Code plugin library.",
-    "version": "2.19.0"
+    "version": "2.20.0"
   },
   "plugins": [
     {
       "name": "executive-assistant",
       "source": "./plugins/executive-assistant",
-      "version": "8.0.2",
-      "description": "ADHD-friendly executive assistant: a morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear and your notes folder.",
+      "version": "9.0.0",
+      "description": "ADHD-friendly executive assistant: a morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Gmail and Calendar via Claude's native connectors, plus Slack, Jira, Linear and your notes folder.",
       "category": "productivity",
       "keywords": [
         "productivity",

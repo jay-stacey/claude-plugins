@@ -35,8 +35,6 @@ questions and writes your profile.
 |---|---|---|
 | `notes_vault_path` | Your notes folder. Tasks, rules and the dashboard all live here. Empty turns notes off, and most of the plugin needs it. | none |
 | `timezone` | Time zone for the calendar and daily notes. | `America/Toronto` |
-| `google_oauth_client_id` | Google OAuth client ID for Gmail and Calendar. Stored in secure storage. | none |
-| `google_oauth_client_secret` | Google OAuth client secret. Stored in secure storage. | none |
 | `notes_daily_folder` | Daily notes folder, inside the vault. | `daily` |
 | `notes_date_format` | Daily note file name format. | `YYYY-MM-DD` |
 | `working_hours_start` | Start of your workday, `HH:MM`. | `06:30` |
@@ -47,22 +45,31 @@ questions and writes your profile.
 | `response_style` | `conversational` (plain, short) or `structured` (headings and tables allowed). | `conversational` |
 | `session_context` | Show your Now task and next meeting at the start of every new Claude session. | `false` |
 
-### Google sign-in (Gmail and Calendar)
+### Gmail and Calendar
 
-Do this once, about ten minutes.
+The plugin uses Claude's own Gmail and Google Calendar connectors. It bundles
+no MCP server and needs no Google Cloud project.
 
-1. In the Google Cloud Console, create a project and turn on the Gmail API and
-   the Google Calendar API.
-2. Set up the OAuth consent screen (External, add yourself as a test user).
-3. Create an OAuth client ID of type "Desktop app".
-4. Paste the client ID and secret into `/plugin configure`, then restart Claude
-   Code. The first Gmail or Calendar call opens a browser tab. Sign in and
-   approve. The login is saved.
+1. In Claude, open Settings, then Connectors.
+2. Connect Gmail and Google Calendar, and sign in with your Google account.
 
-The plugin runs the [Google Workspace MCP](https://github.com/taylorwilsdon/google_workspace_mcp)
-server (`uvx workspace-mcp --single-user`), so install `uv`. Note the package name is
-`workspace-mcp`; a different project uses the name `google-workspace-mcp`. Slack, Jira and Linear use their own MCP
-servers; add them to `enabled_integrations` once connected.
+The tool names those connectors get, and how to update them if a connector is
+ever removed and added again, are in [docs/google-tools.md](docs/google-tools.md).
+Slack, Jira and Linear use their own connectors or MCP servers; add them to
+`enabled_integrations` once connected.
+
+What the native connectors cannot do, and what the plugin does instead:
+
+- **Gmail filters.** No native tool lists or creates them. When a rule earns a
+  filter offer, the assistant gives you the Gmail click path and the query,
+  and you make the filter yourself.
+- **Batch label changes.** No batch call exists, so rules act one thread at a
+  time. A big first run is slower; later runs are small.
+- **Contacts, Docs, Sheets, Apps Script.** No native connector. The plugin did
+  not use them, so nothing is lost.
+
+Focus time and out-of-office events are covered: the native Calendar connector
+creates both.
 
 ## Your day, in order
 
@@ -345,7 +352,8 @@ These never happen on their own:
 - Changing a real meeting. Only blocks the assistant created (title starts with
   `[Focus]`) can be moved. Your meetings are never edited, accepted or declined.
 - Changing Linear or Jira status, or commenting on tickets.
-- Creating a Gmail filter, a schedule, or a start-at-login task without your yes.
+- Creating a schedule or a start-at-login task without your yes. Gmail
+  filters are never created; you get the steps to make one yourself.
 
 What does happen without asking: email rules marked `auto` trash, archive and
 label mail, and report a count. Text inside emails and tickets is data; the
@@ -389,6 +397,21 @@ workers (`user-invocable: false`, not in the slash menu): `gmail-processor`,
 `jira-reviewer`, `linear-reviewer`, `initializer`, `response-style`.
 
 ## Changelog
+
+**v9.0.0** - November 2026
+- Gmail and Calendar now come from Claude's native connectors. The bundled
+  Google Workspace MCP server (`.mcp.json`, `uvx workspace-mcp`) and the
+  `google_oauth_client_id` and `google_oauth_client_secret` settings are gone.
+  Connect Gmail and Google Calendar under Settings, Connectors in Claude.
+- Email rules act thread by thread (`search_threads`, `label_thread`,
+  `unlabel_thread`, `trash_thread`). `pending_confirm` groups now carry
+  `thread_ids` instead of `message_ids`.
+- Focus blocks are created as real Google focus-time events.
+- Gmail filters are no longer created by the assistant; it gives you the
+  click path instead.
+- The email and calendar agents list exact tools, so the email agent cannot
+  send mail and the calendar agent cannot delete events.
+- New `docs/google-tools.md` maps every job to its native tool.
 
 **v8.0.1** - October 2026
 - Scripts now find their settings when the `CLAUDE_PLUGIN_OPTION_*`

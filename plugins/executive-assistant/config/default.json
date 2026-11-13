@@ -1,9 +1,8 @@
 {
   "_comment": "Executive Assistant Plugin Configuration v5.0.0",
-  "_description": "Highly configurable executive assistant for productivity workflow automation. Uses Google Workspace MCP for Gmail and Calendar.",
+  "_description": "Highly configurable executive assistant for productivity workflow automation. Uses the native claude.ai Gmail and Google Calendar connectors.",
   "mcpServer": {
-    "_comment": "Google Workspace MCP server configuration. Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables. Server is bundled via .mcp.json.",
-    "serverName": "google-workspace",
+    "_comment": "Gmail and Calendar settings. Tools come from the native claude.ai connectors; tool names are in docs/google-tools.md. The plugin bundles no MCP server.",
     "timezone": "America/Toronto",
     "gmail": {
       "maxResults": 100

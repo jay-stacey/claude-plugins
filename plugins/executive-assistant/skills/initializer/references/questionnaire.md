@@ -101,7 +101,7 @@ Options:
 Which email provider do you use?
 
 Options:
-1. Gmail (Recommended - full integration via Google Workspace MCP)
+1. Gmail (Recommended - full integration via the native Gmail connector)
 2. Outlook / Microsoft 365 (Coming soon)
 3. Other / None
 ```
@@ -111,7 +111,7 @@ Options:
 Which calendar do you use?
 
 Options:
-1. Google Calendar (Recommended - full integration via Google Workspace MCP)
+1. Google Calendar (Recommended - full integration via the native Google Calendar connector)
 2. Outlook Calendar (Coming soon)
 3. Other / None
 ```

@@ -2,7 +2,7 @@
 name: calendar-manager
 description: Plans focus blocks from open tasks and free time, books them in Google Calendar after a yes, and shifts the assistant's own blocks later in the day when plans change. Implements the Timebox contract (propose, book, shift) and checks every write by reading the calendar back. Worker used by the calendar-assistant.
 user-invocable: false
-allowed-tools: mcp__google-workspace__list_calendars, mcp__google-workspace__get_events, mcp__google-workspace__query_freebusy, mcp__google-workspace__manage_event, mcp__google-workspace__manage_focus_time, mcp__plugin_executive-assistant_google-workspace__list_calendars, mcp__plugin_executive-assistant_google-workspace__get_events, mcp__plugin_executive-assistant_google-workspace__query_freebusy, mcp__plugin_executive-assistant_google-workspace__manage_event, mcp__plugin_executive-assistant_google-workspace__manage_focus_time, Read
+allowed-tools: Read, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_calendars, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__get_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__search_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__suggest_time, mcp__32385326-064a-48eb-a714-4b16525fd24a__create_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__update_event, mcp__claude_ai_Google_Calendar__list_calendars, mcp__claude_ai_Google_Calendar__list_events, mcp__claude_ai_Google_Calendar__get_event, mcp__claude_ai_Google_Calendar__search_events, mcp__claude_ai_Google_Calendar__suggest_time, mcp__claude_ai_Google_Calendar__create_event, mcp__claude_ai_Google_Calendar__update_event
 ---
 
 # Calendar manager
@@ -104,21 +104,24 @@ ask for one yes, offering two options at most and saying which you would pick:
 Book only after the user said yes to this plan, in this conversation. The
 parent passes that yes as `mode: book`.
 
-1. **Check the slots are still free.** Read the day once with `get_events`
-   (detailed, explicit offsets). Drop any block whose slot is now taken and
+1. **Check the slots are still free.** Read the day once with `list_events`
+   (`startTime` and `endTime` as local times with no offset, `timeZone` set to
+   the IANA zone, `orderBy: "startTime"`). Tool names are in
+   `${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`. Drop any block whose slot is now taken and
    mark it `failed` with the reason "slot taken since the plan". If an `ours`
    block for the same task ids already exists that day, do not make a second
    one; mark it `created` with that event's id.
-2. **Create each block** with `manage_event`:
-   - `action: "create"`, `calendar_id: "primary"`, `user_google_email`
+2. **Create each block** with `create_event`:
+   - `calendarId`: leave unset (primary)
    - `summary`: the block title
-   - `start_time`, `end_time`: `YYYY-MM-DDTHH:MM:00` with the date's offset
-   - `timezone`: the IANA zone
+   - `startTime`, `endTime`: `YYYY-MM-DDTHH:MM:00`, local, no offset
+   - `timeZone`: the IANA zone
    - `description`: first line exactly `ea:focus · created by executive-assistant`,
      then one line per task: `t-0101 CSV export review`
-   - `transparency: "opaque"` (busy), `send_updates: "none"`, no attendees
+   - `eventType: "FOCUS_TIME"`, `availability: "AVAILABILITY_BUSY"`,
+     `notificationLevel: "NONE"`, no attendees
    Keep the returned event id.
-3. **Read back.** List the day again with `get_events`. For each block, find
+3. **Read back.** List the day again with `list_events`. For each block, find
    its event by id (or by title and start when the create returned no id).
    Mark it `created` when it is there at the right time, otherwise `failed`
    with a short reason, such as "did not save" or "saved at the wrong time".
@@ -138,7 +141,7 @@ Report from the read-back, never from what you asked for:
 Use shift when the day changed and blocks already exist. Move blocks; do not
 rebuild the plan.
 
-1. Read the day with `get_events` (detailed). Collect the `ours` events.
+1. Read the day with `list_events`. Collect the `ours` events.
 2. Work out new times from the user's words:
    - "I lost the morning": move every `ours` block that has not started yet,
      plus any that were missed, to the next free time from now. Keep their
@@ -153,9 +156,9 @@ rebuild the plan.
    and leave its tasks on the Today list for tomorrow's plan.
 4. Show the change as before and after, in one or two lines, with at most two
    options and your pick. Wait for one yes.
-5. After the yes, for each block: read it by `event_id`, confirm the marker,
-   then `manage_event` with `action: "update"`, the new `start_time`,
-   `end_time` and `timezone`, and `send_updates: "none"`. Change the summary
+5. After the yes, for each block: read it with `get_event`, confirm the
+   marker, then `update_event` with the new `startTime`, `endTime` and
+   `timeZone`, and `notificationLevel: "NONE"`. Change the summary
    and description too when the block's tasks changed, keeping the marker
    line first.
 6. List the day again and mark each block `moved` or `failed`. Set `verified`

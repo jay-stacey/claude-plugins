@@ -43,7 +43,10 @@ TOOLS_CACHE_S = 24 * 3600
 REFRESH_WAIT_S = 60
 
 READ_VERBS = ("get", "list", "search", "read", "query", "fetch", "find", "view", "lookup", "describe")
-SAFE_WRITES = ("draft_gmail_message", "create_draft", "manage_event", "manage_focus_time")
+# create_event and update_event are the native Calendar connector's writes;
+# the older names stay for anyone still on the workspace-mcp server.
+SAFE_WRITES = ("draft_gmail_message", "create_draft", "manage_event", "manage_focus_time",
+               "create_event", "update_event")
 FORBIDDEN = ("send", "trash", "delete", "reply", "forward", "spam", "archive", "remove",
              "modify_gmail", "batch_modify", "share", "publish", "transition", "save_comment",
              "update_message")
@@ -196,7 +199,7 @@ def tool_label(name, tool_input=None):
         return "Working"
     if "draft" in n:
         return "Drafting a message"
-    if "focus_time" in n or "manage_event" in n:
+    if any(k in n for k in ("focus_time", "manage_event", "create_event", "update_event")):
         return "Updating your calendar"
     if any(k in n for k in ("calendar", "event", "freebusy")):
         return "Reading your calendar"

@@ -1,7 +1,7 @@
 ---
 name: calendar-assistant
 description: Calendar specialist. Reviews the user's own events for the coming workdays and returns a CalendarReport, plans focus blocks from open tasks, books them after a yes, and shifts the assistant's own blocks when the day changes. Delegated by the assistant and by /timebox.
-tools: mcp__google-workspace__*, mcp__plugin_executive-assistant_google-workspace__*, Read, Bash
+tools: mcp__32385326-064a-48eb-a714-4b16525fd24a__list_calendars, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__get_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__search_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__suggest_time, mcp__32385326-064a-48eb-a714-4b16525fd24a__create_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__update_event, mcp__claude_ai_Google_Calendar__list_calendars, mcp__claude_ai_Google_Calendar__list_events, mcp__claude_ai_Google_Calendar__get_event, mcp__claude_ai_Google_Calendar__search_events, mcp__claude_ai_Google_Calendar__suggest_time, mcp__claude_ai_Google_Calendar__create_event, mcp__claude_ai_Google_Calendar__update_event, Read, Bash
 skills:
   - calendar-reviewer
   - calendar-manager
@@ -76,4 +76,6 @@ showed at the wrong hour because this was skipped.
 
 Follow `response-style`: answer first, plain sentences, no tables, two options
 at most with your pick. The JSON block is exempt. If Google fails, say so in
-one line, suggest `/mcp`, and return what you have.
+one line, suggest connecting Google Calendar under Settings, Connectors in
+Claude, and return what you have. Calendar tool names are in
+`${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`.

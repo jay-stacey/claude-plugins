@@ -201,8 +201,9 @@ You're set up. Three things left for you:
 Run `/plugin configure executive-assistant@personal-plugins` and paste in the
 values above. That turns on Gmail, Calendar, and notes.
 
-Add your Google OAuth client ID and secret in the same dialog. The bundled
-Google server signs you in the first time you use it. Run `/mcp` to check it.
+Gmail and Google Calendar come from Claude's own connectors. Connect them in
+Claude under Settings, Connectors, then Gmail and Google Calendar. No OAuth
+client or secret is needed.
 
 Slack needs its own MCP server. Add it, then check it with `/mcp`.
 

@@ -2,19 +2,22 @@
 
 Read this when a time or an ownership call is not obvious.
 
-## Offsets for a range
+## A range
 
 Zone `America/Toronto`, five workdays from Monday 2026-10-26:
 
-- `time_min`: `2026-10-26T00:00:00-04:00`
-- `time_max`: `2026-10-31T00:00:00-04:00` (Saturday, exclusive)
+- `startTime`: `2026-10-26T00:00:00`
+- `endTime`: `2026-10-31T00:00:00` (Saturday, exclusive)
+- `timeZone`: `America/Toronto`
 
 Five workdays from Thursday 2026-10-29 cross the change on Sunday 2026-11-01:
 
-- `time_min`: `2026-10-29T00:00:00-04:00`
-- `time_max`: `2026-11-05T00:00:00-05:00`
+- `startTime`: `2026-10-29T00:00:00`
+- `endTime`: `2026-11-05T00:00:00`
+- `timeZone`: `America/Toronto`
 
-Events on Monday 2026-11-02 and later use `-05:00` when you convert them.
+The connector applies `-04:00` to the start and `-05:00` to the end. Events
+on Monday 2026-11-02 and later use `-05:00` when you convert them.
 
 ## Converting returned times
 

@@ -14,7 +14,7 @@ A Claude Code plugin marketplace named `personal-plugins`. The catalog is
 
 | Plugin | Kind | Main entry |
 |---|---|---|
-| `executive-assistant` | Markdown skills + agents + MCP | `/daily-prep`, `/inbox-zero`, `/timebox`, `/init` |
+| `executive-assistant` | Markdown skills + agents | `/daily-prep`, `/inbox-zero`, `/timebox`, `/init` |
 | `session-manager` | Markdown skill + agent | `/manager` |
 | `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice` |
 | `session-brief` | TypeScript hooks mod | `/brief` |
@@ -81,7 +81,7 @@ npm --prefix plugins/executive-assistant/skills/notes-viewer/editor run build
 - `author` is required, because CI runs `--strict`.
 - `context: fork` is a skill field. Agents ignore it.
 - Secrets go in `plugin.json` `userConfig` with `"sensitive": true`. Reference
-  them as `${user_config.<key>}` (see executive-assistant `.mcp.json`).
+  them as `${user_config.<key>}` in `.mcp.json` or hook commands.
 - Commands and skills are the same mechanism. A skill at
   `skills/<name>/SKILL.md` creates `/<name>`. Keep entry-point skills thin and
   route with `context: fork` + `agent: <agent-name>`.
@@ -123,8 +123,9 @@ Commit titles follow `<plugin> <version>: <what changed>` or
 - Settings come from `plugin.json` `userConfig` (`/plugin configure`).
   `config/default.json` + `config/schema.json` hold the full option set.
   `config/examples/` holds role configs. `config/presets/` holds personalities.
-- Gmail and Calendar use the bundled Google Workspace MCP server (`.mcp.json`,
-  run with `uvx`). Slack, Atlassian, and Linear MCP servers are optional.
+- Gmail and Calendar use Claude's native claude.ai connectors. The plugin
+  bundles no MCP server. Tool names and prefixes are in
+  `docs/google-tools.md`. Slack, Atlassian, and Linear servers are optional.
 - Tasks are markdown files in `{vault}/tasks/`. `scripts/tasks.py` owns every
   read and write of them; skills and the dashboard call it and never edit task
   files directly. Its tests: `python -m unittest discover -s plugins/executive-assistant/tests`.
