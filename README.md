@@ -27,11 +27,11 @@ Or run `/init` for a guided walkthrough.
 | Plugin | Version | What it does |
 |---|---|---|
 | [executive-assistant](plugins/executive-assistant) | 8.0.2 | A morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Built for an ADHD workday. |
-| [voice-replies](plugins/voice-replies) | 1.7.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU). Sessions take turns, each keeps its own voice, and a reply that arrives while another session speaks waits for Play. Stays quiet in the Chief of Staff session. |
+| [voice-replies](plugins/voice-replies) | 2.0.0 | Reads Claude's replies aloud. Haiku rewrites each reply for speech, and Kokoro speaks it on your GPU (or CPU). Sessions take turns, each keeps its own voice, and a reply that arrives while another session speaks waits for Play. Stays quiet in the Chief of Staff session. |
 | [session-manager](plugins/session-manager) | 1.1.0 | Reviews your open Claude sessions. Type `/manager` to see which are stale, which wait on you, and which are done but not archived, with one next step each. Can bulk archive long-idle sessions and report leftover worktrees. |
 | [software-factory](plugins/software-factory) | 0.3.3 | An AI software factory. A CTO agent turns your goals into work for 14 role agents that plan, design, build, review and test code, in one repo or across a folder of repos. Teams map to Linear teams and sub-teams, bugs and tech debt run in team streams, cycles sync with Linear, and the CTO baselines work in flight and sends regular reports with improvement proposals. You approve at four gates and merge the pull requests. Includes a local control center with a kanban, a live org chart and token budgets. |
-| [chief-of-staff](plugins/chief-of-staff) | 0.3.1 | A Chief of Staff for your Claude Code sessions, in the desktop app or a terminal. Type `/chief` and that session watches all the others, tells you which ones wait on you, and archives or answers them when you ask. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice with a Hey Chief wake word. |
-| [session-brief](plugins/session-brief) | 1.0.0 | Shows a brief above the prompt: how the session started, where it left off, next steps, and what you should know. Renames the session to say what the work is. |
+| [chief-of-staff](plugins/chief-of-staff) | 0.3.2 | A Chief of Staff for your Claude Code sessions, in the desktop app or a terminal. Type `/chief` and that session watches all the others, tells you which ones wait on you, and archives or answers them when you ask. A local console shows a live session graph, a roster, the Chief's chat and any session's transcript. Optional local voice with a Hey Chief wake word. |
+| [session-brief](plugins/session-brief) | 2.0.0 | Shows a brief above the prompt: how the session started, where it left off, next steps, and what you should know. Renames the session to say what the work is. |
 
 ### executive-assistant
 
@@ -48,16 +48,16 @@ optional and enabled per feature in config. Full guide:
 
 ### voice-replies
 
-Command: `/voice` (on, off, stop, play, clear, replay, voice, speed, length, name, default, voices, test, install).
+Command: `/voice-replies` (on, off, stop, play, clear, replay, voice, speed, length, name, default, voices, test, install).
 
-After installing the plugin, type `/voice install` once (Windows). It checks
+After installing the plugin, type `/voice-replies install` once (Windows). It checks
 your GPU, installs Kokoro on the GPU or on the CPU, and tests it.
 Until then, replies use the built-in Windows voice. See the
 [plugin README](plugins/voice-replies/README.md).
 
 ### session-brief
 
-Command: `/brief` (refresh, show, hide, rename, autorename on|off).
+Command: `/session-brief` (refresh, show, hide, rename, autorename on|off).
 
 After each turn, Haiku writes a short brief from the session's opening and its
 latest messages. The brief is saved per session, so a reopened session shows it

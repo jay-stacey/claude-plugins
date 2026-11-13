@@ -9,7 +9,7 @@ const voice = atom({ plugin: 'voice-replies', key: 'voice' } as const, 'af_heart
 const speed = atom({ plugin: 'voice-replies', key: 'speed' } as const, '1.0')
 const length = atom({ plugin: 'voice-replies', key: 'length' } as const, 'short' as VoiceLength)
 const engine = atom({ plugin: 'voice-replies', key: 'engine' } as const, 'starting' as VoiceEngine)
-// The step `/voice install` is on, or '' when no install runs.
+// The step `/voice-replies install` is on, or '' when no install runs.
 const installing = atom({ plugin: 'voice-replies', key: 'install' } as const, '')
 const waiting = atom({ plugin: 'voice-replies', key: 'waiting' } as const, [] as string[])
 // Said before the session's speech when the voice moves to it; '' (the default) says nothing.
@@ -137,7 +137,7 @@ export const register: Register = on => {
     await update($, last, () => settings.last ?? '')
     await update($, status, () => 'idle')
     await $.command.register({
-      name: 'voice',
+      name: 'voice-replies',
       description:
         'Voice replies for this session: on, off, stop [all], play, clear, replay, voice <name>, ' +
         'speed <0.8-1.5>, length short|full, call <your name>, name <words>, default, voices, test, install [gpu|cpu]',
@@ -151,7 +151,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'voice' }, async ($, e) => {
+  on('command.run', { command: 'voice-replies' }, async ($, e) => {
     const [first = '', ...rest] = e.args.trim().split(/\s+/)
     const word = first.toLowerCase()
     const value = rest.join(' ').toLowerCase()
@@ -179,7 +179,7 @@ export const register: Register = on => {
     }
     if (word === 'voice') {
       if (!isOneOf(VOICES, value)) {
-        return { text: `Unknown voice "${value}". Type /voice voices to list them.` }
+        return { text: `Unknown voice "${value}". Type /voice-replies voices to list them.` }
       }
       await setVoice($, value)
       return { text: `Voice set to ${voiceLabel(value)} for this session.` }
@@ -192,7 +192,7 @@ export const register: Register = on => {
       return { text: `Speed set to ${value} for this session.` }
     }
     if (word === 'length') {
-      if (!isOneOf(LENGTHS, value)) return { text: 'Use /voice length short or /voice length full.' }
+      if (!isOneOf(LENGTHS, value)) return { text: 'Use /voice-replies length short or /voice-replies length full.' }
       await setLength($, value)
       return {
         text: value === 'full'
@@ -232,7 +232,7 @@ export const register: Register = on => {
     if (word === 'install') {
       const mode = value === '' ? 'auto' : value
       if (mode !== 'auto' && mode !== 'gpu' && mode !== 'cpu') {
-        return { text: 'Use /voice install, /voice install gpu or /voice install cpu.' }
+        return { text: 'Use /voice-replies install, /voice-replies install gpu or /voice-replies install cpu.' }
       }
       if ((await read($, installing)) !== '') return { text: 'Kokoro is already installing.' }
       if ((await $.env.get('OS')) !== 'Windows_NT') {
@@ -603,7 +603,7 @@ async function ensureServer($: EngineInterface): Promise<boolean> {
     await update($, engine, () => 'windows')
     if (!hasWarnedSetup) {
       hasWarnedSetup = true
-      $.ui.toast('Kokoro is not set up, so replies use the Windows voice. Type /voice install to set it up.')
+      $.ui.toast('Kokoro is not set up, so replies use the Windows voice. Type /voice-replies install to set it up.')
     }
     return false
   }
@@ -750,7 +750,7 @@ async function replayLast($: EngineInterface): Promise<void> {
   if (script !== '') await speakScript($, script)
 }
 
-// Plays at once, or after what other sessions have queued: /voice test, replay and Play.
+// Plays at once, or after what other sessions have queued: /voice-replies test, replay and Play.
 async function speakScript($: EngineInterface, script: string): Promise<void> {
   await stopSpeaking($)
   await playScript($, script, runId, 'queue')

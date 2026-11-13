@@ -1,6 +1,13 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+// A request body is text, or `{ base64 }` for bytes that are not valid UTF-8.
+// Every request this plugin sends is JSON, so a bytes body is a bug: fail on it.
+const textBody = (body: string | { readonly base64: string } | undefined): string | undefined => {
+  if (body === undefined || typeof body === 'string') return body
+  throw new Error(`expected a JSON text body, got ${body.base64.length} base64 characters`)
+}
+
 const USAGE = {
   input_tokens: 0,
   output_tokens: 0,
@@ -25,7 +32,7 @@ const SCRIPT = 'Done. All three tests pass.'
 // The script as spoken with a name: the name on a line of its own, so the server pauses after it.
 const named = (name: string) => `${name},\n${SCRIPT}`
 // What the server hears with each /speak from session s1. No tag: the voice says no
-// session name unless /voice name sets one.
+// session name unless /voice-replies name sets one.
 const FROM_S1 = { session: 'session:s1', tag: '' } as const
 
 type Options = {
@@ -123,13 +130,13 @@ function fakeEngine(
     if (!isKokoroUp) throw new Error('connection refused')
     if (e.url.endsWith('/health')) return ok(server.api >= 2 ? `{"ok":true,"api":${server.api}}` : '{"ok":true}')
     if (e.url.endsWith('/speak')) {
-      const body = JSON.parse(e.init?.body ?? '{}') as Spoken
+      const body = JSON.parse(textBody(e.init?.body) ?? '{}') as Spoken
       if (isBusy && body.when === 'idle') return ok('{"ok":true,"id":null,"state":"busy","by":"other"}')
       kokoro.push(body)
       return ok(`{"ok":true,"id":${kokoro.length},"state":"queued"}`)
     }
     if (e.url.endsWith('/stop')) {
-      stops.push(JSON.parse(e.init?.body ?? '{}'))
+      stops.push(JSON.parse(textBody(e.init?.body) ?? '{}'))
       return ok('{"ok":true}')
     }
     if (e.url.includes('/status')) {
@@ -252,14 +259,14 @@ test('a new session starts with the default voice, not another session\'s', asyn
   ])
 })
 
-test('/voice default makes this session\'s choices the default for new sessions', async ($, on) => {
+test('/voice-replies default makes this session\'s choices the default for new sessions', async ($, on) => {
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'voice bm_lewis' } as never)
-  await $.command.run({ command: 'voice', args: 'length full' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'voice bm_lewis' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'length full' } as never)
   expect(fake.store.get('voice')).toBe(undefined)
-  await $.command.run({ command: 'voice', args: 'default' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'default' } as never)
 
   expect(fake.store.get('voice')).toBe('bm_lewis')
   expect(fake.store.get('length')).toBe('full')
@@ -354,28 +361,28 @@ test('a new prompt drops the waiting reply', async ($, on) => {
   await settle(clock)
 
   expect((await ui.find({ type: 'Text', text: /reply waiting/ })) === undefined).toBe(true)
-  const reply = await $.command.run({ command: 'voice', args: 'play' } as never)
+  const reply = await $.command.run({ command: 'voice-replies', args: 'play' } as never)
   expect(JSON.stringify(reply)).toContain('No reply is waiting')
   expect(fake.kokoro).toEqual([])
   await ui.unmount()
 })
 
-test('/voice stop stops this session only; /voice stop all stops every session', async ($, on) => {
+test('/voice-replies stop stops this session only; /voice-replies stop all stops every session', async ($, on) => {
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'stop' } as never)
-  await $.command.run({ command: 'voice', args: 'stop all' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'stop' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'stop all' } as never)
 
   expect(fake.stops).toEqual([{ session: 'session:s1' }, {}])
 })
 
-test('/voice name sets what the voice says when it moves to this session', async ($, on) => {
+test('/voice-replies name sets what the voice says when it moves to this session', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'name Voice Fixes' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'name Voice Fixes' } as never)
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
 
@@ -383,24 +390,24 @@ test('/voice name sets what the voice says when it moves to this session', async
   expect(fake.kokoro[0]?.tag).toBe('Voice Fixes')
 })
 
-test('/voice name with no words stops saying the session name', async ($, on) => {
+test('/voice-replies name with no words stops saying the session name', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on, { saved: { 'session:s1': { label: 'Voice Fixes' } } })
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'name' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'name' } as never)
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
 
   expect(fake.kokoro[0]?.tag).toBe('')
 })
 
-test('/voice call starts each reply with the name, for this session only', async ($, on) => {
+test('/voice-replies call starts each reply with the name, for this session only', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  const reply = await $.command.run({ command: 'voice', args: 'call Jay' } as never)
+  const reply = await $.command.run({ command: 'voice-replies', args: 'call Jay' } as never)
   expect(JSON.stringify(reply)).toContain('Jay')
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
@@ -455,7 +462,7 @@ test('the Call me field in the band sets the name for this session', async ($, o
   await ui.unmount()
 })
 
-test('/voice default carries the name to new sessions; /voice call with no words clears it here', async ($, on) => {
+test('/voice-replies default carries the name to new sessions; /voice-replies call with no words clears it here', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on, { sessionId: 's2', saved: { callMe: 'Jay' } })
   await $.session.start(START)
@@ -464,15 +471,15 @@ test('/voice default carries the name to new sessions; /voice call with no words
   await settle(clock)
   expect(fake.kokoro[0]?.text).toBe(named('Jay'))
 
-  await $.command.run({ command: 'voice', args: 'call' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'call' } as never)
   await $.turn.complete({ ...TURN, answer: 'All good.' })
   await settle(clock)
   expect(fake.kokoro[1]?.text).toBe(SCRIPT)
   // The default stays; only this session says no name.
   expect(fake.store.get('callMe')).toBe('Jay')
 
-  await $.command.run({ command: 'voice', args: 'call Sam' } as never)
-  await $.command.run({ command: 'voice', args: 'default' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'call Sam' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'default' } as never)
   expect(fake.store.get('callMe')).toBe('Sam')
 })
 
@@ -541,7 +548,7 @@ test('subagent turns, and turns while off, stay silent', async ($, on) => {
   await $.session.start(START)
 
   await $.turn.complete({ ...TURN, answer: 'hello' })
-  await $.command.run({ command: 'voice', args: 'on' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'on' } as never)
   expect(fake.store.get('session:s1')).toMatchObject({ isOn: true })
   await $.turn.complete({ ...TURN, answer: 'from a subagent', agentId: 'a1' })
   await settle(clock)
@@ -576,12 +583,12 @@ test('sessions nobody is watching (claude -p, scheduled tasks) stay silent', asy
   expect(fake.windows).toEqual([])
 })
 
-test('/voice install runs the installer, which picks GPU or CPU, then starts Kokoro', async ($, on) => {
+test('/voice-replies install runs the installer, which picks GPU or CPU, then starts Kokoro', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  const reply = await $.command.run({ command: 'voice', args: 'install' } as never)
+  const reply = await $.command.run({ command: 'voice-replies', args: 'install' } as never)
   expect(JSON.stringify(reply)).toContain('Installing Kokoro')
   await settle(clock)
 
@@ -592,21 +599,21 @@ test('/voice install runs the installer, which picks GPU or CPU, then starts Kok
   expect(fake.toasts).toContain('Kokoro runs on the CPU.')
 })
 
-test('/voice install cpu and gpu force the device; anything else is refused', async ($, on) => {
+test('/voice-replies install cpu and gpu force the device; anything else is refused', async ($, on) => {
   const clock = mock.clock(on)
   const fake = fakeEngine(on)
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'install cpu' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'install cpu' } as never)
   await settle(clock)
-  await $.command.run({ command: 'voice', args: 'install gpu' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'install gpu' } as never)
   await settle(clock)
-  const bad = await $.command.run({ command: 'voice', args: 'install amd' } as never)
+  const bad = await $.command.run({ command: 'voice-replies', args: 'install amd' } as never)
 
   expect(fake.installs.length).toBe(2)
   expect((fake.installs[0] ?? []).join(' ')).toContain('-Device cpu')
   expect((fake.installs[1] ?? []).join(' ')).toContain('-Device gpu')
-  expect(JSON.stringify(bad)).toContain('/voice install cpu')
+  expect(JSON.stringify(bad)).toContain('/voice-replies install cpu')
 })
 
 test('a failed install says why and keeps the Windows voice', async ($, on) => {
@@ -614,7 +621,7 @@ test('a failed install says why and keeps the Windows voice', async ($, on) => {
   const fake = fakeEngine(on, { installResult: 'fails' })
   await $.session.start(START)
 
-  await $.command.run({ command: 'voice', args: 'install' } as never)
+  await $.command.run({ command: 'voice-replies', args: 'install' } as never)
   await settle(clock)
 
   const failed = fake.toasts.find(t => t.startsWith('Kokoro install failed')) ?? ''

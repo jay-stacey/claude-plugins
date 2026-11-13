@@ -22,10 +22,10 @@ A resumed session that has no brief yet gets one when it starts. Subagent turns,
 
 | Command | What it does |
 | --- | --- |
-| `/brief` | Writes the brief again now |
-| `/brief hide` / `/brief show` | Hides or shows the band for this session |
-| `/brief rename` | Applies the brief's title to the session now |
-| `/brief autorename off` / `on` | Turns automatic renaming off or on, for every session |
+| `/session-brief` | Writes the brief again now |
+| `/session-brief hide` / `/session-brief show` | Hides or shows the band for this session |
+| `/session-brief rename` | Applies the brief's title to the session now |
+| `/session-brief autorename off` / `on` | Turns automatic renaming off or on, for every session |
 
 The band also has **Collapse**, **Refresh** and **Hide** buttons.
 

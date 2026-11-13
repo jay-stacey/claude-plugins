@@ -2,6 +2,13 @@ import { expect, mock, test as kitTest } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine, TestBody, TestOptions } from 'claude-code/testing'
 
+// A request body is text, or `{ base64 }` for bytes that are not valid UTF-8.
+// Every request this plugin sends is JSON, so a bytes body is a bug: fail on it.
+const textBody = (body: string | { readonly base64: string } | undefined): string | undefined => {
+  if (body === undefined || typeof body === 'string') return body
+  throw new Error(`expected a JSON text body, got ${body.base64.length} base64 characters`)
+}
+
 // Each test drives the inbox loop on the mocked clock, which is real work: on a busy
 // machine some take longer than the kit's 5 s, so every test gets 30 s.
 const TEST_MS = 30000
@@ -201,7 +208,8 @@ function fakeEngine(on: On, o: Options = {}) {
       throw new Error('connection refused')
     }
     const url = new URL(e.url)
-    const body = e.init?.body ? (JSON.parse(e.init.body) as Record<string, unknown>) : null
+    const text = textBody(e.init?.body)
+    const body = text ? (JSON.parse(text) as Record<string, unknown>) : null
     requests.push({ method: e.init?.method ?? 'GET', path: url.pathname + url.search, body,
       token: e.init?.headers?.['X-COS-Token'] })
     if (url.pathname === '/api/health') {
