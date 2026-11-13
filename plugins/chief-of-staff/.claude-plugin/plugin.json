@@ -1,0 +1,155 @@
+{
+  "name": "chief-of-staff",
+  "version": "0.3.1",
+  "description": "A Chief of Staff for your Claude Code sessions, in the desktop app or a terminal: one session becomes the Chief, watches every other session, tells you which ones need you, and closes or answers them when you ask. A local console on 127.0.0.1 shows a live session graph, a roster, the Chief's chat and any session's transcript, with an optional local voice (Hey Chief).",
+  "author": {
+    "name": "Jay Stacey"
+  },
+  "license": "MIT",
+  "keywords": [
+    "sessions",
+    "chief-of-staff",
+    "dashboard",
+    "voice",
+    "desktop",
+    "terminal"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stale_hours": {
+      "type": "number",
+      "title": "Stale after (hours)",
+      "description": "A session with no activity for this many hours counts as stale.",
+      "default": 24
+    },
+    "recent_days": {
+      "type": "number",
+      "title": "Show sessions active in the last (days)",
+      "description": "The graph and roster show live sessions and sessions active in this many days; older ones collapse into one row.",
+      "default": 3
+    },
+    "speak_replies": {
+      "type": "boolean",
+      "title": "Speak the Chief's replies",
+      "description": "Read each Chief reply aloud through the local voice, when it is installed.",
+      "default": true
+    },
+    "listen": {
+      "type": "string",
+      "title": "Listening mode",
+      "description": "wake: always listening for the wake word. ptt: only while push-to-talk is held. off: no microphone.",
+      "options": [
+        "wake",
+        "ptt",
+        "off"
+      ],
+      "default": "wake"
+    },
+    "voice": {
+      "type": "string",
+      "title": "Voice",
+      "description": "auto uses what voice setup picked for this PC (Chatterbox on a GPU, Kokoro on a CPU). chatterbox or kokoro forces one; the other is the fallback.",
+      "options": [
+        "auto",
+        "chatterbox",
+        "kokoro"
+      ],
+      "default": "auto"
+    },
+    "chief_name": {
+      "type": "string",
+      "title": "Chief's name",
+      "description": "What you call your Chief. It answers to this name and uses it for itself. Letters, digits, spaces, apostrophes and hyphens, up to 30.",
+      "default": "Chief"
+    },
+    "wake_word": {
+      "type": "string",
+      "title": "Wake word",
+      "description": "The phrase that starts listening in wake mode, usually hey plus the Chief's name. Run the setup's wake-word enrollment after changing it.",
+      "default": "hey chief"
+    },
+    "wake_ack": {
+      "type": "string",
+      "title": "Wake acknowledgment",
+      "description": "What you hear when the wake word is heard. chime: a short tone. word: the Chief says a word such as yes. off: nothing.",
+      "options": [
+        "chime",
+        "word",
+        "off"
+      ],
+      "default": "chime"
+    },
+    "fillers": {
+      "type": "boolean",
+      "title": "Quick acknowledgments",
+      "description": "The voice says a short filler such as on it as soon as you ask something, before the Chief's full answer.",
+      "default": true
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Proactive notices",
+      "description": "Let the Chief speak up when a session starts waiting on you, finishes, or goes stale.",
+      "default": true
+    },
+    "quiet_hours": {
+      "type": "string",
+      "title": "Quiet hours",
+      "description": "No proactive notices in this local time range, like 22:00-07:00. Leave empty for none.",
+      "default": "22:00-07:00"
+    },
+    "jev_provider": {
+      "type": "string",
+      "title": "Jev: how requests are sorted",
+      "description": "Jev picks the model and whether to start a new session before the Chief acts. auto: use what setup chose for this PC. rules: word rules only, no model. local: a small model on this PC. hosted: a hosted model with your API key.",
+      "options": [
+        "auto",
+        "rules",
+        "local",
+        "hosted"
+      ],
+      "default": "auto"
+    },
+    "jev_adapter": {
+      "type": "string",
+      "title": "Jev: model API style",
+      "description": "How Jev talks to its model. auto: what setup chose (openai_compat for a local model, anthropic for hosted). openai_compat: an OpenAI-style chat API such as Ollama or llama-server. anthropic: the Anthropic Messages API.",
+      "options": [
+        "auto",
+        "openai_compat",
+        "anthropic"
+      ],
+      "default": "auto"
+    },
+    "jev_model": {
+      "type": "string",
+      "title": "Jev: model name",
+      "description": "The model Jev asks. Leave empty to use what setup chose.",
+      "default": ""
+    },
+    "jev_endpoint": {
+      "type": "string",
+      "title": "Jev: model address",
+      "description": "The base URL of an OpenAI-style API, like http://127.0.0.1:11435/v1. Leave empty to use what setup chose. Plain http is allowed only on this PC.",
+      "default": ""
+    },
+    "jev_timeout_ms": {
+      "type": "number",
+      "title": "Jev: time limit (milliseconds)",
+      "description": "How long Jev waits for its model before it uses the word rules. From 100 to 5000.",
+      "default": 800
+    },
+    "jev_key_ref": {
+      "type": "string",
+      "title": "Jev: where the API key is kept",
+      "description": "wincred:<name> for a Windows Credential Manager entry, or env:<NAME> for an environment variable. Never the key itself. Leave empty if you use the API key field or a local model.",
+      "default": ""
+    },
+    "jev_api_key": {
+      "type": "string",
+      "title": "Jev: hosted API key",
+      "description": "Only for the hosted provider. Kept in your system keychain by Claude and held in memory by the server; it is never written to a file.",
+      "sensitive": true,
+      "default": ""
+    }
+  }
+}

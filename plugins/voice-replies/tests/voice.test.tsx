@@ -40,6 +40,10 @@ type Options = {
   surfaces?: string[]
   installResult?: 'ok' | 'fails'
   modelText?: string
+  // The chief-of-staff server.json's chiefCliId; undefined means no such file.
+  chiefCliId?: string
+  // Whether that server still answers; a crashed one leaves server.json behind.
+  isChiefServerUp?: boolean
 }
 
 type Spoken = { text: string; voice: string; speed: number; session: string; tag: string; when: string }
@@ -58,6 +62,8 @@ function fakeEngine(
     surfaces = ['desktop'],
     installResult = 'ok',
     modelText = SCRIPT,
+    chiefCliId,
+    isChiefServerUp = true,
   }: Options = {},
 ) {
   const store = new Map<string, unknown>(Object.entries(saved))
@@ -101,7 +107,19 @@ function fakeEngine(
   })
   on('session.surfaces', () => ({ value: surfaces }) as never)
   on('fs.stat', () => ({ value: { isFile: true } }) as never)
+  on('fs.read', ($, e) => {
+    const path = String((e as { path: string }).path)
+    if (chiefCliId !== undefined && path === 'C:\\Users\\test\\.claude\\chief-of-staff\\run\\server.json') {
+      return { value: JSON.stringify({ api: 1, port: 47870, chiefSessionId: 'local_x', chiefCliId }) } as never
+    }
+    throw new Error('no such file')
+  })
   on('http.fetch', ($, e) => {
+    // The chief-of-staff server named in server.json.
+    if (e.url === 'http://127.0.0.1:47870/api/health') {
+      if (!isChiefServerUp) throw new Error('connection refused')
+      return ok('{"ok":true,"api":1,"app":"chief-of-staff"}')
+    }
     if (!isKokoroUp) throw new Error('connection refused')
     if (e.url.endsWith('/health')) return ok(server.api >= 2 ? `{"ok":true,"api":${server.api}}` : '{"ok":true}')
     if (e.url.endsWith('/speak')) {
@@ -699,4 +717,39 @@ test('a narrow band puts the settings on a row of their own, and no control shri
     expect(panelOf((await wide.drawn()) as Node)?.props?.flexDirection).toBe('row')
     await wide.unmount()
   }
+})
+
+test('the Chief of Staff session stays silent: its voice comes from the Chief of Staff voice daemon', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { chiefCliId: 's1' })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'Two sessions need you.' })
+  await settle(clock)
+
+  expect(fake.prompts).toEqual([])
+  expect(fake.kokoro).toEqual([])
+  expect(fake.windows).toEqual([])
+})
+
+test('other sessions still speak while a Chief of Staff runs elsewhere', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { chiefCliId: 'another-session' })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro).toEqual([{ text: SCRIPT, voice: 'af_heart', speed: 1, ...FROM_S1, when: 'idle' }])
+})
+
+test('a Chief of Staff server that crashed does not silence the session', async ($, on) => {
+  const clock = mock.clock(on)
+  const fake = fakeEngine(on, { chiefCliId: 's1', isChiefServerUp: false })
+  await $.session.start(START)
+
+  await $.turn.complete({ ...TURN, answer: 'All good.' })
+  await settle(clock)
+
+  expect(fake.kokoro).toEqual([{ text: SCRIPT, voice: 'af_heart', speed: 1, ...FROM_S1, when: 'idle' }])
 })

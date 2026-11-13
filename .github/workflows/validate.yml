@@ -37,6 +37,9 @@ jobs:
       - name: executive-assistant tests
         run: python3 -m unittest discover -s plugins/executive-assistant/tests -v
 
+      - name: chief-of-staff server tests
+        run: python3 -m unittest discover -s plugins/chief-of-staff/server/tests -v
+
       # software-factory has plain Node tests (Node 22, set up above, is needed
       # for glob patterns in `node --test`); they create git commits in temp repos.
       - name: software-factory tests

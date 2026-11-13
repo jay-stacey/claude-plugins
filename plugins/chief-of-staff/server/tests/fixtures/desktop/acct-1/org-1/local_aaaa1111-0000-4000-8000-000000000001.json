@@ -1,0 +1,27 @@
+{
+ "sessionId": "local_aaaa1111-0000-4000-8000-000000000001",
+ "cliSessionId": "cli-busy",
+ "cwd": "C:\\work\\worktrees\\dp-web-ui\\dp1-676",
+ "originCwd": "C:\\work\\repos\\dp-web-ui",
+ "createdAt": 1791980000000,
+ "lastActivityAt": 1792159940000,
+ "isArchived": false,
+ "title": "DP1-676",
+ "model": "claude-sonnet-5-5",
+ "effort": "high",
+ "permissionMode": "auto",
+ "branch": "DP/dp1-676",
+ "prs": [
+  {
+   "prNumber": 1216,
+   "branch": "DP/dp1-676",
+   "state": "OPEN"
+  }
+ ],
+ "turnWrapUp": {
+  "description": "Fixed the **inventory** form; see [PR](https://example.test/pr)."
+ },
+ "enabledMcpTools": {
+  "x": true
+ }
+}

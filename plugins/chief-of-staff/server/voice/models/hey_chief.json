@@ -1,0 +1,8 @@
+{
+  "phrase": "hey chief",
+  "threshold": 0.35,
+  "trainedWith": "F:/atlas-training local-trainer (openWakeWord 368c037, Piper sample generator), 24000 positive and 24000 adversarial clips, 2 augmentation rounds, 50000 steps",
+  "trainedAt": "2026-10-16T13:17:00",
+  "rawValidation": {"threshold": 0.35, "positiveRecall": 0.95, "adversarialFalseAccept": 0.01},
+  "sha256": "f2db2c2420543d7b13f9d45d30974df1236f172490d49157809f69c4d1ec2240"
+}

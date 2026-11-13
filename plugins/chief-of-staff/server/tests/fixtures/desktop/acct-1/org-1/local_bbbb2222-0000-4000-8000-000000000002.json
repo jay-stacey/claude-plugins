@@ -1,0 +1,16 @@
+{
+ "sessionId": "local_bbbb2222-0000-4000-8000-000000000002",
+ "cliSessionId": "cli-needs",
+ "cwd": "C:\\work",
+ "originCwd": "C:\\work",
+ "createdAt": 1792142000000,
+ "lastActivityAt": 1792152800000,
+ "isArchived": false,
+ "title": "Plan PRO-921 into engineering stories",
+ "postTurnSummary": {
+  "status_category": "blocked",
+  "status_detail": "Waiting on the vendor code",
+  "needs_action": "Jay's decision: do the vendor code switch",
+  "summarizes_uuid": "u1"
+ }
+}

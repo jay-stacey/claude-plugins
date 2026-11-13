@@ -1,0 +1,2002 @@
+[
+ {
+  "text": "What needs me right now?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Which sessions are waiting on me?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "How is the flaky checkout test session going?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Is the Node 22 upgrade done?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "What's the status of the billing design?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Anything waiting for my reply?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "How many sessions are open?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Did the release notes session finish?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Catch me up on everything from this morning.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Which sessions are stale?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Where are we on the 502 log search?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "What's left on the checkout test fix?",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Show me the sessions in the shop-web repo.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Give me a status update on all my sessions.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Archive the Node 22 upgrade session.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Reply to the release notes session: yes, ship it.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Tell the checkout test session to skip the retry change.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Close the log search session, we're done with it.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Send the billing session a note to keep the old invoice table.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Answer the release notes session with option two.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Archive every session that is done.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Approve the plan in the billing design session.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Ping the checkout test session and ask for its findings.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Thanks!",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Yes.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "No, not now.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Good morning.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Sounds good.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Review the payment retry pull request for bugs.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Update the build script to cache dependencies between runs.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Search the shop-web repo for every place we read the cart cookie.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Summarize the open pull requests in docs-site.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Find all TODO comments in billing-api and list them by file.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Look up which services still call the old auth endpoint.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Fix the null reference in the order summary page.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Build a CSV export button for the invoices list.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Write unit tests for the discount calculator.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Add input validation to the signup form.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Refactor the email sender to use the new queue client.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Write the migration that adds a status column to orders.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "sonnet",
+   "background": true
+  }
+ },
+ {
+  "text": "Design the architecture for splitting billing into its own service.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Research how other shops handle partial refunds and propose an approach.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Investigate the root cause of the memory leak in the worker process.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Plan the migration from the monolith database to per-service schemas.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Debug why checkout fails only on the first request after deploy and find the root cause.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Use opus to fix the date parsing bug in the importer.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "opus",
+   "background": true
+  }
+ },
+ {
+  "text": "Summarize the last session's output, do it yourself.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ },
+ {
+  "text": "Write the README for ops-tools with haiku.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Search the repo for the old API key name, in a new session.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "new_session",
+   "model": "haiku",
+   "background": true
+  }
+ },
+ {
+  "text": "Draft a reply to the billing session's question, don't start a new session.",
+  "sessions": [
+   {
+    "title": "Fix flaky checkout test",
+    "repo": "shop-web",
+    "state": "working",
+    "model": "sonnet"
+   },
+   {
+    "title": "Draft release notes v2.4",
+    "repo": "docs-site",
+    "state": "waiting",
+    "model": "haiku"
+   },
+   {
+    "title": "Design billing service split",
+    "repo": "billing-api",
+    "state": "idle",
+    "model": "opus"
+   },
+   {
+    "title": "Upgrade build to Node 22",
+    "repo": "shop-web",
+    "state": "done",
+    "model": "sonnet"
+   },
+   {
+    "title": "Search logs for 502 spikes",
+    "repo": "ops-tools",
+    "state": "waiting",
+    "model": "haiku"
+   }
+  ],
+  "want": {
+   "route": "chief",
+   "model": "haiku",
+   "background": false
+  }
+ }
+]

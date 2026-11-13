@@ -1,0 +1,18 @@
+{
+ "sessionId": "local_eeee5555-0000-4000-8000-000000000005",
+ "cliSessionId": "cli-child",
+ "cwd": "C:\\work",
+ "createdAt": 1792152800000,
+ "lastActivityAt": 1792156400000,
+ "isArchived": false,
+ "title": "Helper for DP1-676",
+ "spawnedFrom": {
+  "sessionId": "local_aaaa1111-0000-4000-8000-000000000001",
+  "title": "DP1-676"
+ },
+ "postTurnSummary": {
+  "status_category": "completed",
+  "status_detail": "Ran the tests",
+  "needs_action": ""
+ }
+}
