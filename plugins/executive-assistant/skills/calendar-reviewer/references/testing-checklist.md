@@ -4,10 +4,10 @@ Developer-facing checks for this skill. Not needed at runtime.
 
 ## Reading
 
-- [ ] One ranged `get_events` call per picked calendar, with `detailed: true`
-- [ ] `time_min` and `time_max` carry explicit offsets, computed per date
-- [ ] A range across a daylight-saving change uses two different offsets
-- [ ] `page_token` is followed until it runs out
+- [ ] One ranged `list_events` call per picked calendar
+- [ ] `startTime` and `endTime` are local times with no offset, plus `timeZone`
+- [ ] A range across a daylight-saving change still covers every day
+- [ ] `nextPageToken` is followed until it runs out
 - [ ] Only the primary calendar and `calendar.includeCalendars` are read
 
 ## Time

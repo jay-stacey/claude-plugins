@@ -38,7 +38,5 @@ settings through `userConfig`, and prefer a configured option over either.
 
 ## Secrets
 
-`google_oauth_client_id` and `google_oauth_client_secret` are marked
-`sensitive`, so they are kept in secure storage rather than `settings.json` and
-are substituted directly into `.mcp.json` via `${user_config.*}`. Skills never
-need to read them, and must never print them.
+The plugin keeps no secrets. Gmail and Google Calendar come from the native
+claude.ai connectors, which hold their own sign-in.

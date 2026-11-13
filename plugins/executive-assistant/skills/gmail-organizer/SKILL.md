@@ -2,7 +2,7 @@
 name: gmail-organizer
 description: Apply Gmail labels and archive in batches to reach inbox zero. Takes the categorized message IDs from gmail-processor and turns them into label and archive operations. Use after gmail-processor produces a categorization, or when applying labels and organizing the inbox.
 user-invocable: false
-allowed-tools: mcp__google-workspace__search_gmail_messages, mcp__google-workspace__get_gmail_message_content, mcp__google-workspace__get_gmail_messages_content_batch, mcp__google-workspace__get_gmail_thread_content, mcp__google-workspace__get_gmail_threads_content_batch, mcp__google-workspace__list_gmail_labels, mcp__google-workspace__manage_gmail_label, mcp__google-workspace__modify_gmail_message_labels, mcp__google-workspace__batch_modify_gmail_message_labels, mcp__google-workspace__draft_gmail_message, mcp__google-workspace__list_gmail_filters, mcp__plugin_executive-assistant_google-workspace__search_gmail_messages, mcp__plugin_executive-assistant_google-workspace__get_gmail_message_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_messages_content_batch, mcp__plugin_executive-assistant_google-workspace__get_gmail_thread_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_threads_content_batch, mcp__plugin_executive-assistant_google-workspace__list_gmail_labels, mcp__plugin_executive-assistant_google-workspace__manage_gmail_label, mcp__plugin_executive-assistant_google-workspace__modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__batch_modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__draft_gmail_message, mcp__plugin_executive-assistant_google-workspace__list_gmail_filters, Read, Edit
+allowed-tools: Read, Edit, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__search_threads, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__list_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_label, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__update_message_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_draft, mcp__claude_ai_Gmail__search_threads, mcp__claude_ai_Gmail__get_message, mcp__claude_ai_Gmail__get_thread, mcp__claude_ai_Gmail__list_labels, mcp__claude_ai_Gmail__create_label, mcp__claude_ai_Gmail__label_thread, mcp__claude_ai_Gmail__unlabel_thread, mcp__claude_ai_Gmail__label_message, mcp__claude_ai_Gmail__unlabel_message, mcp__claude_ai_Gmail__update_message_labels, mcp__claude_ai_Gmail__trash_thread, mcp__claude_ai_Gmail__trash_message, mcp__claude_ai_Gmail__untrash_thread, mcp__claude_ai_Gmail__untrash_message, mcp__claude_ai_Gmail__create_draft
 ---
 
 # Gmail Organizer
@@ -13,21 +13,25 @@ happened upstream, so do not re-classify messages here.
 
 Two principles:
 
-1. **Batch everything.** Use one `batch_modify_gmail_message_labels` call per
-   label group rather than a loop of `modify_gmail_message_labels`. It is
-   faster, cheaper, and less likely to hit rate limits.
+1. **Group, then work thread by thread.** The native Gmail connector has no
+   batch call, so group the input by target label set first, check each
+   group once, then make one `label_thread` call per thread (all of the
+   group's labels in one call) and one `unlabel_thread` call to archive.
+   Print a status line every 25 threads.
 2. **Urgent stays in the inbox.** Everything else is archived after labeling,
    so the inbox holds only what needs a response today.
 
 ## MCP tools
 
+Native Gmail connector; full names in `${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`.
+
 | Operation | Tool |
 |---|---|
-| List labels | `list_gmail_labels` |
-| Create label | `manage_gmail_label` (`action: "create"`, `label_name: "..."`) |
-| Modify labels (one) | `modify_gmail_message_labels` |
-| Modify labels (many) | `batch_modify_gmail_message_labels` |
-| Search inbox | `search_gmail_messages` |
+| List labels | `list_labels` |
+| Create label | `create_label` (`displayName: "Action/Urgent"`) |
+| Add labels to a thread | `label_thread` (`threadId`, `labelIds`) |
+| Archive a thread | `unlabel_thread` with `INBOX` |
+| Search inbox | `search_threads` |
 
 ## Labels
 
@@ -57,35 +61,32 @@ FYI/Reports              Development/Code Review
 
 ## Phase 1: Make sure labels exist
 
-Call `list_gmail_labels` once. For each label the input needs (the hierarchy
-above plus any project labels) that is missing, call `manage_gmail_label` with
-`action: "create"`. Note which ones you created for the report.
+Call `list_labels` once. For each label the input needs (the hierarchy above
+plus any project labels) that is missing, call `create_label`. Keep the name
+to id map; the label calls take ids. Note which labels you created for the
+report.
 
-## Phase 2: Apply labels in batches
+## Phase 2: Apply labels thread by thread
 
-Group the input by its exact target label set from the table, then make one
-call per group:
+Group the input by its exact target label set from the table. Then, for each
+thread in a group:
 
 ```
-batch_modify_gmail_message_labels(
-  message_ids: important_ids,
-  add_labels: ["Action/This Week"],
-  remove_labels: ["INBOX"]
-)
+label_thread(threadId: id, labelIds: ["<id of Action/This Week>"])
+unlabel_thread(threadId: id, labelIds: ["INBOX"])
 ```
 
-For urgent mail, and Jira Critical/Highest, omit `remove_labels` so the
-message stays in the inbox. Split Azure into normal and critical groups, and
-GitHub into normal and PR-review groups, before batching. If `batchSize` is
-set, split larger groups into chunks of that size.
+For urgent mail, and Jira Critical/Highest, skip `unlabel_thread` so the
+thread stays in the inbox. Split Azure into normal and critical groups, and
+GitHub into normal and PR-review groups, first.
 
 ## Phase 3: Verify
 
-Search the inbox again with `search_gmail_messages(query: "in:inbox",
-max_results: 100)` and count what is really there. It should hold only urgent
+Search the inbox again with `search_threads(query: "in:inbox", pageSize: 50)`,
+paging to the end, and count what is really there. It should hold only urgent
 (starred) mail plus anything `gmail-processor` left as ambiguous. Report that
-read-back count, not one worked out from the calls you made, because a batch
-can partly fail without an error you notice.
+read-back count, not one worked out from the calls you made, because a call
+can fail without an error you notice.
 
 ## Output
 
@@ -103,8 +104,7 @@ newly created labels only if there are any.
     "autoCreateLabels": true,
     "urgentKeepInInbox": true,
     "starUrgentEmails": true,
-    "archiveAfterLabeling": true,
-    "batchSize": 100
+    "archiveAfterLabeling": true
   }
 }
 ```
@@ -113,14 +113,15 @@ newly created labels only if there are any.
 
 - Keep urgent mail in the inbox. Archiving it hides the one thing the user
   must see today.
-- Check each group's IDs and labels before the batch call. A wrong label across
-  hundreds of messages is slow to undo.
+- Check each group's IDs and labels before the first call. A wrong label
+  across hundreds of threads is slow to undo.
 - On per-message failures, log the failed IDs, carry on with the rest, and
   report them at the end. Do not roll back the successful ones.
 - If label creation fails, it is usually a name conflict or a race. Check
   whether the label now exists, check the nested format, and continue.
 - If archiving fails because a message was already archived or moved, skip it.
-- If the MCP connection fails, say so and suggest `/mcp` to check the server.
+- If the Gmail connector is missing or fails, say so and suggest connecting
+  Gmail under Settings, Connectors in Claude.
 
 Undo, if the user asks: remove a label by searching `label:{name}`; unarchive
 from All Mail with "Move to Inbox"; delete a label in Gmail Settings, Labels
@@ -161,7 +162,8 @@ and ambiguous mail.
 
 ## Developer checks
 
-- Every multi-message change uses `batch_modify_gmail_message_labels`.
+- Each thread gets one `label_thread` call with all its labels, and at most
+  one `unlabel_thread` call.
 - Urgent mail is starred and stays in the inbox; all other categories are
   archived.
 - The reported inbox count comes from the Phase 3 search.

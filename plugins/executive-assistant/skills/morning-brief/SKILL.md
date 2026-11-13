@@ -4,7 +4,7 @@ description: Start the user's day. Clears email with their saved rules, reads th
 when_to_use: Trigger phrases include "morning brief", "start my day", "prep my day", "plan my day", "what's on today", "plan my week", "plan today and this week", "catch me up", "I'm back from vacation", "daily prep".
 argument-hint: "[--quick] [--prepare] [--dry-run] [--skip-email] [--skip-calendar] [--skip-elsewhere]"
 effort: high
-allowed-tools: Bash, Read, Write, Edit, Glob, Agent, AskUserQuestion, mcp__google-workspace__search_gmail_messages, mcp__google-workspace__get_gmail_message_content, mcp__google-workspace__get_gmail_messages_content_batch, mcp__google-workspace__get_gmail_thread_content, mcp__google-workspace__get_gmail_threads_content_batch, mcp__google-workspace__list_gmail_labels, mcp__google-workspace__manage_gmail_label, mcp__google-workspace__modify_gmail_message_labels, mcp__google-workspace__batch_modify_gmail_message_labels, mcp__google-workspace__draft_gmail_message, mcp__google-workspace__list_gmail_filters, mcp__google-workspace__list_calendars, mcp__google-workspace__get_events, mcp__google-workspace__query_freebusy, mcp__plugin_executive-assistant_google-workspace__search_gmail_messages, mcp__plugin_executive-assistant_google-workspace__get_gmail_message_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_messages_content_batch, mcp__plugin_executive-assistant_google-workspace__get_gmail_thread_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_threads_content_batch, mcp__plugin_executive-assistant_google-workspace__list_gmail_labels, mcp__plugin_executive-assistant_google-workspace__manage_gmail_label, mcp__plugin_executive-assistant_google-workspace__modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__batch_modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__draft_gmail_message, mcp__plugin_executive-assistant_google-workspace__list_gmail_filters, mcp__plugin_executive-assistant_google-workspace__list_calendars, mcp__plugin_executive-assistant_google-workspace__get_events, mcp__plugin_executive-assistant_google-workspace__query_freebusy
+allowed-tools: Bash, Read, Write, Edit, Glob, Agent, AskUserQuestion, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__search_threads, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__list_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_label, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__update_message_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_draft, mcp__claude_ai_Gmail__search_threads, mcp__claude_ai_Gmail__get_message, mcp__claude_ai_Gmail__get_thread, mcp__claude_ai_Gmail__list_labels, mcp__claude_ai_Gmail__create_label, mcp__claude_ai_Gmail__label_thread, mcp__claude_ai_Gmail__unlabel_thread, mcp__claude_ai_Gmail__label_message, mcp__claude_ai_Gmail__unlabel_message, mcp__claude_ai_Gmail__update_message_labels, mcp__claude_ai_Gmail__trash_thread, mcp__claude_ai_Gmail__trash_message, mcp__claude_ai_Gmail__untrash_thread, mcp__claude_ai_Gmail__untrash_message, mcp__claude_ai_Gmail__create_draft, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_calendars, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__get_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__search_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__suggest_time, mcp__claude_ai_Google_Calendar__list_calendars, mcp__claude_ai_Google_Calendar__list_events, mcp__claude_ai_Google_Calendar__get_event, mcp__claude_ai_Google_Calendar__search_events, mcp__claude_ai_Google_Calendar__suggest_time
 ---
 
 # Morning brief
@@ -139,24 +139,27 @@ four questions, each with a recommended first option):
 - Proposed focus blocks: list them in the question. Book them (recommended) /
   Not today.
 - `rule_suggestions`: "Add this rule: `<line>`?" Show the exact line.
-- `placeholders` in the rules file, and `filter_offers`: ask to fill in or
-  create a Gmail filter. A Gmail filter is a lasting change to the user's
-  account, so it always needs this yes.
+- `placeholders` in the rules file, and `filter_offers`: ask to fill in, or
+  whether the user wants to make a Gmail filter. The user makes the filter
+  themselves in Gmail; the assistant gives the steps.
 
 With `--prepare`, ask nothing. Put each question in `pending` and stop after
 Phase 5.
 
 ## Phase 5: Act and save (status: "Booking blocks and saving the brief...")
 
-1. **Email yes**: `batch_modify_gmail_message_labels` on the group's
-   `message_ids` (TRASH, or remove INBOX for archive; get label ids from
-   `list_gmail_labels` first). Then count
-   `in:inbox` again and report the real number.
+1. **Email yes**: act on each of the group's `thread_ids`: `trash_thread`
+   for trash, `unlabel_thread` with `INBOX` for archive (label ids come from
+   `list_labels`; tool names in `${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`).
+   Then count `in:inbox` again with `search_threads` and report the real
+   number.
 2. **Blocks yes**: send the approved blocks to `calendar-assistant` in
    **book** mode. Report its read-back plainly: "Booked 3 of 3." or "Booked 2
    of 3. The 13:30 one did not save, so that slot is still free."
 3. **Rule yes**: `$R add --line "<line>" --why "<reason>"`. Show the line.
-4. **Filter yes**: create it with `manage_gmail_filter`, then
+4. **Filter yes**: the native Gmail connector cannot create filters. Give the
+   user the click path from `gmail-processor` phase 10 with the rule's query.
+   When they say it is done, run
    `$R mark-filter --rule "<name>" --state created`. On no:
    `--state declined`.
 5. **Save the brief**: write the brief JSON (shape in `brief-contract.md`) to a

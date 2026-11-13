@@ -26,7 +26,7 @@ Set `verified: false`. Do not say the blocks were made.
 ## Google does not connect or needs sign-in
 
 No writes. Return the proposed plan as text so it is still useful, and suggest
-`/mcp`.
+connecting the Google connector under Settings, Connectors in Claude.
 
 ## The event to shift is not `ours`
 

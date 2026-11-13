@@ -1,8 +1,8 @@
 {
   "name": "executive-assistant",
   "displayName": "Executive Assistant",
-  "version": "8.0.2",
-  "description": "ADHD-friendly executive assistant: a morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Gmail and Calendar via Google Workspace MCP, plus Slack, Jira, Linear and your notes folder.",
+  "version": "9.0.0",
+  "description": "ADHD-friendly executive assistant: a morning brief that remembers your email rules and plans the week, focus sessions with check-ins, an end-of-day shutdown, markdown tasks, and Day Desk, a local dashboard with chat. Gmail and Calendar via Claude's native connectors, plus Slack, Jira, Linear and your notes folder.",
   "author": {
     "name": "Jay Stacey"
   },
@@ -34,18 +34,6 @@
       "title": "Timezone",
       "description": "IANA timezone used for calendar and daily-note dates, e.g. America/Toronto.",
       "default": "America/Toronto"
-    },
-    "google_oauth_client_id": {
-      "type": "string",
-      "title": "Google OAuth client ID",
-      "description": "OAuth client ID for the Google Workspace MCP server (Gmail + Calendar).",
-      "sensitive": true
-    },
-    "google_oauth_client_secret": {
-      "type": "string",
-      "title": "Google OAuth client secret",
-      "description": "OAuth client secret for the Google Workspace MCP server.",
-      "sensitive": true
     },
     "notes_daily_folder": {
       "type": "string",

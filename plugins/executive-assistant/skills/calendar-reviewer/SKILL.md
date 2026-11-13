@@ -2,7 +2,7 @@
 name: calendar-reviewer
 description: Reads the user's own Google Calendar events for the next few workdays, finds free time inside the workday, flags heavy days, prep needs, release-train collisions and other problems, and returns a CalendarReport. Read-only worker used by the calendar-assistant for the morning brief and for /timebox.
 user-invocable: false
-allowed-tools: mcp__google-workspace__list_calendars, mcp__google-workspace__get_events, mcp__google-workspace__query_freebusy, mcp__plugin_executive-assistant_google-workspace__list_calendars, mcp__plugin_executive-assistant_google-workspace__get_events, mcp__plugin_executive-assistant_google-workspace__query_freebusy, Read
+allowed-tools: Read, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_calendars, mcp__32385326-064a-48eb-a714-4b16525fd24a__list_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__get_event, mcp__32385326-064a-48eb-a714-4b16525fd24a__search_events, mcp__32385326-064a-48eb-a714-4b16525fd24a__suggest_time, mcp__claude_ai_Google_Calendar__list_calendars, mcp__claude_ai_Google_Calendar__list_events, mcp__claude_ai_Google_Calendar__get_event, mcp__claude_ai_Google_Calendar__search_events, mcp__claude_ai_Google_Calendar__suggest_time
 ---
 
 # Calendar reviewer
@@ -67,11 +67,13 @@ python -c "import zoneinfo,datetime as d;z=zoneinfo.ZoneInfo('America/Toronto');
 
 Then:
 
-- Always send `time_min` and `time_max` with an explicit offset, such as
-  `2026-10-13T00:00:00-04:00`. A bare date or a `Z` time reads the wrong day
-  at the edges.
-- Compute the offset separately for `time_min` and `time_max`. A five-day
-  range can cross a daylight-saving change.
+- The native Calendar connector takes `startTime` and `endTime` as local
+  times with no offset, such as `2026-10-13T00:00:00`, plus `timeZone` set to
+  the configured IANA zone. Never send a `Z` time; it reads the wrong day at
+  the edges.
+- The connector applies the right offset to each end itself, so a five-day
+  range across a daylight-saving change needs nothing extra. You still need
+  the offset when you convert returned times.
 - Convert every event time Google returns into the configured zone before you
   use it. Read the offset on the returned value; never use the clock digits
   as they are. An event created in another zone (a webinar from Europe, an
@@ -82,20 +84,25 @@ See `references/time-and-ownership.md` for worked examples.
 ## Step 3: Read the events
 
 1. Call `list_calendars` once. The primary calendar's id is the user's Google
-   address. Use it as `user_google_email` on every call, and as "me" for the
-   ownership rule below.
+   address. Use it as "me" for the ownership rule below. Tool names for the
+   native Google Calendar connector are in
+   `${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`.
 2. Pick the calendars: the primary calendar, plus any id listed in
    `calendar.includeCalendars` in config (empty by default). Skip every other
    calendar, even if the user subscribes to it. Team and shared calendars are
    other people's plans.
-3. For each picked calendar, make one ranged `get_events` call covering all
+3. For each picked calendar, make one ranged `list_events` call covering all
    the days:
-   - `time_min`: first day at 00:00 with that day's offset.
-   - `time_max`: the day after the last day, at 00:00 with that day's offset.
-   - `detailed: true` (you need attendees, organizer, description and status).
-   - `single_events: true`, `max_results: 250`.
-   - If the response carries a `page_token`, keep calling with it until there
-     is none. Missing page two hides Thursday and Friday.
+   - `calendarId`: the calendar's id (leave unset for primary).
+   - `startTime`: first day at `T00:00:00`, local, no offset.
+   - `endTime`: the day after the last day at `T00:00:00`, local, no offset.
+   - `timeZone`: the configured IANA zone.
+   - `orderBy: "startTime"`, `pageSize: 250`.
+   - If the response carries a `nextPageToken`, keep calling with it as
+     `pageToken` until there is none. Missing page two hides Thursday and
+     Friday.
+   - Use `get_event` on an event only when the list result lacks attendees,
+     organizer or your response status.
 
 Workdays come from the profile (default Monday to Friday). If the start date
 is not a workday, begin on the next one. Count only workdays toward `days`.
@@ -230,7 +237,7 @@ contract shape. Every list is present, empty when there is nothing.
 ## When something fails
 
 - Google needs sign-in or does not connect: say so in one line, suggest
-  `/mcp`, and return the report with empty `days`, so the parent can carry on
+  connecting the Google connector under Settings, Connectors in Claude, and return the report with empty `days`, so the parent can carry on
   with the other sources.
 - One calendar fails but another works: report what you have and name the
   calendar that failed.

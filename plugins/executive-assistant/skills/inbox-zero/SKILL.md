@@ -2,7 +2,7 @@
 name: inbox-zero
 description: Clear the Gmail inbox to zero - sweep unread mail, apply the user's email rules, categorize by priority, label, archive, and trash what the rules allow. Use when the user asks for inbox zero, email cleanup, or a focused inbox pass.
 argument-hint: "[--dry-run] [--quick] [--all] [--labels-only]"
-allowed-tools: Agent, AskUserQuestion, Bash, Read, mcp__google-workspace__search_gmail_messages, mcp__google-workspace__get_gmail_message_content, mcp__google-workspace__get_gmail_messages_content_batch, mcp__google-workspace__get_gmail_thread_content, mcp__google-workspace__get_gmail_threads_content_batch, mcp__google-workspace__list_gmail_labels, mcp__google-workspace__manage_gmail_label, mcp__google-workspace__modify_gmail_message_labels, mcp__google-workspace__batch_modify_gmail_message_labels, mcp__google-workspace__draft_gmail_message, mcp__google-workspace__list_gmail_filters, mcp__plugin_executive-assistant_google-workspace__search_gmail_messages, mcp__plugin_executive-assistant_google-workspace__get_gmail_message_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_messages_content_batch, mcp__plugin_executive-assistant_google-workspace__get_gmail_thread_content, mcp__plugin_executive-assistant_google-workspace__get_gmail_threads_content_batch, mcp__plugin_executive-assistant_google-workspace__list_gmail_labels, mcp__plugin_executive-assistant_google-workspace__manage_gmail_label, mcp__plugin_executive-assistant_google-workspace__modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__batch_modify_gmail_message_labels, mcp__plugin_executive-assistant_google-workspace__draft_gmail_message, mcp__plugin_executive-assistant_google-workspace__list_gmail_filters
+allowed-tools: Agent, AskUserQuestion, Bash, Read, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__search_threads, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__get_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__list_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_label, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__label_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__unlabel_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__update_message_labels, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__trash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_thread, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__untrash_message, mcp__0b5e66b0-f707-4eda-938d-88ec25a14b65__create_draft, mcp__claude_ai_Gmail__search_threads, mcp__claude_ai_Gmail__get_message, mcp__claude_ai_Gmail__get_thread, mcp__claude_ai_Gmail__list_labels, mcp__claude_ai_Gmail__create_label, mcp__claude_ai_Gmail__label_thread, mcp__claude_ai_Gmail__unlabel_thread, mcp__claude_ai_Gmail__label_message, mcp__claude_ai_Gmail__unlabel_message, mcp__claude_ai_Gmail__update_message_labels, mcp__claude_ai_Gmail__trash_thread, mcp__claude_ai_Gmail__trash_message, mcp__claude_ai_Gmail__untrash_thread, mcp__claude_ai_Gmail__untrash_message, mcp__claude_ai_Gmail__create_draft
 ---
 
 # /inbox-zero
@@ -20,9 +20,11 @@ full procedure. This file sets the flags, the order, and the rules above them.
 2. If `pending_confirm` has groups, ask once with AskUserQuestion: one
    question per group (at most four), each with the count and two sample
    subjects. Recommend the rule's action first.
-3. On a yes, run `batch_modify_gmail_message_labels` on that group's
-   `message_ids` (look up label ids with `list_gmail_labels` first). Then
-   count `in:inbox` again.
+3. On a yes, act on each of that group's `thread_ids`: `trash_thread` for
+   trash, `unlabel_thread` with `INBOX` for archive, `label_thread` for a
+   label (look up label ids with `list_labels` first). Tool names are in
+   `${CLAUDE_PLUGIN_ROOT}/docs/google-tools.md`. Then count `in:inbox` again
+   with `search_threads`.
 4. If the report has `rule_suggestions`, offer them in the same question set,
    and add an accepted one with
    `python ${CLAUDE_PLUGIN_ROOT}/scripts/email_rules.py add --line "..."`.

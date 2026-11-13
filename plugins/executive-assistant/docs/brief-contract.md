@@ -29,7 +29,7 @@ is an empty list, never left out.
   ],
   "pending_confirm": [
     {"group_id": "c1", "rule": "Cold sales", "action": "trash", "count": 4,
-     "samples": ["subject one", "subject two"], "message_ids": ["..."]}
+     "samples": ["subject one", "subject two"], "thread_ids": ["..."]}
   ],
   "rule_suggestions": [
     {"line": "- trash | auto | Vendor webinars | from:vendor.example subject:webinar",
@@ -46,8 +46,9 @@ is an empty list, never left out.
 ```
 
 - `needs_you` leaves out threads where the user already sent the last message.
-- `pending_confirm` groups wait for one yes. `message_ids` lets the parent act
-  on the yes without searching again.
+- `pending_confirm` groups wait for one yes. `thread_ids` lets the parent act
+  on the yes without searching again (one `trash_thread` or `unlabel_thread`
+  call per thread; see `docs/google-tools.md`).
 - `unread_after` and `inbox_after` are read back from Gmail after acting.
 
 ## CalendarReport (calendar-assistant, review)

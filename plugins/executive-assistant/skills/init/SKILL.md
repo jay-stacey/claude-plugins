@@ -56,9 +56,8 @@ Only two things are still written as files:
 - `.config.local.json` — legacy overrides. Write it only for the detailed
   Gmail/Calendar tuning that has no `userConfig` key.
 
-Secrets never go in either file. `google_oauth_client_id` and
-`google_oauth_client_secret` are `sensitive` options kept in secure storage, so
-collect them through `/plugin configure` and never echo them back.
+Secrets never go in either file. The plugin has no Google secrets any more:
+Gmail and Calendar come from the native claude.ai connectors.
 
 ## Behavior
 
