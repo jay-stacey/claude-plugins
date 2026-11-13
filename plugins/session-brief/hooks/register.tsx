@@ -32,7 +32,7 @@ let runId = 0
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'brief',
+      name: 'session-brief',
       description: 'Session brief: refresh, show, hide, rename, or autorename on|off',
       argumentHint: '[refresh|show|hide|rename|autorename on|off]',
     })
@@ -50,11 +50,11 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'brief' }, async ($, e) => {
+  on('command.run', { command: 'session-brief' }, async ($, e) => {
     const [word = 'refresh', value = ''] = e.args.trim().toLowerCase().split(/\s+/)
     if (word === 'hide') {
       await update($, isHidden, () => true)
-      return { text: 'Session brief hidden. Type /brief show to bring it back.' }
+      return { text: 'Session brief hidden. Type /session-brief show to bring it back.' }
     }
     if (word === 'show') {
       await update($, isHidden, () => false)
@@ -67,7 +67,7 @@ export const register: Register = on => {
     }
     if (word === 'rename') {
       const current = await read($, brief)
-      if (current === null) return { text: 'No brief yet. Type /brief to write one first.' }
+      if (current === null) return { text: 'No brief yet. Type /session-brief to write one first.' }
       const isDone = await applyTitle($, current.title, { isForced: true })
       return { text: isDone ? `Renamed to "${current.title}".` : 'Could not rename this session.' }
     }
@@ -172,10 +172,10 @@ export const register: Register = on => {
     )
   }).catch(($, e, next) => {
     // A band that fails is skipped with no sign on the desktop: say why, once per load.
-    if (!hasWarnedRender && next.error !== undefined && next.error.kind !== 're-entry') {
+    if (!hasWarnedRender && next.error !== undefined) {
       hasWarnedRender = true
       try {
-        $.ui.toast(`session-brief: the band failed to draw (${next.error.kind}). Type /brief to retry.`)
+        $.ui.toast(`session-brief: the band failed to draw (${next.error.kind}). Type /session-brief to retry.`)
       } catch {
         // Nothing to show it on.
       }
