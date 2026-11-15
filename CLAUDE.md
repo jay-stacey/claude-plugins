@@ -15,16 +15,16 @@ A Claude Code plugin marketplace named `personal-plugins`. The catalog is
 | Plugin | Kind | Main entry |
 |---|---|---|
 | `executive-assistant` | Markdown skills + agents + MCP | `/daily-prep`, `/inbox-zero`, `/timebox`, `/init` |
-| `session-manager` | Markdown skill + agent | `/manager` |
+| `session-manager` | Markdown skills + agent + TypeScript hooks mod | `/manager`, `/organize` |
 | `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice` |
 | `session-brief` | TypeScript hooks mod | `/brief` |
 | `software-factory` | Markdown skills + agents + Node CLI, hooks and local web server | `/setup`, `/start`, `/new-goal`, `/control-center` |
 
 Two plugin kinds exist, and they are built differently:
 
-- **Markdown plugins** (executive-assistant, session-manager) are only
+- **Markdown plugins** (executive-assistant) are only
   `SKILL.md` and agent `.md` files. No build step.
-- **Hooks mods** (voice-replies, session-brief) use `hooks/hooks.json` with
+- **Hooks mods** (voice-replies, session-brief, session-manager) use `hooks/hooks.json` with
   `{ "modules": ["./register.tsx"] }`. The `.tsx` imports from `claude-code`
   (atoms, `EngineInterface`, `Register`). `plugin.json` sets `"types"`. The
   engine writes `.claude-plugin/types/` at load time. That folder is
@@ -50,6 +50,7 @@ The hooks mods have engine tests. Run one plugin's tests:
 ```bash
 claude plugin test ./plugins/voice-replies
 claude plugin test ./plugins/session-brief
+claude plugin test ./plugins/session-manager
 ```
 
 Tests import `expect`, `mock`, `test` from `claude-code/testing` and drive the
