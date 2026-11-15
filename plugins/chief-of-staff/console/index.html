@@ -103,13 +103,15 @@
         <button class="btn" type="button" id="pOpen">Open in app</button>
         <button class="btn" type="button" id="pAsk">Ask the Chief about it</button>
         <button class="btn" type="button" id="pArchive">Archive</button>
+        <button class="btn" type="button" id="pStop" hidden>Stop</button>
       </div>
     </div>
+    <p class="page-limits" id="pLimits" hidden></p>
     <div class="confirm-bar" id="pConfirm" role="alertdialog" aria-labelledby="pConfirmText" hidden>
       <p id="pConfirmText"></p>
       <div class="confirm-actions">
         <button class="btn primary" type="button" id="pConfirmYes">Archive anyway</button>
-        <button class="btn ghost" type="button" id="pConfirmNo">Keep it</button>
+        <button class="btn ghost" type="button" id="pConfirmNo">Leave it running</button>
       </div>
     </div>
     <p class="page-note" id="pNote" role="status" hidden></p>

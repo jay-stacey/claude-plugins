@@ -45,7 +45,7 @@ class Scan(unittest.TestCase):
 
 class States(unittest.TestCase):
     def session(self, **kw):
-        return dict({"live": True, "liveStatus": "idle", "kind": "interactive", "appStatus": "review_ready",
+        return dict({"live": True, "liveStatus": "idle", "kind": "cli", "appStatus": "review_ready",
                      "lastActivityAt": FIXTURE_NOW - 60000}, **kw)
 
     def test_open_background_work_makes_a_live_session_active(self):

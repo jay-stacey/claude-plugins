@@ -82,6 +82,7 @@ def main():
          "name": "nightly import", "state": "working"},
     ]
     (ROOT / "agents.json").write_text(json.dumps(agents, indent=1), encoding="utf-8")
+    write_registry()
 
     peer = ("Another Claude session sent a message:\n<cross-session-message "
             "from=\"local_bbbb2222-0000-4000-8000-000000000002\" name=\"Dealerpull product spec review\">\n"
@@ -131,6 +132,30 @@ def main():
     with open(PROJ / "cli-needs.jsonl", "w", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps({"type": "user", "uuid": "n-1", "timestamp": iso(NOW - 2 * H),
                              "message": {"role": "user", "content": [{"type": "text", "text": "Plan PRO-921"}]}}) + "\n")
+
+
+def write_registry():
+    """~/.claude/sessions/<pid>.json rows. 9 is not in agents.json, 8 is broken, and the key
+    file must never be read."""
+    reg = ROOT / "registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    pipe = "//./pipe/claude-{}"
+    rows = {
+        "1": {"pid": 1, "sessionId": "cli-busy", "kind": "interactive", "entrypoint": "cli", "status": "busy",
+              "name": "DP1-676", "messagingSocketPath": pipe.format(1)},
+        "2": {"pid": 2, "sessionId": "cli-wait", "kind": "interactive", "entrypoint": "cli", "status": "idle",
+              "name": "Chief session"},
+        "3": {"pid": 3, "sessionId": "cli-child", "kind": "interactive", "entrypoint": "cli", "status": "waiting",
+              "name": "Helper", "messagingSocketPath": pipe.format(3)},
+        "4": {"pid": 4, "sessionId": "bg-working", "kind": "background", "entrypoint": "cli", "status": "busy",
+              "name": "nightly import", "messagingSocketPath": pipe.format(4)},
+        "9": {"pid": 9, "sessionId": "cli-gone", "kind": "interactive", "entrypoint": "cli", "status": "idle",
+              "name": "Gone", "messagingSocketPath": pipe.format(9)},
+    }
+    for name, row in rows.items():
+        (reg / f"{name}.json").write_text(json.dumps(row, indent=1), encoding="utf-8")
+    (reg / "8.json").write_text("{ not json", encoding="utf-8")
+    (reg / "3.0abc.key").write_bytes(b"\x00secret-pipe-key")
 
 
 def write_tools(path):

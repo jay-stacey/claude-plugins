@@ -87,8 +87,12 @@ function renderFooter() {
     if (v.micError) item('bad', `Mic: ${v.micError}`);
   }
   const stale = state.sessions && state.sessions.liveStale;
-  item(stale ? 'bad' : state.sessions ? 'ok' : 'off', `Desktop link: ${stale ? 'behind' : state.sessions ? 'live' : 'waiting'}`);
-  item(c.connected ? 'ok' : 'off', `Chief: ${c.connected ? 'connected' : 'not connected'}`);
+  item(stale ? 'bad' : state.sessions ? 'ok' : 'off', `Sessions: ${stale ? 'behind' : state.sessions ? 'live' : 'waiting'}`);
+  const desk = state.health && state.health.desktop;
+  if (desk && desk.source === 'none') item('bad', 'Desktop app: not found');
+  const surface = c.connected && c.host ? c.host.surface : null;
+  const where = surface === 'terminal' ? 'terminal' : surface === 'desktop' ? 'desktop' : null;
+  item(c.connected ? 'ok' : 'off', `Chief: ${c.connected ? where || 'connected' : 'not connected'}`);
   const wake = wakePhrase();
   $('hint').textContent = !v.state || v.state === 'not-installed' || v.listen === 'off'
     ? 'Type · to talk' : v.listen === 'ptt' ? 'Hold the mic · to talk' : `${wake} · to talk`;
@@ -155,6 +159,7 @@ function boot() {
   on('nearMiss', onNearMiss);
   on('barge', onBarge);
   on('persona', renderPersona);
+  on('health', renderFooter);
 
   window.addEventListener('hashchange', route);
   renderVoice();

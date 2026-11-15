@@ -77,6 +77,7 @@ export function getTranscript(id, { limit = 60, before } = {}) {
 export const say = (text, source = 'typed') => api('/api/chief/say', { method: 'POST', body: { text, source } });
 export const reply = (id, text) => api(`/api/sessions/${enc(id)}/reply`, { method: 'POST', body: { text } });
 export const archive = (id, confirmed) => api(`/api/sessions/${enc(id)}/archive`, { method: 'POST', body: { confirmed } });
+export const stop = (id, confirmed) => api(`/api/sessions/${enc(id)}/stop`, { method: 'POST', body: { confirmed } });
 export const openInApp = (id) => api(`/api/sessions/${enc(id)}/open`, { method: 'POST', body: {} });
 export const voiceControl = (body) => api('/api/voice/control', { method: 'POST', body });
 export const streamUrl = () => `/api/stream?k=${enc(token)}`;

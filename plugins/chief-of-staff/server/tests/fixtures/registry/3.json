@@ -1,0 +1,9 @@
+{
+ "pid": 3,
+ "sessionId": "cli-child",
+ "kind": "interactive",
+ "entrypoint": "cli",
+ "status": "waiting",
+ "name": "Helper",
+ "messagingSocketPath": "//./pipe/claude-3"
+}

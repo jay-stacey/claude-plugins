@@ -154,7 +154,7 @@ test('the brief opens expanded, and Collapse folds it to the left-off line', asy
   await ui.unmount()
 })
 
-test('Hide removes the band and /brief show brings it back', async ($, on) => {
+test('Hide removes the band and /session-brief show brings it back', async ($, on) => {
   const clock = mock.clock(on)
   fakeEngine(on)
   await $.session.start(START)
@@ -163,7 +163,7 @@ test('Hide removes the band and /brief show brings it back', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'session-brief', surface: 'desktop', ...BAND })
   await ui.press({ key: 'hide' })
   expect((await ui.find({ type: 'Text', text: /Session brief/ })) === undefined).toBe(true)
-  await $.command.run({ command: 'brief', args: 'show' } as never)
+  await $.command.run({ command: 'session-brief', args: 'show' } as never)
   expect((await ui.find({ type: 'Text', text: /Session brief/ })) !== undefined).toBe(true)
   await ui.unmount()
 })

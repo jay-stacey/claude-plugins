@@ -8,6 +8,7 @@ export const state = {
   chat: [],
   voice: null,                 // VoiceStatus
   chief: { connected: false, sessionId: null, busy: false },
+  health: null,                // GET /api/health body (version, desktop {source, files} with the token)
   persona: { chiefName: null, wakeWord: null },   // from GET /api/health settings
 };
 
@@ -18,6 +19,14 @@ export const chiefName = () => (state.persona.chiefName && String(state.persona.
 export const chiefRef = () => (chiefName() === 'Chief' ? 'the Chief' : chiefName());
 /** The wake phrase as people say it: "Hey Chief". Settings first, then the voice status, then the default. */
 export const wakePhrase = () => titleCase(state.persona.wakeWord || (state.voice && state.voice.wakeWord) || 'hey chief');
+
+/** Keeps the health body for the footer, then reads the persona from it. */
+export function setHealth(health) {
+  if (!health) return;
+  state.health = health;
+  emit('health', health);
+  setPersona(health);
+}
 
 export function setPersona(health) {
   if (!health) return;
@@ -32,7 +41,7 @@ export function setPersona(health) {
 }
 
 async function loadPersona() {
-  try { setPersona(await getHealth()); } catch { /* keep the defaults; the next reconnect tries again */ }
+  try { setHealth(await getHealth()); } catch { /* keep the defaults; the next reconnect tries again */ }
 }
 
 const subs = new Map();
@@ -148,7 +157,7 @@ async function probeAndConnect() {
     setChat(chat.messages);
     setVoice(health.voice);
     setChief(health.chief);
-    setPersona(health);
+    setHealth(health);
     connect();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return;

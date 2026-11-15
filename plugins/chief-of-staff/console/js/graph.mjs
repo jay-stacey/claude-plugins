@@ -266,7 +266,7 @@ function build(list) {
     const p = pos.get(x.id);
     const small = scale < 0.8 * K || K < 0.8;
     const g = s('g', {
-      class: `node ${stateClass(x.state)}${p.depth ? ' child' : ''}${small ? ' small' : ''}${x.kind === 'background' ? ' bg' : ''}${p.r < 11 ? ' tiny' : ''}`,
+      class: `node ${stateClass(x.state)}${p.depth ? ' child' : ''}${small ? ' small' : ''}${x.kind === 'bg' ? ' bg' : ''}${p.r < 11 ? ' tiny' : ''}`,
       'data-id': x.id,
       tabindex: 0,
       role: 'button',

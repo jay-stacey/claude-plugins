@@ -148,10 +148,19 @@ class OpenAICompatProvider(Provider):
         return f"OpenAICompatProvider({self.base_url!r}, {self.model!r}, name={self.name!r})"
 
     def body(self, request: Request) -> dict:
-        return {"model": self.model, "messages": build_messages(request), "temperature": 0,
+        body = {"model": self.model, "messages": build_messages(request), "temperature": 0,
                 "max_tokens": OPENAI_MAX_TOKENS, "stream": False,
                 "response_format": {"type": "json_schema",
                                     "json_schema": {"name": "jev", "schema": DECISION_SCHEMA, "strict": True}}}
+        if self.name == "local":
+            # Qwen3.5 thinks by default and spends max_tokens before any answer: Ollama reads
+            # reasoning_effort, llama-server reads chat_template_kwargs.
+            body["reasoning_effort"] = "none"
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+            # Ollama unloads an idle model after 5 minutes, and the next call then misses the
+            # timeout while it loads. llama-server keeps its model loaded and ignores this key.
+            body["keep_alive"] = -1
+        return body
 
     def decide(self, request: Request, timeout_s: float) -> dict:
         headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}

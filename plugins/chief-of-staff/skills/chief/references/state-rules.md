@@ -3,7 +3,7 @@
 The server reads three sources, read only. It never writes them.
 
 1. `claude agents --json`, every 5 seconds while a console or the Chief is connected and every 20 seconds otherwise: which sessions have a running process, and whether each is `busy`, `idle` or `waiting` (with `waitingFor`, such as "permission prompt"). Background jobs report `working`, `blocked`, `done`, `failed` or `stopped`.
-2. The desktop app's session files (`%APPDATA%\Claude\claude-code-sessions`), every 10 seconds: title, parent session, last activity, pull request, and the app's own note on the last turn (`postTurnSummary`: `status_category` and `needs_action`). Archived sessions are left out.
+2. The desktop app's session files (`%APPDATA%\Claude\claude-code-sessions`, or for a Store install `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code-sessions`; `COS_DESKTOP_DIR` overrides both), every 10 seconds: title, parent session, last activity, pull request, and the app's own note on the last turn (`postTurnSummary`: `status_category` and `needs_action`). Archived sessions are left out.
 3. The CLI transcripts (`%USERPROFILE%\.claude\projects\*\<id>.jsonl`): growth means a session is working, and a message from another session shows as a link between the two.
 
 The first rule that matches wins.
@@ -21,6 +21,16 @@ The first rule that matches wins.
 `stateReason` says why in a few words, for example "Waiting for a permission prompt", "Needs your decision: ...", "PR 1216 merged" or "No activity for 3 days".
 
 The console shows sessions that are live, active in the last `recent_days` (3 by default), or a parent or child of one of those. `cos_sessions` lists the same set; `{ "all": true }` lists every open session.
+
+## Kinds and actions
+
+Every session has a `kind`, the same as its id prefix:
+
+- `desktop` (`local_`): a session in the Claude desktop app.
+- `cli` (`cli_`): an interactive terminal session.
+- `bg` (`bg_`): a background session. It also has `bgId`, the short id that `claude stop` takes.
+
+`actions` is a map with the keys `reply`, `archive`, `stop` and `open`. Each value is `yes` (the Chief can do it now), `app` (only by opening the session in the Claude desktop app, where Jay finishes it) or `no` (not possible). `actionNotes` has the same keys, with one plain sentence for every value that is not `yes`. The Chief offers only what `actions` allows, and says the note when Jay asks for something else.
 
 ## Proactive notices
 

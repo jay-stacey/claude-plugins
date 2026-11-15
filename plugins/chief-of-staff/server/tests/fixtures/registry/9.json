@@ -1,0 +1,9 @@
+{
+ "pid": 9,
+ "sessionId": "cli-gone",
+ "kind": "interactive",
+ "entrypoint": "cli",
+ "status": "idle",
+ "name": "Gone",
+ "messagingSocketPath": "//./pipe/claude-9"
+}

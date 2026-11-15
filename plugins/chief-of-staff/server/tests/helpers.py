@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent
@@ -26,7 +27,7 @@ def shift(value, delta):
 
 
 class Sandbox:
-    """A temp folder holding desktop/, projects/, home/ and agents.json, and the
+    """A temp folder holding desktop/, projects/, registry/, home/ and agents.json, and the
     COS_* variables pointing at it. Use as a context manager."""
 
     def __init__(self, now_ms=None):
@@ -37,6 +38,7 @@ class Sandbox:
     def __enter__(self):
         self.dir = Path(tempfile.mkdtemp(prefix="cos-test-"))
         shutil.copytree(FIXTURES / "projects", self.dir / "projects")
+        shutil.copytree(FIXTURES / "registry", self.dir / "registry")
         for src in (FIXTURES / "desktop").rglob("*"):
             dst = self.dir / "desktop" / src.relative_to(FIXTURES / "desktop")
             if src.is_dir():
@@ -52,8 +54,14 @@ class Sandbox:
         self.write_agents(self.agents_rows)
         (self.dir / "home").mkdir()
         self.env(COS_HOME=str(self.dir / "home"), COS_DESKTOP_DIR=str(self.dir / "desktop"),
-                 COS_PROJECTS_DIR=str(self.dir / "projects"), COS_SETTINGS_FILE=str(self.dir / "settings.json"),
+                 COS_PROJECTS_DIR=str(self.dir / "projects"), COS_SESSIONS_DIR=str(self.dir / "registry"),
+                 COS_SETTINGS_FILE=str(self.dir / "settings.json"),
                  COS_CLAUDE_CMD=json.dumps([sys.executable, str(HERE / "fake_agents.py"), str(self.dir / "agents.json")]))
+        # No test ever opens a real claude:// link: every App made in here records them instead.
+        from cos import server
+        self.opened = []
+        self.open_patch = mock.patch.object(server, "default_open", self.opened.append)
+        self.open_patch.start()
         return self
 
     def write_agents(self, rows):
@@ -65,6 +73,7 @@ class Sandbox:
             os.environ[k] = v
 
     def __exit__(self, *exc):
+        self.open_patch.stop()
         for k, v in self.saved_env.items():
             if v is None:
                 os.environ.pop(k, None)

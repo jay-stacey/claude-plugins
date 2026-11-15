@@ -143,6 +143,7 @@ def ensure_running(jev_json, timeout_s=10):
         env = dict(os.environ)
         if runtime["kind"] == "ollama":
             env["OLLAMA_HOST"] = f"{LOOPBACK}:{runtime['port']}"
+            env.setdefault("OLLAMA_KEEP_ALIVE", "-1")
         else:
             if not key:
                 return False  # llama-server always runs with a key
