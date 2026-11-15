@@ -442,7 +442,7 @@ export const register: Register = (on, opts) => {
               onPress={() => fillPrompt($, askText(r))} />
             {r.reply !== 'no' && (
               <Button key={`reply-${r.id}`} label="Reply" variant={primary === 'reply' ? 'primary' : 'secondary'}
-                onPress={() => fillPrompt($, replyText(r))} />
+                onPress={() => fillPrompt($, replyText(r), false)} />
             )}
             {r.archive !== 'no' && (
               <Button key={`archive-${r.id}`} label="Archive" variant="secondary" onPress={() => fillPrompt($, archiveText(r))} />
@@ -551,8 +551,8 @@ export const register: Register = (on, opts) => {
       <Box flexDirection="column">
         {drawn}
         <Box gap={1}>
-          <Button key="chief-ask-yes" variant="primary" label={confirm.yes} onPress={() => fillPrompt($, confirm.yes)} />
-          <Button key="chief-ask-no" label={confirm.no} onPress={() => fillPrompt($, confirm.no)} />
+          <Button key="chief-ask-yes" variant="primary" label={confirm.yes} onPress={() => answerAsk($, confirm.yes)} />
+          <Button key="chief-ask-no" label={confirm.no} onPress={() => answerAsk($, confirm.no)} />
         </Box>
       </Box>
     )
@@ -978,7 +978,11 @@ async function archiveDesktop($: EngineInterface, s: ChiefSession, req: ActionRe
     // Nothing ran, so the approval stays for the Chief's own call.
     if (approval !== undefined) approvals.set(keyOf(s.id, 'archive'), approval)
     if (req.origin === 'model') {
-      return { outcome: 'failed', detail: 'The app refused the archive. Try mcp__ccd_session_mgmt__archive_session.' }
+      return {
+        outcome: 'handedOff',
+        detail: 'The app runs its archive tool only when you call it yourself. Call ' +
+          `mcp__ccd_session_mgmt__archive_session now with session_id ${s.id}, then tell Jay whether it worked.`,
+      }
     }
     handOff($, `[Action from the console] Jay pressed Archive for ${sessionRef(s.id, s.title)}. ` +
       'Look it up with cos_sessions, apply your archive rules, then archive it with the archive_session ' +
@@ -1006,7 +1010,13 @@ async function replyDesktop($: EngineInterface, s: ChiefSession, req: ActionRequ
     if (sent?.isDelivered === true) return { outcome: 'done', detail: 'Sent.' }
     if (sent !== null && sent.isDelivered === false) log($, `session.send: ${cleanLine(sent.reason, 160)}`)
   }
-  if (req.origin === 'model') return { outcome: 'failed', detail: 'The app refused the send. Try again in a moment.' }
+  if (req.origin === 'model') {
+    return {
+      outcome: 'handedOff',
+      detail: 'The app runs its send tool only when you call it yourself. Call mcp__ccd_session_mgmt__send_message ' +
+        `now with session_id ${s.id} and the same text, word for word, then tell Jay whether it went.`,
+    }
+  }
   handOff($, `[Action from the console] Jay typed a reply for ${sessionRef(s.id, s.title)} in the ` +
     'console reply box. Send the text between the two marker lines to that session with the send_message ' +
     'tool, word for word, then tell Jay in one short sentence that it went.\n' +
@@ -1992,14 +2002,42 @@ function stopText(r: ChiefPaneRow): string {
 }
 
 // Puts a request in the prompt box. Jay sends it with Enter, so it counts as his typing.
-async function fillPrompt($: EngineInterface, text: string): Promise<void> {
+// `canSend`: the text is a whole request, so it is sent when the box cannot take it. A reply
+// still needs Jay's words, so it is never sent half done.
+async function fillPrompt($: EngineInterface, text: string, canSend = true): Promise<void> {
+  let isFilled = false
   try {
-    const filled = await $.prompt.fill({ text })
-    if (!filled.isFilled) $.ui.toast('The prompt box is busy. Close the dialog or wait for the turn, then try again.')
+    isFilled = (await $.prompt.fill({ text })).isFilled
   } catch (err) {
     log($, `fill: ${String(err)}`)
-    $.ui.toast('Could not fill the prompt box.')
   }
+  log($, `pane fill ${isFilled ? 'took' : 'not taken'}: ${cleanLine(text, 80)}`)
+  if (isFilled) return
+  if (!canSend) {
+    $.ui.toast('The prompt box could not take the text. Type your reply to the Chief instead.')
+    return
+  }
+  await sendAsJay($, text)
+}
+
+// Sends a request from a button as a turn of Jay's: what he pressed is what the Chief reads.
+// The Chief's guard counts it as a press (plan 5.9); the app's tools are then called by the
+// Chief itself, which the app allows, never by this mod's own code.
+async function sendAsJay($: EngineInterface, text: string): Promise<void> {
+  try {
+    await $.prompt.submit({ text, asUser: true })
+    log($, `button sent: ${cleanLine(text, 80)}`)
+  } catch (err) {
+    log($, `button send: ${String(err)}`)
+    $.ui.toast('Could not send that to the Chief.')
+  }
+}
+
+// A press on one of the two buttons under the Chief's question: it answers the question as
+// Jay's press, and the buttons go.
+async function answerAsk($: EngineInterface, label: string): Promise<void> {
+  await noteAnswer($, label, 'press')
+  await sendAsJay($, label)
 }
 
 // Open only shows the session in the app: no change to any session, so it runs at once.

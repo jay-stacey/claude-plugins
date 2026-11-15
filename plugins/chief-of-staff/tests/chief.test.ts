@@ -1975,15 +1975,15 @@ test('the pane says when the server stops answering', async ($, on) => {
   await ui.unmount()
 })
 
-test('the confirm line is hidden in the app and its two buttons fill the prompt box', async ($, on) => {
+test('the confirm line is hidden in the app and its two buttons send the answer', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
-  const pane = paneEngine(on)
+  paneEngine(on)
   // The engine draws a reply as one Text of its text.
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e as never) as { Text: unknown }
     return h(Text as never, null, String((e as { props: { text?: unknown } }).props.text ?? '')) as never
   })
-  fakeEngine(on)
+  const fake = fakeEngine(on)
   await becomeChief($, clock)
   const answer = ['PR review 1416 is ready for you. Want me to start with it?', '',
     '[[confirm: Go through them | Not now]]'].join('\n')
@@ -1993,11 +1993,12 @@ test('the confirm line is hidden in the app and its two buttons fill the prompt 
   const ui = await $.ui.mount({ ...reply, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /confirm/ })) === undefined).toBe(true)
   expect((await ui.find({ type: 'Text', text: /Want me to start with it\?/ })) !== undefined).toBe(true)
+  const before = fake.prompts.length
   await ui.press({ key: 'chief-ask-yes' })
-  expect(pane.fills.at(-1)).toBe('Go through them')
+  // The press is the answer: it goes to the Chief at once, with no Enter to press.
+  expect(fake.prompts.slice(before).map(p => p.text)).toEqual(['Go through them'])
   await ui.unmount()
   // Once Jay answers, the buttons go; the line stays hidden.
-  await jay($, 'Go through them', 't2')
   const after = await $.ui.mount({ ...reply, surface: 'desktop' })
   expect((await after.find({ type: 'Button', key: 'chief-ask-yes' } as never)) === undefined).toBe(true)
   expect((await after.find({ type: 'Text', text: /confirm/ })) === undefined).toBe(true)
@@ -2034,4 +2035,32 @@ test('with chief_theme off the Chief session keeps the app look', { options: { c
   fakeEngine(on)
   await becomeChief($, clock)
   expect(looks.length).toBe(0)
+})
+
+test('when the app refuses the mod an archive the model asked for, the Chief is told to call the tool itself', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  fakeEngine(on, { isMcpRefused: true, patch: { local_b: { ...DESKTOP_YES } } })
+  await becomeChief($, clock)
+  await jay($, 'Archive the session "Plan PRO-921" (local_b).', 't-arch')
+  const r = await act($, { action: 'archive', id: 'local_b' })
+  expect(r.outcome).toBe('handedOff')
+  expect(r.detail).toContain('mcp__ccd_session_mgmt__archive_session')
+  expect(r.detail).toContain('local_b')
+})
+
+test('a pane request the prompt box cannot take is sent to the Chief, but never a half-written reply', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('command.register', ($, e) => ({ value: { command: (e as { name: string }).name } }) as never)
+  on('prompt.fill', () => ({ isFilled: false }) as never)
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const before = fake.prompts.length
+  await ui.press({ key: 'ask-local_b' })
+  await ui.press({ key: 'reply-local_b' })
+  expect(fake.prompts.slice(before).map(p => p.text)).toEqual(['What is happening in the session "Plan PRO-921" (local_b)?'])
+  expect(fake.toasts.some(t => /Type your reply/.test(t))).toBe(true)
+  await ui.unmount()
 })

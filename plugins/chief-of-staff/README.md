@@ -1,6 +1,6 @@
 # Chief of Staff
 
-Version 0.6.0.
+Version 0.6.1.
 
 A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A pane inside the app shows the roster, with buttons that put a request in your prompt box. An optional local console in the browser shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
@@ -36,9 +36,11 @@ The Chief's whole session takes the console's ember look too: dark ember colors 
 
 - Ask, Reply, Archive and Stop only put a request in your prompt box. You read it, change it if you want, and press Enter. The app then counts the request as your own typing, so its permission checks do not refuse it. Requests that come from the browser console or the voice do not count as your typing, which is why the app sometimes refuses them.
 - Open shows the session in the app at once. It changes nothing.
+- When the prompt box cannot take a request, the button sends it to the Chief instead. Reply never does: it needs your words.
+- The app runs its archive and send tools only when the Chief calls them itself, not from the plugin's code. So the Chief makes that call itself in your turn.
 - A row above the prompt says how many sessions need you. Its Show button opens the pane.
 - `/chief-pane` opens the pane again after you close it.
-- When the Chief asks you a yes or no question, two buttons show under its reply. A button puts its answer in your prompt box, and you press Enter. The `[[confirm: ...]]` line the console uses is hidden in the app.
+- When the Chief asks you a yes or no question, two buttons show under its reply. A press sends that answer to the Chief at once. The `[[confirm: ...]]` line the console uses is hidden in the app.
 
 The browser console is off by default. Set `open_console` to true to open it on `/chief` as before. Without the mod, the `/chief` skill still opens the console itself.
 
