@@ -16,8 +16,8 @@ A Claude Code plugin marketplace named `personal-plugins`. The catalog is
 |---|---|---|
 | `executive-assistant` | Markdown skills + agents + MCP | `/daily-prep`, `/inbox-zero`, `/timebox`, `/init` |
 | `session-manager` | Markdown skill + agent | `/manager` |
-| `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice` |
-| `session-brief` | TypeScript hooks mod | `/brief` |
+| `voice-replies` | TypeScript hooks mod + Python TTS server | `/voice-replies` |
+| `session-brief` | TypeScript hooks mod | `/session-brief` |
 | `software-factory` | Markdown skills + agents + Node CLI, hooks and local web server | `/setup`, `/start`, `/new-goal`, `/control-center` |
 
 Two plugin kinds exist, and they are built differently:
