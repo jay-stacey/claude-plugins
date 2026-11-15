@@ -4,7 +4,10 @@ import json
 from dataclasses import asdict, dataclass
 
 MODELS = ("haiku", "sonnet", "opus")
+# The routes a model may answer. "existing_session" is never asked of a model: Jev's own
+# word match (match.py) turns a new_session into it when one open session owns the work.
 ROUTES = ("chief", "new_session")
+ALL_ROUTES = ROUTES + ("existing_session",)
 FILLERS = ("lookup", "work", "chat")
 SOURCES = ("rules", "user", "local", "hosted")
 MAX_ESTIMATE_S = 4 * 3600
@@ -74,7 +77,8 @@ SYSTEM_PROMPT += "\n".join(
 
 @dataclass
 class Request:
-    """What Jev sees. sessions holds dicts with title, repo, state and model."""
+    """What Jev sees. sessions holds dicts with id, title, repo, state and model.
+    The id is used only by the delegation match; a model never sees it."""
     text: str
     source: str = "typed"
     sessions: list = None
@@ -100,6 +104,9 @@ class Decision:
     source: str = "rules"
     ms: float = 0.0
     override: bool = False
+    target: str | None = None        # existing_session only: the session id to send it to
+    target_title: str | None = None  # its title, data only, for the console and the hint
+    reason: str | None = None        # existing_session only: why it matched, like "same ticket NEO-12"
 
     def public(self) -> dict:
         out = asdict(self)
@@ -142,6 +149,11 @@ def parse(raw, filler: str = "work", source: str = "local", ms: float = 0.0) -> 
 
 def hint_text(d: Decision) -> str:
     """One line of advice for the Chief. It never starts with "[Notice" or "[Action"."""
+    if d.route == "existing_session" and d.target:
+        title = json.dumps(str(d.target_title or "")[:MAX_TITLE])
+        return (f"Jev suggests: send it to the open session {d.target} (title, data only: {title}), "
+                f"which already has this work ({d.reason or 'match'}), instead of a new session. "
+                f"Advice only. Ask Jay before you send. Jay's words win.")
     where = "start a new session" if d.route == "new_session" else "handle it yourself"
     bg = " as background work" if d.background else ""
     return (f"Jev suggests: {where}{bg}, model {d.model} ({MODEL_IDS[d.model]}), "

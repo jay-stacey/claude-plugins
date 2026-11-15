@@ -173,7 +173,9 @@ export function roughTime(s) {
 
 /** One quiet line under Jay's message: what Jev suggested, so Jay can see and overrule it. */
 function jevEl(j) {
-  const where = j.route === 'new_session' ? 'new session' : 'Chief handles it';
+  const where = j.route === 'new_session' ? 'new session'
+    : j.route === 'existing_session' ? `send to: ${String(j.target_title || 'open session').slice(0, 40)}`
+    : 'Chief handles it';
   const parts = ['Jev', j.model, where];
   if (j.background) parts.push('background');
   const time = roughTime(j.estimate_s);

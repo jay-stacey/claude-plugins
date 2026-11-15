@@ -6,6 +6,7 @@ every other rule.
 """
 import re
 
+from . import match as session_match
 from .decision import Decision, Request
 
 # Short replies that need no thought: greetings, thanks, yes or no, button labels.
@@ -141,6 +142,21 @@ def pick_model(text: str) -> str:
     return "sonnet"
 
 
+def delegate(request: Request, d: Decision) -> Decision:
+    """Turns a new_session answer into existing_session when one open session owns the work.
+
+    Jay's own "new session" words keep the new session. Returns d, changed in place."""
+    if d.route != "new_session" or overrides(request.text).get("route") == "new_session":
+        return d
+    hit = session_match.match(request.text, request.sessions)
+    if hit is None:
+        return d
+    s, why = hit
+    d.route, d.background = "existing_session", False
+    d.target, d.target_title, d.reason = str(s["id"]), str(s.get("title") or ""), why
+    return d
+
+
 def quick(request: Request) -> Decision:
     """Jev's first answer, from rules alone."""
     text = request.text or ""
@@ -164,5 +180,6 @@ def quick(request: Request) -> Decision:
         if filler != "work":
             filler = "work"
         estimate = ESTIMATE_S[model]
-    return Decision(model=model, route=route, background=route == "new_session", estimate_s=estimate,
-                    filler=filler, source="user" if ov else "rules", ms=0.0, override=bool(ov))
+    d = Decision(model=model, route=route, background=route == "new_session", estimate_s=estimate,
+                 filler=filler, source="user" if ov else "rules", ms=0.0, override=bool(ov))
+    return delegate(request, d)
