@@ -1,6 +1,10 @@
 # session-manager
 
-Type `/manager` in a new session. It reviews your open Claude sessions and gives you a short to-do list with one next step each.
+Keeps the Code tab sidebar tidy.
+
+- **Auto-file:** each new session files itself into a sidebar section for its project (for example `dealerpull-api`, `InventoryFeeds`, `Security`). It happens after a turn ends, once the session has a real title.
+- **`/organize`:** sorts all ungrouped sessions into sections in one go, after one yes.
+- **`/manager`:** reviews your open sessions, gives a short to-do list with one next step each, offers to archive done and stale ones with their worktrees, then groups what is left.
 
 ## What it sorts
 
@@ -16,8 +20,20 @@ Type `/manager` in a new session. It reviews your open Claude sessions and gives
 
 | Part | File | Job |
 |---|---|---|
-| Skill | `skills/manager/SKILL.md` | The `/manager` command. Runs the agent, then offers to archive done and long-idle sessions and checks worktrees. |
+| Skill | `skills/manager/SKILL.md` | The `/manager` command. Runs the agent, offers to archive done and long-idle sessions, checks worktrees, then groups the rest. |
+| Skill | `skills/organize/SKILL.md` | The `/organize` command. Sorts ungrouped sessions into project sections. |
 | Agent | `agents/session-advisor.md` | Reads sessions and writes the report. Read only. |
+| Hooks mod | `hooks/register.ts` | Auto-file: moves this session into its project section after a turn. Adds `/organize-self`. |
+| Project list | `hooks/projects.ts` | Sections, old names they replace, and the title patterns. Edit this to add a project. |
+
+## Grouping
+
+- A session goes to the first project in `hooks/projects.ts` whose pattern matches its title, branch or folder. `Security` is first, so security work goes there even when it touches one repo.
+- An existing section is reused when its name matches the project or one of its aliases (an existing `DP1` section is used for dp-web-ui).
+- A session you filed yourself, or a pinned session, is never moved. `/organize --regroup` re-sorts filed sessions too.
+- No match means no move. A wrong section is worse than none.
+- Auto-file only ever moves its own session, so the app does not ask. `/organize` moves other sessions, so the app may ask once per section.
+- `/organize-self` files this session now. `/organize-self off` turns auto-file off everywhere; `on` turns it back.
 
 ## Bulk archive and worktrees
 
@@ -60,6 +76,10 @@ claude --plugin-dir ./plugins/session-manager
 /manager
 /manager --stale-days 7
 /manager --bulk-days 30
+/manager --no-group
+/organize
+/organize --dry-run
+/organize --regroup
 ```
 
 If another plugin also has a `/manager` command, type `/session-manager:manager` instead.
