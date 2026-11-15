@@ -5,6 +5,7 @@ import type {
   ActionOutcomeKind, ActionVerb, ChiefCaps, ChiefConfirm, ChiefHost, ChiefInboxItem, ChiefPaneRow, ChiefPaneView,
   ChiefServerInfo, ChiefSession, ChiefSessionActions, ChiefSessionKind,
 } from '../types'
+import { EMBER, graphSvg, LOOK, LOOK_BLOCKER, SCENE, STATE_HEX } from './look'
 
 // The Chief of Staff mod (docs/contracts.md section 6). It loads in every
 // session and does its work only in the Chief's: the session where /chief ran.
@@ -398,55 +399,142 @@ export const register: Register = (on, opts) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     if (!isChief) return <Text dimColor>This session is not the Chief of Staff. Type /chief to make it the Chief.</Text>
     const view = await read($, paneView)
-    if (view === null) return <Text dimColor>Loading sessions...</Text>
+    if (view === null) return <Text color={EMBER.muted}>Linking to the Chief of Staff server...</Text>
     if (e.props.placement === 'widget') {
-      return <Text color={view.you > 0 ? 'warning' : undefined}>{view.you} need you, {view.active} active</Text>
+      return (
+        <Box gap="xs">
+          <Text color={view.you > 0 ? STATE_HEX.you : EMBER.muted} bold>{view.you} need you</Text>
+          <Text color={EMBER.muted}>{view.active} working</Text>
+        </Box>
+      )
     }
-    const room = Math.max(2, Math.floor(((e.viewport?.rows ?? 30) - 8) / 4))
-    const shown = view.rows.slice(0, room)
-    const more = view.rows.length - shown.length + view.hidden
+    const showStale = await read($, staleShown)
+    const at = await now($)
+    const live = view.ok && view.updatedAt > 0
+    const name = chiefName(options.chief_name)
+
+    const tile = (key: string, n: number, label: string) => (
+      <Box key={`tile-${key}`} flexDirection="column" flexGrow={1} paddingX="sm" paddingY="xs"
+        borderStyle="round" borderColor={n > 0 && key === 'you' ? STATE_HEX.you : EMBER.line} backgroundColor={EMBER.panel}>
+        <Text size="title" bold color={n > 0 ? STATE_HEX[key] : EMBER.faint}>{String(n)}</Text>
+        <Text size="caption" color={EMBER.muted}>{label}</Text>
+      </Box>
+    )
+
+    const card = (r: ChiefPaneRow) => {
+      const hex = STATE_HEX[r.state] ?? EMBER.faint
+      const where = [r.repo, r.branch, r.prNumber !== null ? `PR ${r.prNumber}` : ''].filter(x => x !== '').join('  /  ')
+      const primary = r.state === 'you' && r.reply !== 'no' ? 'reply' : 'ask'
+      return (
+        <Box key={`card-${r.id}`} flexDirection="column" gap="xs" paddingX="sm" paddingY="xs" borderStyle="round"
+          borderColor={r.state === 'you' ? hex : EMBER.line} backgroundColor={r.state === 'you' ? EMBER.panel2 : EMBER.panel}>
+          <Box justifyContent="space-between" gap="sm">
+            <Box gap="xs" flexShrink={1}>
+              <Text color={hex}>{r.state === 'stale' ? '○' : '●'}</Text>
+              <Text bold wrap="truncate-end" color={r.state === 'stale' ? EMBER.muted : EMBER.fg}>{r.title}</Text>
+            </Box>
+            {r.ago !== '' && <Text size="caption" color={EMBER.faint}>{r.ago}</Text>}
+          </Box>
+          {r.reason !== '' && <Text size="footnote" color={hex} wrap="wrap">{r.reason}</Text>}
+          {where !== '' && <Text size="caption" color={EMBER.muted} wrap="truncate-end">{where}</Text>}
+          <Box gap="xs" flexWrap="wrap">
+            <Button key={`ask-${r.id}`} label="Ask" variant={primary === 'ask' ? 'primary' : 'secondary'}
+              onPress={() => fillPrompt($, askText(r))} />
+            {r.reply !== 'no' && (
+              <Button key={`reply-${r.id}`} label="Reply" variant={primary === 'reply' ? 'primary' : 'secondary'}
+                onPress={() => fillPrompt($, replyText(r))} />
+            )}
+            {r.archive !== 'no' && (
+              <Button key={`archive-${r.id}`} label="Archive" variant="secondary" onPress={() => fillPrompt($, archiveText(r))} />
+            )}
+            {r.stop !== 'no' && (
+              <Button key={`stop-${r.id}`} label="Stop" variant="secondary" onPress={() => fillPrompt($, stopText(r))} />
+            )}
+            {r.open !== 'no' && (
+              <Button key={`open-${r.id}`} label="Open" variant="secondary" onPress={() => openFromPane($, r)} />
+            )}
+          </Box>
+        </Box>
+      )
+    }
+
+    const section = (state: string, label: string) => {
+      const list = view.rows.filter(r => r.state === state)
+      if (list.length === 0) return null
+      const isFolded = state === 'stale' && !showStale
+      return (
+        <Box key={`sec-${state}`} flexDirection="column" gap="xs" marginTop="sm">
+          <Box justifyContent="space-between" alignItems="center">
+            <Text size="caption" bold color={STATE_HEX[state]}>{`${label.toUpperCase()}  ${list.length}`}</Text>
+            {state === 'stale' && (
+              <Button key="stale-toggle" label={isFolded ? 'Show' : 'Hide'} variant="secondary"
+                onPress={() => update($, staleShown, v => !v)} />
+            )}
+          </Box>
+          {!isFolded && list.slice(0, PANE_MAX_ROWS).map(card)}
+        </Box>
+      )
+    }
+
+    let graph = null
+    if (e.surface !== 'terminal' && view.rows.length > 0) {
+      const { Svg } = $.ui.resolve(e)
+      graph = (
+        <Box justifyContent="center" borderStyle="round" borderColor={EMBER.line} backgroundColor={EMBER.bg}>
+          <Svg source={graphSvg(view.rows, name)} isInteractive
+            alt={`Session graph: ${view.you} need you, ${view.active} working, ${view.wait} waiting, ${view.stale} stale.`} />
+        </Box>
+      )
+    }
+
     return (
-      <Box flexDirection="column">
-        <Box gap={1}>
-          <Text bold color={view.you > 0 ? 'warning' : undefined}>{view.you} need you</Text>
-          <Text dimColor>{view.active} active, {view.wait} waiting, {view.stale} stale</Text>
-        </Box>
-        <Box gap={1} marginTop={1}>
-          <Button key="ask-needs" label="What needs me?" onPress={() => fillPrompt($, 'What needs me?')} />
-          <Button key="refresh" label="Refresh" onPress={() => refreshPane($)} />
-        </Box>
-        <Text dimColor wrap="wrap">Buttons put a request in your prompt box. Press Enter to send it.</Text>
-        {view.note !== '' && <Text color="warning" wrap="wrap">{view.note}</Text>}
-        {!view.ok && <Text color="error" wrap="wrap">{view.error}</Text>}
-        {view.ok && shown.length === 0 && <Text dimColor>No other sessions to show.</Text>}
-        {shown.map(r => (
-          <Box key={`row-${r.id}`} flexDirection="column" marginTop={1}>
-            <Text bold wrap="truncate-end">{r.title}</Text>
-            <Text color={STATE_COLOR[r.state]} wrap="truncate-end">
-              {STATE_LABEL[r.state]}{r.reason !== '' ? `: ${r.reason}` : ''}{r.ago !== '' ? `, ${r.ago}` : ''}
-            </Text>
-            <Box gap={1}>
-              <Button key={`ask-${r.id}`} label="Ask" onPress={() => fillPrompt($, askText(r))} />
-              {r.reply !== 'no' && (
-                <Button key={`reply-${r.id}`} label="Reply" onPress={() => fillPrompt($, replyText(r))} />
-              )}
-              {r.archive !== 'no' && (
-                <Button key={`archive-${r.id}`} label="Archive" onPress={() => fillPrompt($, archiveText(r))} />
-              )}
-              {r.stop !== 'no' && (
-                <Button key={`stop-${r.id}`} label="Stop" onPress={() => fillPrompt($, stopText(r))} />
-              )}
-              {r.open !== 'no' && (
-                <Button key={`open-${r.id}`} label="Open" onPress={() => openFromPane($, r)} />
-              )}
+      <Box flexDirection="column" gap="xs" paddingX="xs">
+        <Box justifyContent="space-between" alignItems="center">
+          <Box gap="sm" alignItems="center">
+            <Text color={EMBER.accent} bold>{'▐'}</Text>
+            <Box flexDirection="column">
+              <Text size="caption" color={EMBER.muted}>CHIEF OF STAFF</Text>
+              <Text size="heading" bold color={EMBER.fg}>{name}</Text>
             </Box>
           </Box>
-        ))}
-        {more > 0 && (
-          <Box marginTop={1}><Text dimColor>{more} more not shown. Ask the Chief for the full list.</Text></Box>
+          <Box gap="xs" alignItems="center">
+            <Text color={live ? EMBER.ok : STATE_HEX.you}>{'●'}</Text>
+            <Text size="caption" color={EMBER.muted}>
+              {live ? `Live, updated ${ago(Math.max(0, at - view.updatedAt))}` : 'Offline'}
+            </Text>
+          </Box>
+        </Box>
+        <Box gap="xs" marginTop="xs">
+          {tile('you', view.you, 'Need you')}
+          {tile('active', view.active, 'Working')}
+          {tile('wait', view.wait, 'Waiting')}
+          {tile('stale', view.stale, 'Stale')}
+        </Box>
+        {graph}
+        <Box gap="xs" marginTop="xs">
+          <Button key="ask-needs" label="What needs me?" variant="primary" onPress={() => fillPrompt($, 'What needs me?')} />
+          <Button key="refresh" label="Refresh" variant="secondary" onPress={() => refreshPane($)} />
+        </Box>
+        <Text size="caption" color={EMBER.faint} wrap="wrap">Buttons put a request in your prompt box. Press Enter to send it.</Text>
+        {view.note !== '' && <Text size="footnote" color={STATE_HEX.active} wrap="wrap">{view.note}</Text>}
+        {!view.ok && <Text size="footnote" color={STATE_HEX.you} wrap="wrap">{view.error}</Text>}
+        {view.ok && view.rows.length === 0 && <Text color={EMBER.muted}>No other sessions to show.</Text>}
+        {section('you', 'Needs you')}
+        {section('active', 'Working')}
+        {section('wait', 'Waiting')}
+        {section('stale', 'Stale')}
+        {view.hidden > 0 && (
+          <Text size="caption" color={EMBER.faint}>{`${view.hidden} older sessions not shown. Ask the Chief for the full list.`}</Text>
         )}
       </Box>
     )
+  })
+
+  // The Chief's session wears the console's ember look: the scene behind the transcript.
+  on('ui.render', { component: 'Backdrop' }, async ($, e, next) => {
+    if (!isChief || !isLookOn() || (e.surface !== 'desktop' && e.surface !== 'mobile')) return next(e)
+    const { Svg } = $.ui.resolve(e)
+    return <Svg source={SCENE} alt="A faint ember grid with a slow glow" isInteractive />
   })
 
   // The Chief's reply in the app's transcript: the [[confirm: yes | no]] line is for the
@@ -478,7 +566,7 @@ export const register: Register = (on, opts) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     return (
       <Box gap={1}>
-        <Text color="warning">{view.you} session{view.you === 1 ? '' : 's'} need{view.you === 1 ? 's' : ''} you</Text>
+        <Text color={STATE_HEX.you} bold>{view.you} session{view.you === 1 ? '' : 's'} need{view.you === 1 ? 's' : ''} you</Text>
         <Button key="chief-show" label="Show" onPress={() => openPane($)} />
       </Box>
     )
@@ -1301,6 +1389,7 @@ function become($: EngineInterface, open: boolean): Promise<void> {
       host = await detectCaps($)
       if ((await hello($)) === 'refused') return
       startLoop($)
+      await applyLook($)
       await openPane($)
     } catch (err) {
       log($, `could not become the Chief: ${String(err)}`)
@@ -1768,16 +1857,34 @@ const PANE = 'chief-of-staff'
 const PANE_COMMAND = 'chief-pane'
 const PANE_REFRESH_MS = 5000
 // Change the tag when ChiefPaneView's fields change: it declines what an older version stored.
-const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-1' })
+const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-2' })
+const staleShown = atom({ plugin: 'chief-of-staff', key: 'showStale' } as const, false)
+// The most cards one state's section draws; the pane scrolls.
+const PANE_MAX_ROWS = 40
 const openAsk = atom({ plugin: 'chief-of-staff', key: 'ask' } as const, null, { shape: 'ask-1' })
 // Any line of a reply that is a confirm line, as CONFIRM_LINE reads one line.
 const CONFIRM_ANY = /^\s*\[\[\s*confirm\s*:[^\]]*\]\]\s*$/im
 let paneGen = 0
 let commandAdded = false
 
-const STATE_LABEL: Record<string, string> = { you: 'Needs you', active: 'Working', wait: 'Waiting', stale: 'Stale' }
-const STATE_COLOR: Record<string, 'warning' | 'success' | 'subtle' | 'inactive'> = {
-  you: 'warning', active: 'success', wait: 'subtle', stale: 'inactive',
+// The ember look is on unless the chief_theme setting turns it off.
+function isLookOn(): boolean {
+  return options.chief_theme !== false
+}
+
+// Puts the console's ember look on this session, where the app draws looks.
+async function applyLook($: EngineInterface): Promise<void> {
+  if (!isLookOn()) return
+  if (LOOK_BLOCKER !== null) {
+    log($, `look not set: ${LOOK_BLOCKER}`)
+    return
+  }
+  try {
+    const set = await $.theme.set(LOOK)
+    if (!set.isDrawn) log($, `look not drawn: ${String((set as { reason?: unknown }).reason ?? '')}`)
+  } catch (err) {
+    log($, `look: ${String(err)}`)
+  }
 }
 
 // Opens the pane, adds /chief-pane once, and starts the refresh loop. Chief session only.
@@ -1835,12 +1942,13 @@ async function refreshPane($: EngineInterface): Promise<void> {
       rows: inView.map(s => paneRow(s, at)),
       hidden: others.length - inView.length,
       note: res.json.liveStale === true ? 'Live status may be out of date.' : '',
+      updatedAt: at,
     }
   } catch (err) {
     server = null
     const old = await read($, paneView)
     next = {
-      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '' }),
+      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '', updatedAt: 0 }),
       ok: false,
       error: 'The Chief of Staff server is not answering. Type /chief to start it again.',
     }
@@ -1858,6 +1966,9 @@ function paneRow(s: ChiefSession, at: number): ChiefPaneRow {
     reason: cleanLine(s.needsAction ?? s.stateReason, 120),
     ago: s.lastActivityAt ? ago(at - s.lastActivityAt) : '',
     kind: kindOf(s),
+    repo: cleanLine(s.repo ?? '', 40),
+    branch: cleanLine(s.branch ?? '', 60),
+    prNumber: typeof s.prNumber === 'number' ? s.prNumber : null,
     // An old server with no actions map: offer only what the Chief can still ask about.
     reply: a?.reply ?? 'yes',
     archive: a?.archive ?? 'no',

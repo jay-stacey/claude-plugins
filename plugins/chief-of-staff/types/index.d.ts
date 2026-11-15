@@ -9,6 +9,9 @@ export type ChiefPaneRow = {
   reason: string
   ago: string
   kind: ChiefSessionKind
+  repo: string
+  branch: string
+  prNumber: number | null
   reply: Avail
   archive: Avail
   stop: Avail
@@ -26,6 +29,8 @@ export type ChiefPaneView = {
   rows: ChiefPaneRow[]
   hidden: number
   note: string
+  // When the server last answered, epoch ms; 0 before it ever did.
+  updatedAt: number
 }
 
 // The Chief's open question: the two button labels of its last reply's confirm line.
@@ -33,7 +38,12 @@ export type ChiefOpenAsk = { yes: string; no: string }
 
 declare module 'claude-code' {
   interface PluginState {
-    'chief-of-staff': { pane: Shaped<ChiefPaneView | null>; ask: Shaped<ChiefOpenAsk | null> }
+    'chief-of-staff': {
+      pane: Shaped<ChiefPaneView | null>
+      ask: Shaped<ChiefOpenAsk | null>
+      // Whether the pane shows its stale sessions.
+      showStale: boolean
+    }
   }
 }
 

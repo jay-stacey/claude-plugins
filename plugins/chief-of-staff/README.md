@@ -1,6 +1,6 @@
 # Chief of Staff
 
-Version 0.5.1.
+Version 0.6.0.
 
 A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A pane inside the app shows the roster, with buttons that put a request in your prompt box. An optional local console in the browser shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
@@ -30,7 +30,9 @@ Type `/chief` in a Claude Code session (desktop app or terminal). That session b
 
 ### The Chief pane
 
-The pane sits beside the chat in the Chief's session. It lists your other sessions, the ones that need you first, and refreshes every 5 seconds. Each session has buttons: Ask, Reply, Archive or Stop when the session allows it, and Open.
+The pane sits beside the chat in the Chief's session and looks like the console: an ember HUD with a live status light, four tiles (need you, working, waiting, stale), a small session graph with the Chief at its core, and one section of session cards per state. Sessions that need you have a red border and pulse in the graph. Stale sessions stay folded until you press Show. The pane refreshes every 5 seconds. Each card has buttons: Ask, Reply, Archive or Stop when the session allows it, and Open. The main one is lit: Reply for a session that needs you, Ask for the rest.
+
+The Chief's whole session takes the console's ember look too: dark ember colors and a faint glowing grid behind the chat. Set `chief_theme` to false to keep the app's own look.
 
 - Ask, Reply, Archive and Stop only put a request in your prompt box. You read it, change it if you want, and press Enter. The app then counts the request as your own typing, so its permission checks do not refuse it. Requests that come from the browser console or the voice do not count as your typing, which is why the app sometimes refuses them.
 - Open shows the session in the app at once. It changes nothing.
@@ -88,6 +90,7 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 |---|---|---|
 | `stale_hours` | 24 | A session with no activity this long counts as stale |
 | `recent_days` | 3 | The graph and roster show live sessions and sessions active in this many days |
+| `chief_theme` | true | Paint the Chief's session with the console's ember look |
 | `open_console` | false | Also open the browser console on `/chief`. Off: the Chief pane in the app is the only view |
 | `speak_replies` | true | Speak the Chief's replies |
 | `listen` | wake | `wake` (always listening for the wake word), `ptt` (push to talk) or `off` |

@@ -1874,13 +1874,25 @@ test('the pane lists the other sessions, most urgent first, on every surface', a
   await becomeChief($, clock)
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^1 need you$/ })) !== undefined).toBe(true)
+    // The header, the four state tiles and one section per state, as the console shows them.
+    expect((await ui.find({ type: 'Text', text: /^CHIEF OF STAFF$/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^Need you$/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^NEEDS YOU {2}1$/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^WORKING {2}1$/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^Live, updated/ })) !== undefined).toBe(true)
     expect((await ui.find({ type: 'Text', text: /Plan PRO-921/ })) !== undefined).toBe(true)
-    expect((await ui.find({ type: 'Text', text: /Needs you: Pick a vendor/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^Pick a vendor$/ })) !== undefined).toBe(true)
     expect((await ui.find({ type: 'Text', text: /DP1-676/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /dp-web-ui {2}\/ {2}b {2}\/ {2}PR 1216/ })) !== undefined).toBe(true)
+    // The main action of a session that needs Jay is Reply; of any other, Ask.
+    expect((await ui.find({ type: 'Button', key: 'reply-local_b' } as never) as { props?: { variant?: string } } | undefined)
+      ?.props?.variant).toBe('primary')
     // Never the Chief itself, and never a session out of view.
-    expect((await ui.find({ type: 'Text', text: /^Chief$/ })) === undefined).toBe(true)
+    expect((await ui.find({ type: 'Button', key: `ask-${LOCAL}` } as never)) === undefined).toBe(true)
     expect((await ui.find({ type: 'Text', text: /Old idea/ })) === undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /1 older sessions not shown/ })) !== undefined).toBe(true)
+    // The session graph is a drawing: on the desktop, never in a terminal.
+    expect((await ui.find({ type: 'Svg' } as never)) !== undefined).toBe(surface === 'desktop')
     await ui.unmount()
   }
 })
@@ -1990,4 +2002,36 @@ test('the confirm line is hidden in the app and its two buttons fill the prompt 
   expect((await after.find({ type: 'Button', key: 'chief-ask-yes' } as never)) === undefined).toBe(true)
   expect((await after.find({ type: 'Text', text: /confirm/ })) === undefined).toBe(true)
   await after.unmount()
+})
+
+test('the pane draws no stale section when no stale session is in view', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // The fixture's one stale session is out of view, so there is no stale section.
+  expect((await ui.find({ type: 'Button', key: 'stale-toggle' } as never)) === undefined).toBe(true)
+  await ui.unmount()
+})
+
+test('the Chief session takes the ember look', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const looks: unknown[] = []
+  on('theme.set', ($, e) => (looks.push(e), { value: { isDrawn: true } }) as never)
+  paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  expect(looks.length).toBe(1)
+  expect((looks[0] as { backdrop?: { scene?: string } }).backdrop?.scene).toBe('chief-ember')
+})
+
+test('with chief_theme off the Chief session keeps the app look', { options: { chief_theme: false } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const looks: unknown[] = []
+  on('theme.set', ($, e) => (looks.push(e), { value: { isDrawn: true } }) as never)
+  paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  expect(looks.length).toBe(0)
 })
