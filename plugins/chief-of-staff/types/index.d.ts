@@ -28,9 +28,12 @@ export type ChiefPaneView = {
   note: string
 }
 
+// The Chief's open question: the two button labels of its last reply's confirm line.
+export type ChiefOpenAsk = { yes: string; no: string }
+
 declare module 'claude-code' {
   interface PluginState {
-    'chief-of-staff': { pane: Shaped<ChiefPaneView | null> }
+    'chief-of-staff': { pane: Shaped<ChiefPaneView | null>; ask: Shaped<ChiefOpenAsk | null> }
   }
 }
 

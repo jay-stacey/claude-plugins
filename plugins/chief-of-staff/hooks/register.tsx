@@ -291,7 +291,11 @@ export const register: Register = (on, opts) => {
       // about what the Chief was refused since its last reply. A reply without one (a notice
       // in between) leaves the open question alone; Jay's next own message answers or clears it.
       const { confirm } = splitConfirm(answer)
-      if (confirm !== null) asked = { keys: [...pendingAsks], yes: confirm.yes, no: confirm.no }
+      if (confirm !== null) {
+        asked = { keys: [...pendingAsks], yes: confirm.yes, no: confirm.no }
+        // The reply's two buttons in the app answer this question.
+        await update($, openAsk, () => ({ yes: confirm.yes, no: confirm.no }))
+      }
       pendingAsks.clear()
     }
     $.clock.after(0, () => void sendReply($, answer, turnId))
@@ -445,6 +449,27 @@ export const register: Register = (on, opts) => {
     )
   })
 
+  // The Chief's reply in the app's transcript: the [[confirm: yes | no]] line is for the
+  // console and the mod, never for Jay to read. It is hidden, and while it is the open
+  // question two buttons under the reply put the answer in the prompt box for Jay to send.
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    if (!isChief || !CONFIRM_ANY.test(e.props.text)) return next(e)
+    const { text, confirm } = splitConfirm(e.props.text)
+    const drawn = await next({ ...e, props: { ...e.props, text } })
+    const ask = await read($, openAsk)
+    if (confirm === null || ask === null || ask.yes !== confirm.yes || ask.no !== confirm.no) return drawn
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {drawn}
+        <Box gap={1}>
+          <Button key="chief-ask-yes" variant="primary" label={confirm.yes} onPress={() => fillPrompt($, confirm.yes)} />
+          <Button key="chief-ask-no" label={confirm.no} onPress={() => fillPrompt($, confirm.no)} />
+        </Box>
+      </Box>
+    )
+  })
+
   // A row above the prompt in the Chief's session while sessions wait on Jay.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isChief || e.props.hasSurvey) return next(e)
@@ -591,6 +616,8 @@ function keyOf(id: string, verb: ActionVerb): string {
 // the approvals his last yes gave.
 async function noteAnswer($: EngineInterface, typed: string, level: 'typed' | 'press'): Promise<void> {
   for (const [key, a] of approvals) if (a.isFromYes) approvals.delete(key)
+  // Any message from Jay answers or drops the open question, so its buttons go.
+  await update($, openAsk, () => null)
   if (asked === null) return
   if (isYes(typed, asked.yes, asked.no)) {
     const until = (await now($)) + APPROVAL_MS
@@ -1742,6 +1769,9 @@ const PANE_COMMAND = 'chief-pane'
 const PANE_REFRESH_MS = 5000
 // Change the tag when ChiefPaneView's fields change: it declines what an older version stored.
 const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-1' })
+const openAsk = atom({ plugin: 'chief-of-staff', key: 'ask' } as const, null, { shape: 'ask-1' })
+// Any line of a reply that is a confirm line, as CONFIRM_LINE reads one line.
+const CONFIRM_ANY = /^\s*\[\[\s*confirm\s*:[^\]]*\]\]\s*$/im
 let paneGen = 0
 let commandAdded = false
 

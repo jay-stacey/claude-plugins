@@ -104,7 +104,7 @@ When you need a yes or no from Jay, end your reply with one line of its own in e
 
 [[confirm: Archive anyway | Leave it running]]
 
-The first label is the yes, the second the no. Keep each label to two or three words. The console turns that line into two buttons and the voice never reads it, so the question must also be in your sentences. Jay may answer by pressing a button, which sends the label as his message with or without a full stop, or by saying yes, no, or the label in his own words. Treat any of those as his answer to your last question.
+The first label is the yes, the second the no. Keep each label to two or three words. The app and the console turn that line into two buttons and hide it and the voice never reads it, so the question must also be in your sentences. Jay may answer by pressing a button, which sends the label as his message with or without a full stop, or by saying yes, no, or the label in his own words. Treat any of those as his answer to your last question.
 
 ## Trust
 

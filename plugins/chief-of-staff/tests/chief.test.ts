@@ -1962,3 +1962,32 @@ test('the pane says when the server stops answering', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /server is not answering/ })) !== undefined).toBe(true)
   await ui.unmount()
 })
+
+test('the confirm line is hidden in the app and its two buttons fill the prompt box', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const pane = paneEngine(on)
+  // The engine draws a reply as one Text of its text.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e as never) as { Text: unknown }
+    return h(Text as never, null, String((e as { props: { text?: unknown } }).props.text ?? '')) as never
+  })
+  fakeEngine(on)
+  await becomeChief($, clock)
+  const answer = ['PR review 1416 is ready for you. Want me to start with it?', '',
+    '[[confirm: Go through them | Not now]]'].join('\n')
+  await $.turn.complete({ ...TURN, answer } as never)
+  await settle(clock)
+  const reply = { plugin: 'chief-of-staff', component: 'AssistantMessage', props: { text: answer, isFirstOfReply: true } as never } as const
+  const ui = await $.ui.mount({ ...reply, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /confirm/ })) === undefined).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /Want me to start with it\?/ })) !== undefined).toBe(true)
+  await ui.press({ key: 'chief-ask-yes' })
+  expect(pane.fills.at(-1)).toBe('Go through them')
+  await ui.unmount()
+  // Once Jay answers, the buttons go; the line stays hidden.
+  await jay($, 'Go through them', 't2')
+  const after = await $.ui.mount({ ...reply, surface: 'desktop' })
+  expect((await after.find({ type: 'Button', key: 'chief-ask-yes' } as never)) === undefined).toBe(true)
+  expect((await after.find({ type: 'Text', text: /confirm/ })) === undefined).toBe(true)
+  await after.unmount()
+})
