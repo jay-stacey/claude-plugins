@@ -15,7 +15,7 @@ It speaks only the main agent's final answer in a session someone is watching. S
 2. Install the Kokoro voice server (Windows only):
 
    ```
-   /voice install
+   /voice-replies install
    ```
 
    It takes 5 to 15 minutes. The voice panel shows each step, and the Windows voice speaks until it is done. A toast says when it is done and whether Kokoro runs on the GPU or the CPU.
@@ -24,7 +24,7 @@ Until step 2 is done, replies use the Windows voice.
 
 ### How the installer picks GPU or CPU
 
-`/voice install` runs `server/setup.ps1`. It checks the machine first:
+`/voice-replies install` runs `server/setup.ps1`. It checks the machine first:
 
 | The machine has | Kokoro runs on | PyTorch build |
 | --- | --- | --- |
@@ -34,13 +34,13 @@ Until step 2 is done, replies use the Windows voice.
 
 After installing, it speaks a test phrase into memory on the chosen device. If the GPU fails that test, it switches to the CPU by itself. The choice is saved in `config.json`, and the server reads it each time it starts. Kokoro is small (82 million parameters), so a modern CPU still speaks faster than real time.
 
-To force a choice, use `/voice install gpu` or `/voice install cpu`. To see what it would pick without installing anything:
+To force a choice, use `/voice-replies install gpu` or `/voice-replies install cpu`. To see what it would pick without installing anything:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File server\setup.ps1 -CheckOnly
 ```
 
-You do not need Python. The installer gets [uv](https://github.com/astral-sh/uv) (a small Python installer), and uv puts Python 3.12 in the same folder. It needs no admin rights. Downloads are about 3 GB for the GPU and about 700 MB for the CPU. Everything goes into `%USERPROFILE%\.claude\voice-replies`; delete that folder to remove it. Run `/voice install` again after a plugin update or a new GPU. It keeps what is already in place.
+You do not need Python. The installer gets [uv](https://github.com/astral-sh/uv) (a small Python installer), and uv puts Python 3.12 in the same folder. It needs no admin rights. Downloads are about 3 GB for the GPU and about 700 MB for the CPU. Everything goes into `%USERPROFILE%\.claude\voice-replies`; delete that folder to remove it. Run `/voice-replies install` again after a plugin update or a new GPU. It keeps what is already in place.
 
 The plugin starts the server hidden in the background when it first needs it. One server is shared by every session, and it exits after two idle hours. The plugin starts the server from its own copy of `server.py`, so a plugin update reaches the server without a new install. A server from before 1.3.0 is stopped and started again once.
 
@@ -69,42 +69,42 @@ Before the voice gets the script, the plugin rewrites what voices read badly:
 
 ### Several sessions
 
-Each session keeps its own voice, speed, length, name for you and on or off setting. A session you open again keeps what you picked there. A new session starts with the default; `/voice default` makes the current session's choices the default.
+Each session keeps its own voice, speed, length, name for you and on or off setting. A session you open again keeps what you picked there. A new session starts with the default; `/voice-replies default` makes the current session's choices the default.
 
 Sessions take turns. A reply never stops another session's speech:
 
 1. If no session is speaking, the reply plays at once.
 2. If another session is speaking, the reply waits. You get a Windows notification that names the session, and that session's panel shows **1 reply waiting** with **Play** and **Dismiss**.
 3. **Play** puts the reply in line. It plays when the current speech ends.
-4. The voice does not say which session is speaking. To have it say a name when it moves to this session from another one, use `/voice name <words>`. The notification for a waiting reply always names the session (by its folder when no name is set).
+4. The voice does not say which session is speaking. To have it say a name when it moves to this session from another one, use `/voice-replies name <words>`. The notification for a waiting reply always names the session (by its folder when no name is set).
 
 Sending a new prompt stops that session's speech and drops its waiting replies. Other sessions keep speaking.
 
 ### What the voice calls you
 
-Type a name in the **Call me** field in the panel and press Enter, or use `/voice call <name>`. Each reply in that session then starts with it and a short pause, such as "Jay... the tests pass." A comma or full stop typed after the name is dropped, so it is not said twice. Clear the field, or use `/voice call` with no name, to stop. `/voice default` makes it the name for new sessions too.
+Type a name in the **Call me** field in the panel and press Enter, or use `/voice-replies call <name>`. Each reply in that session then starts with it and a short pause, such as "Jay... the tests pass." A comma or full stop typed after the name is dropped, so it is not said twice. Clear the field, or use `/voice-replies call` with no name, to stop. `/voice-replies default` makes it the name for new sessions too.
 
 Missed a reply because you were in another session? The panel shows **Replay** once a reply has played. It plays that session's last reply again, after any speech already in line. The last reply is saved with the session's settings, so **Replay** still works after the session restarts.
 
 | Command | Does |
 | --- | --- |
-| `/voice` | Toggles voice replies on or off in this session |
-| `/voice on`, `/voice off` | Turns them on or off in this session |
-| `/voice stop` | Stops this session's speech |
-| `/voice stop all` | Stops speech in every session |
-| `/voice play` | Plays this session's waiting replies |
-| `/voice clear` | Drops this session's waiting replies |
-| `/voice replay` | Plays this session's last reply again (same as **Replay** in the panel) |
-| `/voice voice bm_george` | Picks a voice for this session |
-| `/voice speed 1.2` | Picks a speed for this session: 0.8, 0.9, 1.0, 1.1, 1.2, 1.3 or 1.5 |
-| `/voice length full` | Reads replies in full (`short` reads a summary) |
-| `/voice call Jay` | Starts each reply in this session with that name (no name: stops) |
-| `/voice name Voice fixes` | Says that name when the voice moves to this session from another one (no words: says nothing) |
-| `/voice default` | Makes this session's voice, speed, length and on or off the default for new sessions |
-| `/voice voices` | Lists the 28 English voices |
-| `/voice test` | Plays a sample with the current voice and speed |
-| `/voice install` | Installs Kokoro on the GPU, or on the CPU if the GPU cannot run it |
-| `/voice install gpu`, `/voice install cpu` | Installs Kokoro on the device you name |
+| `/voice-replies` | Toggles voice replies on or off in this session |
+| `/voice-replies on`, `/voice-replies off` | Turns them on or off in this session |
+| `/voice-replies stop` | Stops this session's speech |
+| `/voice-replies stop all` | Stops speech in every session |
+| `/voice-replies play` | Plays this session's waiting replies |
+| `/voice-replies clear` | Drops this session's waiting replies |
+| `/voice-replies replay` | Plays this session's last reply again (same as **Replay** in the panel) |
+| `/voice-replies voice bm_george` | Picks a voice for this session |
+| `/voice-replies speed 1.2` | Picks a speed for this session: 0.8, 0.9, 1.0, 1.1, 1.2, 1.3 or 1.5 |
+| `/voice-replies length full` | Reads replies in full (`short` reads a summary) |
+| `/voice-replies call Jay` | Starts each reply in this session with that name (no name: stops) |
+| `/voice-replies name Voice fixes` | Says that name when the voice moves to this session from another one (no words: says nothing) |
+| `/voice-replies default` | Makes this session's voice, speed, length and on or off the default for new sessions |
+| `/voice-replies voices` | Lists the 28 English voices |
+| `/voice-replies test` | Plays a sample with the current voice and speed |
+| `/voice-replies install` | Installs Kokoro on the GPU, or on the CPU if the GPU cannot run it |
+| `/voice-replies install gpu`, `/voice-replies install cpu` | Installs Kokoro on the device you name |
 
 The Windows voice (used when Kokoro is not set up) does not take turns between sessions.
 
@@ -116,9 +116,9 @@ Each spoken reply makes one Haiku call: about 200 tokens of rules plus the reply
 
 | Piece | Job |
 | --- | --- |
-| `hooks/register.tsx` | The hooks module: listens for the end of each turn, writes the speech script, draws the voice panel above the prompt, holds replies for Play, and handles `/voice`. Settings are saved per session under `session:<id>` in the plugin's store |
+| `hooks/register.tsx` | The hooks module: listens for the end of each turn, writes the speech script, draws the voice panel above the prompt, holds replies for Play, and handles `/voice-replies`. Settings are saved per session under `session:<id>` in the plugin's store |
 | `server/server.py` | A local HTTP server on `127.0.0.1:47861` that keeps Kokoro loaded on the device in `config.json`. It plays jobs one at a time, in order. `POST /speak` returns at once with a job id, or `busy` when asked to play only while nothing else plays. `GET /status?id=N` reports progress. `POST /stop` stops one session's jobs, or every job with no session. `POST /shutdown` ends the server |
-| `server/setup.ps1` | Run by `/voice install`. Checks the GPU, installs Python, PyTorch and Kokoro, copies `server.py` into place, tests Kokoro, and writes `config.json` |
+| `server/setup.ps1` | Run by `/voice-replies install`. Checks the GPU, installs Python, PyTorch and Kokoro, copies `server.py` into place, tests Kokoro, and writes `config.json` |
 
 The server log is at `%USERPROFILE%\.claude\voice-replies\logs\server.log`. The install log is `install.log` in the same folder.
 

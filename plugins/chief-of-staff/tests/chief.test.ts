@@ -201,7 +201,7 @@ function fakeEngine(on: On, o: Options = {}) {
       throw new Error('connection refused')
     }
     const url = new URL(e.url)
-    const body = e.init?.body ? (JSON.parse(e.init.body) as Record<string, unknown>) : null
+    const body = typeof e.init?.body === 'string' ? (JSON.parse(e.init.body) as Record<string, unknown>) : null
     requests.push({ method: e.init?.method ?? 'GET', path: url.pathname + url.search, body,
       token: e.init?.headers?.['X-COS-Token'] })
     if (url.pathname === '/api/health') {
