@@ -54,7 +54,7 @@ test('a missing section is created first', async ($, on) => {
   await $.turn.complete(TURN)
   await settle(clock)
   expect(calls.find(c => c.tool === 'create_section')?.args).toEqual({ name: 'InventoryFeeds' })
-  expect(moves(calls)[0].args).toEqual({ session_ids: ['self'], section_id: 'cg-new' })
+  expect(moves(calls)[0]?.args).toEqual({ session_ids: ['self'], section_id: 'cg-new' })
 })
 
 test('a session the user already filed is never moved', async ($, on) => {
@@ -92,5 +92,5 @@ test('security work wins over the repo it touches', async ($, on) => {
   await $.session.start(START)
   await $.turn.complete(TURN)
   await settle(clock)
-  expect(moves(calls)[0].args).toEqual({ session_ids: ['self'], section_id: 'cg-sec' })
+  expect(moves(calls)[0]?.args).toEqual({ session_ids: ['self'], section_id: 'cg-sec' })
 })
