@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import API, APP, config, paths
 from .events import Hub, Mailbox, frame
-from .jev.decision import MODELS as JEV_MODELS, ROUTES as JEV_ROUTES, Decision, Request as JevRequest, hint_text
+from .jev.decision import MODELS as JEV_MODELS, ALL_ROUTES as JEV_ROUTES, Decision, Request as JevRequest, hint_text
 from .jev.engine import Jev
 from .jev.settings import read_jev_json
 from .notices import Notices, public
@@ -600,7 +600,8 @@ class App:
         chief = next((s for s in sessions if s.get("isChief")), None)
         others = [s for s in sessions if not s.get("isChief")]
         others.sort(key=lambda s: (not s.get("live"), not s.get("inView", True)))
-        rows = [{"title": s.get("title"), "repo": s.get("repo"), "state": s.get("state"), "model": s.get("model")}
+        rows = [{"id": s.get("id"), "title": s.get("title"), "repo": s.get("repo"), "state": s.get("state"),
+                 "model": s.get("model")}
                 for s in others]
         return JevRequest(text, source, rows, chief.get("repo") if chief else None)
 
@@ -654,7 +655,7 @@ class App:
             raise HttpError(400, "The id is missing.")
         route = body.get("route")
         if route not in JEV_ROUTES:
-            raise HttpError(400, "The route must be chief or new_session.")
+            raise HttpError(400, "The route must be chief, new_session or existing_session.")
         model = body.get("model")
         # The mod sends the model id the Chief passed to start_session, like claude-opus-5-5.
         if isinstance(model, str) and model not in JEV_MODELS:

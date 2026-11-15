@@ -1,6 +1,6 @@
 # Chief of Staff
 
-Version 0.3.1.
+Version 0.4.0.
 
 A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A local console shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
@@ -57,6 +57,8 @@ The voice-replies plugin (1.7.0 or later) stays silent in the Chief's session, s
 ## Jev
 
 Jev is a quick router that runs before the Chief acts. For each console or voice request it suggests whether the Chief handles it or starts a new session, which model that session uses, whether it is background work, and about how long it takes. The console shows the suggestion under your message. Your words always win: say "use opus" or "do it yourself" to overrule it.
+
+When the work belongs to a session that is already open, Jev says so. It looks for one open session whose title has the same ticket key (like DP1-687), or the same words, as your request. The Chief then asks "Send it there?" and, on your yes, sends your words to that session as they are. Stale sessions never get new work, two equal matches mean no match, and "in a new session" always starts a new one. New sessions file themselves into the right sidebar section when session-manager 1.2.0 or later is installed.
 
 Jev answers from fixed rules at once. It can also ask a model, within 800 ms:
 

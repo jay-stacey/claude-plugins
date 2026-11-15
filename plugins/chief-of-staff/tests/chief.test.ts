@@ -1795,3 +1795,29 @@ test('a desktop Chief with no typed origin refuses an ask verdict with a setup p
   expect((await act($, { action: 'stop', id: 'bg_d' })).outcome).toBe('needsConfirm')
   expect(fake.claudeRuns('stop')).toEqual([])
 })
+
+test('work the Chief sends to an open session is logged as existing_session', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  const jev = { model: 'sonnet', route: 'existing_session', background: false, estimate_s: 600, filler: 'work',
+    source: 'rules', ms: 0.2, override: false, target: 'cli_t1', target_title: 'Terminal work', reason: 'same ticket DP1-1' }
+  fake.inbox.push({ id: 'msg_9', type: 'prompt', text: 'Add a test for DP1-1', jev,
+    hint: 'Jev suggests: send it to the open session cli_t1. Advice only. Ask Jay before you send. Jay\'s words win.' })
+  await settle(clock)
+  // The Chief asks first; that turn ends with no session started.
+  await $.turn.start({ text: 'Add a test for DP1-1', turnId: 't1' })
+  await $.turn.complete({ ...TURN, answer: 'Send it to Terminal work?\n[[confirm: Send it there | New session]]' })
+  await settle(clock, 500)
+  expect(fake.posted('/api/mod/jev-outcome')).toEqual([{ id: 'msg_9', route: 'chief', model: null }])
+  // Jay says yes, and a reply to another session is not the advice's outcome.
+  await jay($, 'Send it there', 't2')
+  fake.state.verdict = () => 'allow'
+  expect(await act($, { action: 'reply', id: 'cli_t1', text: 'Add a test for DP1-1' })).toMatchObject({ outcome: 'done' })
+  await settle(clock, 500)
+  expect(fake.posted('/api/mod/jev-outcome').at(-1)).toEqual({ id: 'msg_9', route: 'existing_session', model: null })
+  // Logged once.
+  expect((await act($, { action: 'reply', id: 'cli_t1', text: 'And again.' })).outcome).toBe('done')
+  await settle(clock, 500)
+  expect(fake.posted('/api/mod/jev-outcome').length).toBe(2)
+})

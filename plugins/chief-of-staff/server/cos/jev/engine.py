@@ -129,7 +129,7 @@ class Jev:
             d.route, d.background = quick.route, quick.background
         if user:
             d.override = True
-        return d
+        return rules.delegate(request, d)
 
     def fallback(self, quick: Decision, reason: str) -> Decision:
         with self.lock:

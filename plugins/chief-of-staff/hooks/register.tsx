@@ -122,6 +122,9 @@ const recentStarts = new Map<string, number>()
 // its turn ends: what the Chief really did goes to Jev's log. A prompt that arrives while
 // another turn runs may be scored on that turn; the log is a measure, not a control.
 let jevPending: string | null = null
+// Jev's last "send it to an open session" advice. The Chief asks Jay first, so the send comes a
+// turn later; the reply to that same session is what the Chief did with this advice.
+let jevDelegate: { id: string; target: string } | null = null
 const LOG_KEEP = 200
 const logLines: string[] = []
 
@@ -1081,6 +1084,12 @@ async function actForModel($: EngineInterface, input: Record<string, unknown>): 
     }
   }
   logAct($, verb, id, 'model', o.outcome, o.detail)
+  // Work sent to the open session Jev named is what the Chief did with that advice.
+  if (verb === 'reply' && o.outcome === 'done' && jevDelegate !== null && jevDelegate.target === id) {
+    const advised = jevDelegate.id
+    jevDelegate = null
+    await post($, '/api/mod/jev-outcome', { id: advised, route: 'existing_session', model: null })
+  }
   if (verb !== 'start') {
     await settleHandoff($, verb, id, o.outcome === 'done' ? { result: o.detail } : { deny: o.detail })
   }
@@ -1433,6 +1442,10 @@ async function handleItem($: EngineInterface, item: ChiefInboxItem): Promise<Rec
     // yes or no check above reads only what Jay said.
     const hint = typeof item.hint === 'string' ? item.hint.trim() : ''
     if (item.jev !== undefined) jevPending = item.id
+    const advice = item.jev as { route?: unknown; target?: unknown } | undefined
+    if (advice?.route === 'existing_session' && typeof advice.target === 'string') {
+      jevDelegate = { id: item.id, target: advice.target }
+    }
     const full = hint === '' ? item.text : `${item.text}
 
 ${hint}`
