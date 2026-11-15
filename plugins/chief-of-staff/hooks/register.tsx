@@ -1,8 +1,9 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type {
-  ActionOutcomeKind, ActionVerb, ChiefCaps, ChiefConfirm, ChiefHost, ChiefInboxItem, ChiefServerInfo, ChiefSession,
-  ChiefSessionActions, ChiefSessionKind,
+  ActionOutcomeKind, ActionVerb, ChiefCaps, ChiefConfirm, ChiefHost, ChiefInboxItem, ChiefPaneRow, ChiefPaneView,
+  ChiefServerInfo, ChiefSession, ChiefSessionActions, ChiefSessionKind,
 } from '../types'
 
 // The Chief of Staff mod (docs/contracts.md section 6). It loads in every
@@ -378,6 +379,85 @@ export const register: Register = (on, opts) => {
     .catch(($, e, next) => (next.called ? next(e) : { deny: SHELL_UNCHECKED }))
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => (isShellAllowed(e.command) ? next(e) : { deny: SHELL_REFUSAL }))
     .catch(($, e, next) => (next.called ? next(e) : { deny: SHELL_UNCHECKED }))
+
+  // ------------------------------------------------------- in-app pane ---
+  // The Chief's roster inside the app (docs/plan.md, update 2026-11-15). Its buttons only fill the prompt box:
+  // Jay presses Enter, so the request is his own typing and no permission check refuses it.
+
+  on('command.run', { command: PANE_COMMAND }, async $ => {
+    if (!isChief) return { text: 'This session is not the Chief of Staff. Type /chief here first.' }
+    await openPane($)
+    return { text: 'Chief pane opened.' }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    if (!isChief) return <Text dimColor>This session is not the Chief of Staff. Type /chief to make it the Chief.</Text>
+    const view = await read($, paneView)
+    if (view === null) return <Text dimColor>Loading sessions...</Text>
+    if (e.props.placement === 'widget') {
+      return <Text color={view.you > 0 ? 'warning' : undefined}>{view.you} need you, {view.active} active</Text>
+    }
+    const room = Math.max(2, Math.floor(((e.viewport?.rows ?? 30) - 8) / 4))
+    const shown = view.rows.slice(0, room)
+    const more = view.rows.length - shown.length + view.hidden
+    return (
+      <Box flexDirection="column">
+        <Box gap={1}>
+          <Text bold color={view.you > 0 ? 'warning' : undefined}>{view.you} need you</Text>
+          <Text dimColor>{view.active} active, {view.wait} waiting, {view.stale} stale</Text>
+        </Box>
+        <Box gap={1} marginTop={1}>
+          <Button key="ask-needs" label="What needs me?" onPress={() => fillPrompt($, 'What needs me?')} />
+          <Button key="refresh" label="Refresh" onPress={() => refreshPane($)} />
+        </Box>
+        <Text dimColor wrap="wrap">Buttons put a request in your prompt box. Press Enter to send it.</Text>
+        {view.note !== '' && <Text color="warning" wrap="wrap">{view.note}</Text>}
+        {!view.ok && <Text color="error" wrap="wrap">{view.error}</Text>}
+        {view.ok && shown.length === 0 && <Text dimColor>No other sessions to show.</Text>}
+        {shown.map(r => (
+          <Box key={`row-${r.id}`} flexDirection="column" marginTop={1}>
+            <Text bold wrap="truncate-end">{r.title}</Text>
+            <Text color={STATE_COLOR[r.state]} wrap="truncate-end">
+              {STATE_LABEL[r.state]}{r.reason !== '' ? `: ${r.reason}` : ''}{r.ago !== '' ? `, ${r.ago}` : ''}
+            </Text>
+            <Box gap={1}>
+              <Button key={`ask-${r.id}`} label="Ask" onPress={() => fillPrompt($, askText(r))} />
+              {r.reply !== 'no' && (
+                <Button key={`reply-${r.id}`} label="Reply" onPress={() => fillPrompt($, replyText(r))} />
+              )}
+              {r.archive !== 'no' && (
+                <Button key={`archive-${r.id}`} label="Archive" onPress={() => fillPrompt($, archiveText(r))} />
+              )}
+              {r.stop !== 'no' && (
+                <Button key={`stop-${r.id}`} label="Stop" onPress={() => fillPrompt($, stopText(r))} />
+              )}
+              {r.open !== 'no' && (
+                <Button key={`open-${r.id}`} label="Open" onPress={() => openFromPane($, r)} />
+              )}
+            </Box>
+          </Box>
+        ))}
+        {more > 0 && (
+          <Box marginTop={1}><Text dimColor>{more} more not shown. Ask the Chief for the full list.</Text></Box>
+        )}
+      </Box>
+    )
+  })
+
+  // A row above the prompt in the Chief's session while sessions wait on Jay.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!isChief || e.props.hasSurvey) return next(e)
+    const view = await read($, paneView)
+    if (view === null || view.you === 0) return next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    return (
+      <Box gap={1}>
+        <Text color="warning">{view.you} session{view.you === 1 ? '' : 's'} need{view.you === 1 ? 's' : ''} you</Text>
+        <Button key="chief-show" label="Show" onPress={() => openPane($)} />
+      </Box>
+    )
+  })
 }
 
 function isShellAllowed(command: unknown): boolean {
@@ -1194,6 +1274,7 @@ function become($: EngineInterface, open: boolean): Promise<void> {
       host = await detectCaps($)
       if ((await hello($)) === 'refused') return
       startLoop($)
+      await openPane($)
     } catch (err) {
       log($, `could not become the Chief: ${String(err)}`)
       startLoop($)
@@ -1301,10 +1382,13 @@ async function isHealthy($: EngineInterface): Promise<boolean> {
 // `python app.py start` brings the server up, or reports the one running; with
 // --open it also opens the console in the browser. The server never restarts itself:
 // an older one answers stale, and only an explicit /chief restarts it (plan 6.6).
+// `open` is an explicit /chief. The browser console opens only when the open_console
+// setting asks for it: the in-app pane is the default view (docs/plan.md, update 2026-11-15).
 async function ensureServer($: EngineInterface, open: boolean): Promise<void> {
   if (!open && (await isHealthy($))) return
   const app = `${$.plugin.root}/server/app.py`
-  const args = ['start', ...(open ? ['--open'] : [])]
+  const browser = open && options.open_console === true ? ['--open'] : []
+  const args = ['start', ...browser]
   let lastError = 'Python was not found.'
   for (const python of [['python'], ['py', '-3']]) {
     try {
@@ -1312,7 +1396,7 @@ async function ensureServer($: EngineInterface, open: boolean): Promise<void> {
       if (out.port !== null) {
         if (out.isStale && open) {
           log($, 'the running server is older: restarting it')
-          const again = await runApp($, [...python, app, 'restart', '--open'])
+          const again = await runApp($, [...python, app, 'restart', ...browser])
           if (again.port === null) throw new Error(again.error)
         } else if (out.isStale) {
           $.ui.toast('An older Chief of Staff server is running. Run /chief stop, then /chief, to update.')
@@ -1649,6 +1733,144 @@ function ago(ms: number): string {
   const hours = Math.round(minutes / 60)
   if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
   return `${Math.round(hours / 24)} days ago`
+}
+
+// ---------------------------------------------------------- in-app pane ---
+
+const PANE = 'chief-of-staff'
+const PANE_COMMAND = 'chief-pane'
+const PANE_REFRESH_MS = 5000
+// Change the tag when ChiefPaneView's fields change: it declines what an older version stored.
+const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-1' })
+let paneGen = 0
+let commandAdded = false
+
+const STATE_LABEL: Record<string, string> = { you: 'Needs you', active: 'Working', wait: 'Waiting', stale: 'Stale' }
+const STATE_COLOR: Record<string, 'warning' | 'success' | 'subtle' | 'inactive'> = {
+  you: 'warning', active: 'success', wait: 'subtle', stale: 'inactive',
+}
+
+// Opens the pane, adds /chief-pane once, and starts the refresh loop. Chief session only.
+async function openPane($: EngineInterface): Promise<void> {
+  if (!commandAdded) {
+    try {
+      await $.command.register({ name: PANE_COMMAND, description: 'Show the Chief of Staff pane in this session' })
+      commandAdded = true
+    } catch (err) {
+      log($, `/${PANE_COMMAND}: ${String(err)}`)
+    }
+  }
+  try {
+    const opened = await $.ui.open({ id: PANE, title: chiefName(options.chief_name) })
+    if (!opened.isPlaced) log($, `pane waits to be drawn: ${String((opened as { reason?: unknown }).reason ?? '')}`)
+  } catch (err) {
+    log($, `pane: ${String(err)}`)
+  }
+  // The roster refreshes even when the pane could not open: the row above the prompt reads it.
+  startPaneLoop($)
+}
+
+function startPaneLoop($: EngineInterface): void {
+  paneGen += 1
+  const gen = paneGen
+  const tick = async (): Promise<void> => {
+    // Runs while this session is the Chief, pane open or closed: the row above the prompt
+    // reads the same roster. One local request every 5 seconds.
+    if (gen !== paneGen || !isChief) return
+    await refreshPane($)
+    $.clock.after(PANE_REFRESH_MS, () => void tick())
+  }
+  void tick()
+}
+
+async function refreshPane($: EngineInterface): Promise<void> {
+  const at = await now($)
+  let next: ChiefPaneView
+  try {
+    const res = await api($, 'GET', '/api/sessions')
+    if (!res.ok || res.json === null) throw new Error(`answered ${res.status}`)
+    const list = (Array.isArray(res.json.sessions) ? res.json.sessions : []) as ChiefSession[]
+    const others = list.filter(s => !s.isChief && s.id !== localId && s.cliId !== myId)
+    const inView = others.filter(s => s.inView !== false)
+    inView.sort((a, b) => (STATE_ORDER[a.state] ?? 9) - (STATE_ORDER[b.state] ?? 9) ||
+      (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
+    const count = (state: string) => inView.filter(s => s.state === state).length
+    next = {
+      ok: true,
+      error: '',
+      you: count('you'),
+      active: count('active'),
+      wait: count('wait'),
+      stale: count('stale'),
+      rows: inView.map(s => paneRow(s, at)),
+      hidden: others.length - inView.length,
+      note: res.json.liveStale === true ? 'Live status may be out of date.' : '',
+    }
+  } catch (err) {
+    server = null
+    const old = await read($, paneView)
+    next = {
+      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '' }),
+      ok: false,
+      error: 'The Chief of Staff server is not answering. Type /chief to start it again.',
+    }
+    log($, `pane refresh: ${String(err)}`)
+  }
+  await update($, paneView, () => next)
+}
+
+function paneRow(s: ChiefSession, at: number): ChiefPaneRow {
+  const a = s.actions
+  return {
+    id: s.id,
+    title: cleanLine(s.title, MAX_DATA_TITLE) || 'Untitled session',
+    state: s.state,
+    reason: cleanLine(s.needsAction ?? s.stateReason, 120),
+    ago: s.lastActivityAt ? ago(at - s.lastActivityAt) : '',
+    kind: kindOf(s),
+    // An old server with no actions map: offer only what the Chief can still ask about.
+    reply: a?.reply ?? 'yes',
+    archive: a?.archive ?? 'no',
+    stop: a?.stop ?? 'no',
+    open: a?.open ?? 'no',
+  }
+}
+
+// The pane's requests, worded for the Chief. The id makes the session unambiguous.
+function askText(r: ChiefPaneRow): string {
+  return `What is happening in the session "${r.title}" (${r.id})?`
+}
+function replyText(r: ChiefPaneRow): string {
+  return `Reply to the session "${r.title}" (${r.id}) with: `
+}
+function archiveText(r: ChiefPaneRow): string {
+  return `Archive the session "${r.title}" (${r.id}).`
+}
+function stopText(r: ChiefPaneRow): string {
+  return `Stop the background session "${r.title}" (${r.id}).`
+}
+
+// Puts a request in the prompt box. Jay sends it with Enter, so it counts as his typing.
+async function fillPrompt($: EngineInterface, text: string): Promise<void> {
+  try {
+    const filled = await $.prompt.fill({ text })
+    if (!filled.isFilled) $.ui.toast('The prompt box is busy. Close the dialog or wait for the turn, then try again.')
+  } catch (err) {
+    log($, `fill: ${String(err)}`)
+    $.ui.toast('Could not fill the prompt box.')
+  }
+}
+
+// Open only shows the session in the app: no change to any session, so it runs at once.
+async function openFromPane($: EngineInterface, r: ChiefPaneRow): Promise<void> {
+  try {
+    const res = await post($, `/api/sessions/${encodeURIComponent(r.id)}/open`, {})
+    const isOpen = res !== undefined && res.ok
+    logAct($, 'open', r.id, 'pane', isOpen ? 'opened' : 'failed', '')
+    if (!isOpen) $.ui.toast('The Claude app did not open that session.')
+  } catch (err) {
+    log($, `pane open: ${String(err)}`)
+  }
 }
 
 // --------------------------------------------------------------- helpers ---

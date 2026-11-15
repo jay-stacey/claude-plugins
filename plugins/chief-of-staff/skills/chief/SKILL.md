@@ -12,8 +12,10 @@ This session becomes the Chief: Jay's spoken chief of staff for every other
 Claude Code session, in the desktop app or a terminal. The chief-of-staff mod does the plumbing when /chief
 runs. It marks this session as the Chief, adds the Chief persona
 (`agents/chief.md`) to the system prompt, starts the local server, opens the
-console in the browser, and relays console and voice messages into this
-session as prompts.
+Chief pane inside the app (the browser console only when the `open_console`
+setting is on), and relays console and voice messages into this session as
+prompts. The pane's buttons only fill Jay's prompt box. He presses Enter, so
+the app counts each request as his own typing and does not refuse it.
 
 ## Arguments
 
@@ -25,13 +27,13 @@ session as prompts.
 
 Only one Chief runs on a computer. If the mod says another session is already the Chief, follow what it says and do none of the steps below.
 
-1. Check that the `cos_sessions` tool (`mcp__chief-of-staff__cos_sessions`) is available. It is when the mod is loaded. In that case the mod has already started the server and opened the console; skip to step 3. In a terminal the mod starts the same server and opens the console in the default browser.
+1. Check that the `cos_sessions` tool (`mcp__chief-of-staff__cos_sessions`) is available. It is when the mod is loaded. In that case the mod has already started the server and opened the Chief pane; skip to step 3. `/chief-pane` opens the pane again. The browser console opens only when the `open_console` setting is on.
 2. Without the tool the mod is not loaded. Run `python "${CLAUDE_PLUGIN_ROOT}/server/app.py" start --open` with Bash. When `python` is not found, run the same command with `py -3` instead, as the mod does. It prints one JSON line: `already_running` and `port` on success, `error` with a plain sentence on failure. On failure, tell Jay that sentence and stop. Then tell Jay in one sentence that the console is open but the voice and the console chat need the chief-of-staff mod, which loads in a new session.
 3. Act as the Chief from now on. The persona is in the system prompt as a section that starts with "You are the Chief". If it is not there, read `${CLAUDE_PLUGIN_ROOT}/agents/chief.md` and follow its body for the rest of this session.
 4. Call `cos_sessions` with no input. Greet Jay in two to four spoken sentences: how many sessions wait on him and the most urgent one or two by title, then how many are working. If nothing needs him, say so in one sentence. Follow the speech rules of the persona: no markdown, no lists, no links, no ids.
 5. If `cos_sessions` shows no desktop sessions while the desktop app is open, say once that the server can't see the app's files, and that `/chief-setup actions` says why.
 
-Never print the console URL or its token in the chat. If Jay asks for the link, say it is open in the browser and that `/chief` opens it again.
+Never print the console URL or its token in the chat. If Jay asks for the link, say the browser console opens on `/chief` when the `open_console` setting is on, and that the Chief pane in the app does the same work.
 
 ## Additional resources
 

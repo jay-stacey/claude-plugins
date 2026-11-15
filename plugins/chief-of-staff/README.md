@@ -1,8 +1,8 @@
 # Chief of Staff
 
-Version 0.4.0.
+Version 0.5.0.
 
-A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A local console shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
+A chief of staff for your Claude Code sessions, in the desktop app or a terminal. One session becomes the Chief. It watches every other session, tells you which ones need you, and closes or answers them when you ask, by typing or by voice. A pane inside the app shows the roster, with buttons that put a request in your prompt box. An optional local console in the browser shows a live graph of your sessions, a roster, the Chief's chat, and the full transcript of any session with a reply box.
 
 ## Install
 
@@ -26,7 +26,18 @@ Then run `/chief-setup` in the session that will be the Chief. It walks through 
 
 ## Use
 
-Type `/chief` in a Claude Code session (desktop app or terminal). That session becomes the Chief: the server starts, the console opens in your browser, and the Chief tells you what needs you.
+Type `/chief` in a Claude Code session (desktop app or terminal). That session becomes the Chief: the server starts, the Chief pane opens in the app, and the Chief tells you what needs you.
+
+### The Chief pane
+
+The pane sits beside the chat in the Chief's session. It lists your other sessions, the ones that need you first, and refreshes every 5 seconds. Each session has buttons: Ask, Reply, Archive or Stop when the session allows it, and Open.
+
+- Ask, Reply, Archive and Stop only put a request in your prompt box. You read it, change it if you want, and press Enter. The app then counts the request as your own typing, so its permission checks do not refuse it. Requests that come from the browser console or the voice do not count as your typing, which is why the app sometimes refuses them.
+- Open shows the session in the app at once. It changes nothing.
+- A row above the prompt says how many sessions need you. Its Show button opens the pane.
+- `/chief-pane` opens the pane again after you close it.
+
+The browser console is off by default. Set `open_console` to true to open it on `/chief` as before. Without the mod, the `/chief` skill still opens the console itself.
 
 - Ask it things like "what needs me", "how is DP1-676 doing", "close the DP1-676 session" or "tell the spec review session to go ahead".
 - It archives a session when you ask. If that session is working right now, it says so and asks first. It never deletes a session.
@@ -46,7 +57,7 @@ Type `/chief` in a Claude Code session (desktop app or terminal). That session b
 
 A background session is stopped, never archived. Its conversation is kept, so `claude --bg --resume` brings it back. A terminal session is closed in its own window. Nothing ever deletes a session, removes a background session, or ends a terminal session's process.
 
-Only one Chief runs on a computer, and it never lists itself among your sessions. The console stays at `http://127.0.0.1:47870` (or the next free port); `/chief` opens it again.
+Only one Chief runs on a computer, and it never lists itself among your sessions. The server stays at `http://127.0.0.1:47870` (or the next free port); with `open_console` on, `/chief` opens the console again.
 
 ## Voice
 
@@ -76,6 +87,7 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 |---|---|---|
 | `stale_hours` | 24 | A session with no activity this long counts as stale |
 | `recent_days` | 3 | The graph and roster show live sessions and sessions active in this many days |
+| `open_console` | false | Also open the browser console on `/chief`. Off: the Chief pane in the app is the only view |
 | `speak_replies` | true | Speak the Chief's replies |
 | `listen` | wake | `wake` (always listening for the wake word), `ptt` (push to talk) or `off` |
 | `voice` | auto | `auto` uses the voice setup picked for this PC (Chatterbox on a GPU, Kokoro on a CPU); `chatterbox` or `kokoro` forces one, and the other is the fallback |
@@ -94,7 +106,7 @@ Set them with `/plugin configure chief-of-staff@personal-plugins`.
 ## How it works
 
 - `server/app.py` is a small Python server (standard library only, Python 3.10 or later) on 127.0.0.1. It reads `claude agents --json`, the desktop app's session files (for a Store install, in the app's package folder under `%LOCALAPPDATA%\Packages`) and the CLI transcripts to work out each session's state. It only reads them; it never writes them.
-- `hooks/register.tsx` is a mod that loads in every session and works only in the Chief's. It adds the Chief persona (`agents/chief.md`) to the system prompt, relays console and voice messages into the session as prompts, posts each reply back to the console, and runs actions through its `cos_act` tool: the desktop app's session tools, cross-session messages, or `claude stop` and `claude --bg` for background sessions. It also gives the Chief the `cos_sessions` tool.
+- `hooks/register.tsx` is a mod that loads in every session and works only in the Chief's. It adds the Chief persona (`agents/chief.md`) to the system prompt, relays console and voice messages into the session as prompts, posts each reply back to the console, draws the Chief pane and the row above the prompt, and runs actions through its `cos_act` tool: the desktop app's session tools, cross-session messages, or `claude stop` and `claude --bg` for background sessions. It also gives the Chief the `cos_sessions` tool.
 - `console/` is the web page. `server/voice/` is the voice daemon.
 
 States: **waiting on you** (a permission prompt, a question, or the app marked it blocked or ready for review), **active** (working now), **waiting** (idle, or waiting on a helper, CI or a background task) and **stale** (pull request merged or closed, or no activity for `stale_hours`). The rules are in `skills/chief/references/state-rules.md`.

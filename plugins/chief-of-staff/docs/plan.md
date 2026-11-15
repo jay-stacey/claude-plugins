@@ -168,3 +168,14 @@ Recorded 2026-10-18, with the desktop app running:
 - S1 PASS. A desktop session registers in `~/.claude/sessions/<pid>.json` with `entrypoint: "claude-desktop"` and a messaging inbox.
 - S2 PASS. `claude agents --json` lists it, and its `sessionId` equals the `cliSessionId` of the matching `local_` file.
 - Still open: S4 (a real terminal-to-desktop send), S11 (the prompt origin of typed and forwarded messages) and S8 (the allow rule takes effect in auto mode). The script for these and the full manual matrix is `docs/terminal-verification.md`. Its results go in the pull request.
+
+## Update 2026-11-15: in-app pane (0.5.0)
+
+Requests from the browser console reach the Chief as the mod's own prompts. The app tags their origin as the plugin, not as Jay, for every provenance check, also with `asUser`. So in the desktop app the permission checks and the session tools sometimes refused them.
+
+The fix is a pane inside the app. Its buttons only call `$.prompt.fill`: the request lands in Jay's prompt box and he sends it with Enter. That is a `composer` origin, so the turn is trusted the same as typed text. Open is the only button that acts at once, because it changes no session.
+
+- The browser console is now off by default. The `open_console` setting brings it back.
+- The server stays. The pane reads `/api/sessions` from it, and the voice and Jev still run there.
+- Voice requests keep the old path and can still be refused by the app's checks. Making the voice fill the prompt box would end hands-free use, so that is a separate decision.
+

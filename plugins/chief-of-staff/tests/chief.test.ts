@@ -284,7 +284,7 @@ async function act($: Engine, input: Record<string, unknown>): Promise<ActResult
   return JSON.parse(String(r.result)) as ActResult
 }
 
-test('/chief makes this session the Chief: server started with the console, hello sent, persona added', async ($, on) => {
+test('/chief makes this session the Chief: server started without the browser console, hello sent, persona added', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   const fake = fakeEngine(on)
   await becomeChief($, clock)
@@ -292,7 +292,7 @@ test('/chief makes this session the Chief: server started with the console, hell
   expect(fake.store.get('chief:session')).toBe('s-chief')
   const run = fake.runs[0] ?? []
   expect(run[0]).toBe('python')
-  expect(run.slice(-2)).toEqual(['start', '--open'])
+  expect(run.at(-1)).toBe('start')
   expect(run[1]?.replace(/\\/g, '/').endsWith('/server/app.py')).toBe(true)
   expect(fake.posted('/api/mod/hello')[0]).toMatchObject({ cliId: 's-chief', isChief: true })
   // Every call carries the token from server.json.
@@ -1480,6 +1480,16 @@ test('an explicit /chief restarts a stale server once', async ($, on) => {
   await becomeChief($, clock)
   const restarts = fake.runs.filter(r => r.includes('restart'))
   expect(restarts.length).toBe(1)
+  expect(restarts[0]!.at(-1)).toBe('restart')
+})
+
+test('with open_console on, /chief opens the browser console and a stale restart keeps it', { options: { open_console: true } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const fake = fakeEngine(on)
+  fake.state.isStale = true
+  await becomeChief($, clock)
+  expect(fake.runs[0]!.slice(-2)).toEqual(['start', '--open'])
+  const restarts = fake.runs.filter(r => r.includes('restart'))
   expect(restarts[0]!.slice(-2)).toEqual(['restart', '--open'])
 })
 
@@ -1820,4 +1830,135 @@ test('work the Chief sends to an open session is logged as existing_session', as
   expect((await act($, { action: 'reply', id: 'cli_t1', text: 'And again.' })).outcome).toBe('done')
   await settle(clock, 500)
   expect(fake.posted('/api/mod/jev-outcome').length).toBe(2)
+})
+
+// ------------------------------------------------------------ in-app pane ---
+
+const PANE = {
+  plugin: 'chief-of-staff',
+  component: 'Pane',
+  requestId: 'chief-of-staff',
+  props: { title: 'Chief', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 },
+    view: {} } as never,
+} as const
+const BAND = {
+  plugin: 'chief-of-staff',
+  component: 'AbovePrompt',
+  props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100, view: {} } as never,
+} as const
+
+// The engine side of the pane: what the mod opened, registered and filled.
+function paneEngine(on: On) {
+  const opened: string[] = []
+  const commands: string[] = []
+  const fills: string[] = []
+  on('ui.open', ($, e) => (opened.push((e as { id: string }).id), { value: { isPlaced: true } }) as never)
+  on('command.register', ($, e) => (commands.push((e as { name: string }).name), { value: { command: (e as { name: string }).name } }) as never)
+  on('prompt.fill', ($, e) => (fills.push((e as { text: string }).text), { isFilled: true }) as never)
+  return { opened, commands, fills }
+}
+
+test('/chief opens the Chief pane and adds /chief-pane', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const pane = paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  expect(pane.opened).toEqual(['chief-of-staff'])
+  expect(pane.commands).toEqual(['chief-pane'])
+})
+
+test('the pane lists the other sessions, most urgent first, on every surface', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.find({ type: 'Text', text: /^1 need you$/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /Plan PRO-921/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /Needs you: Pick a vendor/ })) !== undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /DP1-676/ })) !== undefined).toBe(true)
+    // Never the Chief itself, and never a session out of view.
+    expect((await ui.find({ type: 'Text', text: /^Chief$/ })) === undefined).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /Old idea/ })) === undefined).toBe(true)
+    await ui.unmount()
+  }
+})
+
+test('pane buttons only fill the prompt box: nothing is submitted and nothing is acted on', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const pane = paneEngine(on)
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  const before = fake.prompts.length
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'ask-local_b' })
+  await ui.press({ key: 'reply-local_b' })
+  await ui.press({ key: 'ask-needs' })
+  expect(pane.fills).toEqual([
+    'What is happening in the session "Plan PRO-921" (local_b)?',
+    'Reply to the session "Plan PRO-921" (local_b) with: ',
+    'What needs me?',
+  ])
+  expect(fake.prompts.length).toBe(before)
+  expect(fake.mcp.length).toBe(0)
+  expect(fake.sends.length).toBe(0)
+  // An old server with no actions map: no Archive button.
+  expect((await ui.find({ type: 'Button', key: 'archive-local_b' } as never)) === undefined).toBe(true)
+  await ui.unmount()
+})
+
+test('a request the pane filled is trusted once Jay sends it with Enter', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  const fake = fakeEngine(on, { patch: { local_b: { ...DESKTOP_YES } } })
+  await becomeChief($, clock)
+  await jay($, 'Archive the session "Plan PRO-921" (local_b).', 't-pane')
+  const r = await act($, { action: 'archive', id: 'local_b' })
+  expect(r.outcome).toBe('done')
+  expect(fake.mcp.some(m => m.tool === 'archive_session')).toBe(true)
+})
+
+test('the pane is empty of rows outside the Chief, and the band shows only in the Chief', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  fakeEngine(on, { chiefCliId: 'someone-else', isChiefHere: false })
+  // The engine's own row stands beneath the mod's band hook, which passes it on.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e as never) as { Text: unknown }
+    return h(Text as never, null, 'engine') as never
+  })
+  await $.session.start(START)
+  await settle(clock)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /not the Chief of Staff/ })) !== undefined).toBe(true)
+  await ui.unmount()
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Text', text: /need/ })) === undefined).toBe(true)
+  expect((await band.find({ type: 'Text', text: /engine/ })) !== undefined).toBe(true)
+  await band.unmount()
+})
+
+test('the band above the prompt says how many sessions need Jay, and Show opens the pane', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  const pane = paneEngine(on)
+  fakeEngine(on)
+  await becomeChief($, clock)
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Text', text: /^1 session needs you$/ })) !== undefined).toBe(true)
+  await band.press({ key: 'chief-show' })
+  expect(pane.opened.length).toBe(2)
+  await band.unmount()
+})
+
+test('the pane says when the server stops answering', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  paneEngine(on)
+  const fake = fakeEngine(on)
+  await becomeChief($, clock)
+  fake.state.isServerUp = false
+  await settle(clock, 6000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /server is not answering/ })) !== undefined).toBe(true)
+  await ui.unmount()
 })
