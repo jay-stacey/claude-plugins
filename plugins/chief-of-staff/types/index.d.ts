@@ -31,6 +31,9 @@ export type ChiefPaneView = {
   note: string
   // When the server last answered, epoch ms; 0 before it ever did.
   updatedAt: number
+  // Whether the Chief's replies are spoken: false in quiet mode, null when the voice is not installed
+  // or the server is too old to say.
+  speak: boolean | null
 }
 
 // The Chief's open question: the two button labels of its last reply's confirm line.

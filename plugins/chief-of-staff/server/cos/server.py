@@ -353,7 +353,8 @@ class App:
             self.notices.queue(digest, now)
         text = self.notices.due(now, chief_connected=self.chief_connected(), chief_busy=self.chief["busy"],
                                 notify_on=bool(self.settings.get("notify")), quiet=self.settings.get("quietHours", ""),
-                                local_minutes=local.hour * 60 + local.minute)
+                                local_minutes=local.hour * 60 + local.minute,
+                                current={x["id"]: x["state"] for x in self.reader.sessions})
         if text:
             self.queue_item({"id": self.new_id("ntc"), "type": "prompt", "text": text, "from": "notice"})
 
@@ -524,13 +525,13 @@ class App:
 
     def maybe_ack(self, source, filler=None):
         """A quick spoken filler ("On it") the moment Jay asks, before the Chief's turn ends:
-        for every spoken request, and for a typed one while replies are spoken."""
+        for any request while replies are spoken. Quiet mode skips it, spoken request or typed."""
         if not self.settings.get("fillers", True):
             return
         status = self.voice.snapshot()
         if not self.voice.installed or status["state"] in ("not-installed", "error"):
             return
-        if source == "voice" or status["speak"]:
+        if status["speak"]:                     # quiet mode says nothing, not even "On it"
             job = {"id": self.new_id("ack"), "kind": "ack", "text": ""}
             if filler:
                 job["filler"] = filler
@@ -761,6 +762,9 @@ class App:
         listen = body.get("listen") if body.get("listen") in ("wake", "ptt", "off") else None
         speak = body.get("speak") if isinstance(body.get("speak"), bool) else None
         status = self.voice.control(listen, speak)
+        if speak is False:
+            # Quiet mode: what was still waiting to be said goes too.
+            self.voice_jobs.drop(lambda j: j.get("kind") in ("speak", "ack"))
         if body.get("stop") is True:
             self.voice_jobs.drop(lambda j: j.get("kind") == "speak")
             self.voice_jobs.put({"id": self.new_id("spk"), "kind": "stop", "text": ""})
@@ -1015,7 +1019,9 @@ SESSION_RE = re.compile(r"^/api/sessions/([^/]+)(?:/(transcript|reply|archive|st
 
 def route(app, method, path, query, body):
     if method == "GET" and path == "/api/sessions":
-        return dict(app.reader.snapshot(), desktop=app.reader.desktop_source.info(with_root=True))
+        v = app.voice.snapshot()
+        return dict(app.reader.snapshot(), desktop=app.reader.desktop_source.info(with_root=True),
+                    voice={"installed": bool(v["installed"]), "speak": bool(v["speak"])})
     if method == "GET" and path == "/api/chat":
         with app.lock:
             return {"messages": list(app.chat)[-100:]}

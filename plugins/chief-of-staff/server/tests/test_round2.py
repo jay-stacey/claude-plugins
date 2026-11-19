@@ -76,10 +76,20 @@ class VoiceJobs(unittest.TestCase):
         self.jobs()
         self.app.say({"text": "typed", "source": "typed"})        # speak off: typed gets none
         self.assertEqual(self.jobs(), [])
-        self.app.voice_event({"type": "final", "text": "spoken"})  # spoken still does
-        self.assertEqual([j["kind"] for j in self.jobs()], ["ack"])
+        self.app.voice_event({"type": "final", "text": "spoken"})  # quiet mode: spoken gets none too
+        self.assertEqual(self.jobs(), [])
+        self.app.voice_control({"speak": True})
+        self.jobs()
         self.app.settings["fillers"] = False
         self.app.voice_event({"type": "final", "text": "spoken"})
+        self.assertEqual(self.jobs(), [])
+
+    def test_quiet_mode_drops_what_was_waiting_to_be_said(self):
+        self.jobs()
+        self.app.mod_reply({"text": "Two sessions need you."})
+        self.app.voice_control({"speak": False})
+        self.assertEqual([j["kind"] for j in self.jobs()], ["control"])
+        self.app.mod_reply({"text": "Still quiet."})
         self.assertEqual(self.jobs(), [])
 
     def test_no_acknowledgment_without_a_voice(self):

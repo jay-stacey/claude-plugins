@@ -175,7 +175,7 @@ Parse the JSONL defensively: user rows with string content are prompts; user row
 | Method and path | Body or query | Answer |
 |---|---|---|
 | `GET /api/health` | | Without a valid token: `{ "ok": true, "api": 1, "app": "chief-of-staff", "version": "0.4.0", "voice": VoiceStatus, "chief": { "connected": bool, "busy": bool }, "settings": { "chiefName": "Chief", "wakeWord": "hey chief" }, "jev": {...} }`. With a valid `X-COS-Token` it adds the Chief's ids and host, `"chief": { "connected", "sessionId": "local_..." \| null, "cliId": "..." \| null, "busy", "host": ChiefHost \| null }`, and `"desktop": { "source": "env" \| "appdata" \| "msix" \| "none", "files": n }`. It never answers 401 and never shows a path. |
-| `GET /api/sessions` | | `{ "generatedAt": ms, "liveStale": bool, "counts": { "you": n, "active": n, "wait": n, "stale": n }, "countsInView": {...}, "sessions": [Session], "desktop": { "source", "files", "root": "C:\\..." \| null } }` |
+| `GET /api/sessions` | | `{ "generatedAt": ms, "liveStale": bool, "counts": { "you": n, "active": n, "wait": n, "stale": n }, "countsInView": {...}, "sessions": [Session], "desktop": { "source", "files", "root": "C:\\..." \| null }, "voice": { "installed": bool, "speak": bool } }` |
 | `GET /api/sessions/{id}` | | `Session` |
 | `GET /api/sessions/{id}/transcript` | `?limit=60&before=<uuid>` | `{ "turns": [Turn], "cursor": "<uuid>" \| null }` oldest first |
 | `GET /api/stream` | `?k=<token>` | SSE, section 7 |
@@ -291,7 +291,9 @@ The server watches state changes. When a session moves into `you`, or `active` t
 
 `[Notice, not from Jay] Plan PRO-921 into engineering stories is now waiting on Jay: "Jay's decision: do the vendor code switch". Tell Jay in one or two spoken sentences.`
 
-Batch notices that arrive within 20 s into one prompt. At most one notice prompt every 2 minutes. Never notify about the Chief's own session.
+Batch notices that arrive within 20 s into one prompt. At most one notice prompt every 3 minutes. Never notify about the Chief's own session. When the batch goes out, drop each notice that no longer holds: a "waiting on Jay" whose session left `you`, a "finished its turn" whose session is `active` again or gone. The prompt ends by telling the Chief it may answer `[[quiet]]` alone when nothing needs Jay; the mod then posts no reply, so the console shows nothing and the voice says nothing.
+
+Quiet mode is `speak: false` from `POST /api/voice/control` (the console's toggle, the pane's Mute voice button, or `/chief-quiet`). Turning it on stops what is being said and drops queued speech and fillers. While it is on, no filler plays, not even for a spoken request.
 
 Within one batch, a session gets one line: its latest notice, except that "changed to waiting on Jay" wins over "finished its turn". A session that got a "waiting on Jay" notice in the last 10 minutes gets no new one (no `notify` event and no prompt line). The daily stale notice's day and these 10-minute marks are kept in `HOME\run\notices.json`.
 

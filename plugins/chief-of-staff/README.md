@@ -40,6 +40,8 @@ The Chief's whole session takes the console's ember look too: dark ember colors 
 - The app runs its archive and send tools only when the Chief calls them itself, not from the plugin's code. So the Chief makes that call itself in your turn.
 - A row above the prompt says how many sessions need you. Its Show button opens the pane.
 - `/chief-pane` opens the pane again after you close it.
+- Quiet mode: the pane's Mute voice button, or `/chief-quiet` (`on`, `off`, or alone to switch), stops the Chief speaking its replies. They still show as text. The choice survives a restart.
+- The Chief keeps replies short: the one thing that matters, at most one more sentence, and at most one question. A notice that turns out to need nothing from you shows only as a faint line.
 - When the Chief asks you a yes or no question, two buttons show under its reply. A press sends that answer to the Chief at once. The `[[confirm: ...]]` line the console uses is hidden in the app.
 
 The browser console is off by default. Set `open_console` to true to open it on `/chief` as before. Without the mod, the `/chief` skill still opens the console itself.

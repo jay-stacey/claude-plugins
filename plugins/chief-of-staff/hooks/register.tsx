@@ -30,6 +30,8 @@ const BACKOFF_MAX_MS = 30000
 const BECOME_DEDUPE_MS = 15000
 const START_TIMEOUT_MS = 30000
 const CHIEF_COMMAND = /^\/(?:chief-of-staff:)?chief(?:\s|$)/
+// A reply that is only [[quiet]]: the Chief checked a notice and nothing needs Jay. Not shown or spoken.
+const QUIET_REPLY = /^\s*\[\[\s*quiet\s*\]\]\s*$/i
 const CONFIRM_LINE = /^\s*\[\[\s*confirm\s*:\s*([^|\]]+?)\s*\|\s*([^\]]+?)\s*\]\]\s*$/i
 const ARCHIVE_TOOL = 'mcp__ccd_session_mgmt__archive_session'
 const SEND_TOOL = 'mcp__ccd_session_mgmt__send_message'
@@ -389,6 +391,22 @@ export const register: Register = (on, opts) => {
   // The Chief's roster inside the app (docs/plan.md, update 2026-11-15). Its buttons only fill the prompt box:
   // Jay presses Enter, so the request is his own typing and no permission check refuses it.
 
+  on('command.run', { command: QUIET_COMMAND }, async ($, e) => {
+    if (!isChief) return { text: 'This session is not the Chief of Staff. Type /chief here first.' }
+    const arg = String(e.args ?? '').trim().toLowerCase()
+    let speak: boolean
+    if (arg === 'on') speak = false
+    else if (arg === 'off') speak = true
+    else if (arg === '') {
+      await refreshPane($)
+      const view = await read($, paneView)
+      if (view === null || view.speak === null) return { text: 'The voice is not installed, so replies are never spoken.' }
+      speak = !view.speak
+    } else return { text: `Use /${QUIET_COMMAND} on, /${QUIET_COMMAND} off, or /${QUIET_COMMAND} alone to switch.` }
+    if (!(await setSpeak($, speak))) return { text: 'The Chief of Staff server did not answer. Type /chief to start it again.' }
+    return { text: speak ? 'Quiet mode off. The Chief speaks its replies again.' : 'Quiet mode on. Replies show as text and are not spoken.' }
+  })
+
   on('command.run', { command: PANE_COMMAND }, async $ => {
     if (!isChief) return { text: 'This session is not the Chief of Staff. Type /chief here first.' }
     await openPane($)
@@ -514,7 +532,14 @@ export const register: Register = (on, opts) => {
         <Box gap="xs" marginTop="xs">
           <Button key="ask-needs" label="What needs me?" variant="primary" onPress={() => fillPrompt($, 'What needs me?')} />
           <Button key="refresh" label="Refresh" variant="secondary" onPress={() => refreshPane($)} />
+          {view.speak !== null && (
+            <Button key="mute" label={view.speak ? 'Mute voice' : 'Unmute voice'} variant="secondary"
+              onPress={() => setSpeak($, !view.speak)} />
+          )}
         </Box>
+        {view.speak === false && (
+          <Text size="footnote" color={EMBER.muted} wrap="wrap">Quiet mode. Replies show as text and are not spoken.</Text>
+        )}
         <Text size="caption" color={EMBER.faint} wrap="wrap">Buttons put a request in your prompt box. Press Enter to send it.</Text>
         {view.note !== '' && <Text size="footnote" color={STATE_HEX.active} wrap="wrap">{view.note}</Text>}
         {!view.ok && <Text size="footnote" color={STATE_HEX.you} wrap="wrap">{view.error}</Text>}
@@ -541,6 +566,10 @@ export const register: Register = (on, opts) => {
   // console and the mod, never for Jay to read. It is hidden, and while it is the open
   // question two buttons under the reply put the answer in the prompt box for Jay to send.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    if (isChief && QUIET_REPLY.test(e.props.text)) {
+      const { Text } = $.ui.resolve(e)
+      return <Text size="caption" color={EMBER.faint}>Checked a notice. Nothing needs you.</Text>
+    }
     if (!isChief || !CONFIRM_ANY.test(e.props.text)) return next(e)
     const { text, confirm } = splitConfirm(e.props.text)
     const drawn = await next({ ...e, props: { ...e.props, text } })
@@ -1742,6 +1771,7 @@ function textOf(content: readonly unknown[]): string {
 async function sendReply($: EngineInterface, answer: string, turnId: string): Promise<void> {
   await post($, '/api/mod/busy', { busy: false, cliId: myId })
   if (answer.trim() === '') return
+  if (QUIET_REPLY.test(answer)) return
   const { text, confirm } = splitConfirm(answer)
   if (text === '' && confirm === null) return
   await post($, '/api/mod/reply', { text, turnId, ...(confirm !== null ? { confirm } : {}) })
@@ -1865,9 +1895,10 @@ function ago(ms: number): string {
 
 const PANE = 'chief-of-staff'
 const PANE_COMMAND = 'chief-pane'
+const QUIET_COMMAND = 'chief-quiet'
 const PANE_REFRESH_MS = 5000
 // Change the tag when ChiefPaneView's fields change: it declines what an older version stored.
-const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-2' })
+const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-3' })
 const staleShown = atom({ plugin: 'chief-of-staff', key: 'showStale' } as const, false)
 // The most cards one state's section draws; the pane scrolls.
 const PANE_MAX_ROWS = 40
@@ -1876,6 +1907,7 @@ const openAsk = atom({ plugin: 'chief-of-staff', key: 'ask' } as const, null, { 
 const CONFIRM_ANY = /^\s*\[\[\s*confirm\s*:[^\]]*\]\]\s*$/im
 let paneGen = 0
 let commandAdded = false
+let quietAdded = false
 
 // The ember look is on unless the chief_theme setting turns it off.
 function isLookOn(): boolean {
@@ -1905,6 +1937,14 @@ async function openPane($: EngineInterface): Promise<void> {
       commandAdded = true
     } catch (err) {
       log($, `/${PANE_COMMAND}: ${String(err)}`)
+    }
+  }
+  if (!quietAdded) {
+    try {
+      await $.command.register({ name: QUIET_COMMAND, description: 'Quiet mode: stop or start speaking the Chief replies (on, off, or toggle)' })
+      quietAdded = true
+    } catch (err) {
+      log($, `/${QUIET_COMMAND}: ${String(err)}`)
     }
   }
   try {
@@ -1953,18 +1993,40 @@ async function refreshPane($: EngineInterface): Promise<void> {
       hidden: others.length - inView.length,
       note: res.json.liveStale === true ? 'Live status may be out of date.' : '',
       updatedAt: at,
+      speak: speakOf(res.json.voice),
     }
   } catch (err) {
     server = null
     const old = await read($, paneView)
     next = {
-      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '', updatedAt: 0 }),
+      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '', updatedAt: 0, speak: null }),
       ok: false,
       error: 'The Chief of Staff server is not answering. Type /chief to start it again.',
     }
     log($, `pane refresh: ${String(err)}`)
   }
   await update($, paneView, () => next)
+}
+
+// Whether replies are spoken, from the server's voice field; null when the voice is not installed.
+function speakOf(voice: unknown): boolean | null {
+  if (typeof voice !== 'object' || voice === null) return null
+  const v = voice as { installed?: unknown; speak?: unknown }
+  return v.installed === true && typeof v.speak === 'boolean' ? v.speak : null
+}
+
+// Quiet mode on (speak false) or off. The server stops what is being said and keeps the
+// choice across restarts. A local toggle for this computer, so it needs no prompt.
+async function setSpeak($: EngineInterface, speak: boolean): Promise<boolean> {
+  try {
+    const res = await api($, 'POST', '/api/voice/control', { speak })
+    if (!res.ok) throw new Error(`answered ${res.status}`)
+  } catch (err) {
+    log($, `voice control: ${String(err)}`)
+    return false
+  }
+  await refreshPane($)
+  return true
 }
 
 function paneRow(s: ChiefSession, at: number): ChiefPaneRow {
