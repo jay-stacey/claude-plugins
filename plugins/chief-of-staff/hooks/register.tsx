@@ -1,9 +1,11 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type {
-  ActionOutcomeKind, ActionVerb, ChiefCaps, ChiefConfirm, ChiefHost, ChiefInboxItem, ChiefServerInfo, ChiefSession,
-  ChiefSessionActions, ChiefSessionKind,
+  ActionOutcomeKind, ActionVerb, ChiefCaps, ChiefConfirm, ChiefHost, ChiefInboxItem, ChiefPaneRow, ChiefPaneView,
+  ChiefServerInfo, ChiefSession, ChiefSessionActions, ChiefSessionKind,
 } from '../types'
+import { EMBER, graphSvg, LOOK, LOOK_BLOCKER, SCENE, STATE_HEX } from './look'
 
 // The Chief of Staff mod (docs/contracts.md section 6). It loads in every
 // session and does its work only in the Chief's: the session where /chief ran.
@@ -28,6 +30,8 @@ const BACKOFF_MAX_MS = 30000
 const BECOME_DEDUPE_MS = 15000
 const START_TIMEOUT_MS = 30000
 const CHIEF_COMMAND = /^\/(?:chief-of-staff:)?chief(?:\s|$)/
+// A reply that is only [[quiet]]: the Chief checked a notice and nothing needs Jay. Not shown or spoken.
+const QUIET_REPLY = /^\s*\[\[\s*quiet\s*\]\]\s*$/i
 const CONFIRM_LINE = /^\s*\[\[\s*confirm\s*:\s*([^|\]]+?)\s*\|\s*([^\]]+?)\s*\]\]\s*$/i
 const ARCHIVE_TOOL = 'mcp__ccd_session_mgmt__archive_session'
 const SEND_TOOL = 'mcp__ccd_session_mgmt__send_message'
@@ -290,7 +294,11 @@ export const register: Register = (on, opts) => {
       // about what the Chief was refused since its last reply. A reply without one (a notice
       // in between) leaves the open question alone; Jay's next own message answers or clears it.
       const { confirm } = splitConfirm(answer)
-      if (confirm !== null) asked = { keys: [...pendingAsks], yes: confirm.yes, no: confirm.no }
+      if (confirm !== null) {
+        asked = { keys: [...pendingAsks], yes: confirm.yes, no: confirm.no }
+        // The reply's two buttons in the app answer this question.
+        await update($, openAsk, () => ({ yes: confirm.yes, no: confirm.no }))
+      }
       pendingAsks.clear()
     }
     $.clock.after(0, () => void sendReply($, answer, turnId))
@@ -378,6 +386,220 @@ export const register: Register = (on, opts) => {
     .catch(($, e, next) => (next.called ? next(e) : { deny: SHELL_UNCHECKED }))
   on('tool.call', { tool: 'PowerShell' }, async ($, e, next) => (isShellAllowed(e.command) ? next(e) : { deny: SHELL_REFUSAL }))
     .catch(($, e, next) => (next.called ? next(e) : { deny: SHELL_UNCHECKED }))
+
+  // ------------------------------------------------------- in-app pane ---
+  // The Chief's roster inside the app (docs/plan.md, update 2026-11-15). Its buttons only fill the prompt box:
+  // Jay presses Enter, so the request is his own typing and no permission check refuses it.
+
+  on('command.run', { command: QUIET_COMMAND }, async ($, e) => {
+    if (!isChief) return { text: 'This session is not the Chief of Staff. Type /chief here first.' }
+    const arg = String(e.args ?? '').trim().toLowerCase()
+    let speak: boolean
+    if (arg === 'on') speak = false
+    else if (arg === 'off') speak = true
+    else if (arg === '') {
+      await refreshPane($)
+      const view = await read($, paneView)
+      if (view === null || view.speak === null) return { text: 'The voice is not installed, so replies are never spoken.' }
+      speak = !view.speak
+    } else return { text: `Use /${QUIET_COMMAND} on, /${QUIET_COMMAND} off, or /${QUIET_COMMAND} alone to switch.` }
+    if (!(await setSpeak($, speak))) return { text: 'The Chief of Staff server did not answer. Type /chief to start it again.' }
+    return { text: speak ? 'Quiet mode off. The Chief speaks its replies again.' : 'Quiet mode on. Replies show as text and are not spoken.' }
+  })
+
+  on('command.run', { command: PANE_COMMAND }, async $ => {
+    if (!isChief) return { text: 'This session is not the Chief of Staff. Type /chief here first.' }
+    await openPane($)
+    return { text: 'Chief pane opened.' }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    if (!isChief) return <Text dimColor>This session is not the Chief of Staff. Type /chief to make it the Chief.</Text>
+    const view = await read($, paneView)
+    if (view === null) return <Text color={EMBER.muted}>Linking to the Chief of Staff server...</Text>
+    if (e.props.placement === 'widget') {
+      return (
+        <Box gap="xs">
+          <Text color={view.you > 0 ? STATE_HEX.you : EMBER.muted} bold>{view.you} need you</Text>
+          <Text color={EMBER.muted}>{view.active} working</Text>
+        </Box>
+      )
+    }
+    const showStale = await read($, staleShown)
+    const at = await now($)
+    const live = view.ok && view.updatedAt > 0
+    const name = chiefName(options.chief_name)
+
+    const tile = (key: string, n: number, label: string) => (
+      <Box key={`tile-${key}`} flexDirection="column" flexGrow={1} paddingX="sm" paddingY="xs"
+        borderStyle="round" borderColor={n > 0 && key === 'you' ? STATE_HEX.you : EMBER.line} backgroundColor={EMBER.panel}>
+        <Text size="title" bold color={n > 0 ? STATE_HEX[key] : EMBER.faint}>{String(n)}</Text>
+        <Text size="caption" color={EMBER.muted}>{label}</Text>
+      </Box>
+    )
+
+    const card = (r: ChiefPaneRow) => {
+      const hex = STATE_HEX[r.state] ?? EMBER.faint
+      const where = [r.repo, r.branch, r.prNumber !== null ? `PR ${r.prNumber}` : ''].filter(x => x !== '').join('  /  ')
+      const primary = r.state === 'you' && r.reply !== 'no' ? 'reply' : 'ask'
+      return (
+        <Box key={`card-${r.id}`} flexDirection="column" gap="xs" paddingX="sm" paddingY="xs" borderStyle="round"
+          borderColor={r.state === 'you' ? hex : EMBER.line} backgroundColor={r.state === 'you' ? EMBER.panel2 : EMBER.panel}>
+          <Box justifyContent="space-between" gap="sm">
+            <Box gap="xs" flexShrink={1}>
+              <Text color={hex}>{r.state === 'stale' ? '○' : '●'}</Text>
+              <Text bold wrap="truncate-end" color={r.state === 'stale' ? EMBER.muted : EMBER.fg}>{r.title}</Text>
+            </Box>
+            {r.ago !== '' && <Text size="caption" color={EMBER.faint}>{r.ago}</Text>}
+          </Box>
+          {r.reason !== '' && <Text size="footnote" color={hex} wrap="wrap">{r.reason}</Text>}
+          {where !== '' && <Text size="caption" color={EMBER.muted} wrap="truncate-end">{where}</Text>}
+          <Box gap="xs" flexWrap="wrap">
+            <Button key={`ask-${r.id}`} label="Ask" variant={primary === 'ask' ? 'primary' : 'secondary'}
+              onPress={() => fillPrompt($, askText(r))} />
+            {r.reply !== 'no' && (
+              <Button key={`reply-${r.id}`} label="Reply" variant={primary === 'reply' ? 'primary' : 'secondary'}
+                onPress={() => fillPrompt($, replyText(r), false)} />
+            )}
+            {r.archive !== 'no' && (
+              <Button key={`archive-${r.id}`} label="Archive" variant="secondary" onPress={() => fillPrompt($, archiveText(r))} />
+            )}
+            {r.stop !== 'no' && (
+              <Button key={`stop-${r.id}`} label="Stop" variant="secondary" onPress={() => fillPrompt($, stopText(r))} />
+            )}
+            {r.open !== 'no' && (
+              <Button key={`open-${r.id}`} label="Open" variant="secondary" onPress={() => openFromPane($, r)} />
+            )}
+          </Box>
+        </Box>
+      )
+    }
+
+    const section = (state: string, label: string) => {
+      const list = view.rows.filter(r => r.state === state)
+      if (list.length === 0) return null
+      const isFolded = state === 'stale' && !showStale
+      return (
+        <Box key={`sec-${state}`} flexDirection="column" gap="xs" marginTop="sm">
+          <Box justifyContent="space-between" alignItems="center">
+            <Text size="caption" bold color={STATE_HEX[state]}>{`${label.toUpperCase()}  ${list.length}`}</Text>
+            {state === 'stale' && (
+              <Button key="stale-toggle" label={isFolded ? 'Show' : 'Hide'} variant="secondary"
+                onPress={() => update($, staleShown, v => !v)} />
+            )}
+          </Box>
+          {!isFolded && list.slice(0, PANE_MAX_ROWS).map(card)}
+        </Box>
+      )
+    }
+
+    let graph = null
+    if (e.surface !== 'terminal' && view.rows.length > 0) {
+      const { Svg } = $.ui.resolve(e)
+      graph = (
+        <Box justifyContent="center" borderStyle="round" borderColor={EMBER.line} backgroundColor={EMBER.bg}>
+          <Svg source={graphSvg(view.rows, name)} isInteractive
+            alt={`Session graph: ${view.you} need you, ${view.active} working, ${view.wait} waiting, ${view.stale} stale.`} />
+        </Box>
+      )
+    }
+
+    return (
+      <Box flexDirection="column" gap="xs" paddingX="xs">
+        <Box justifyContent="space-between" alignItems="center">
+          <Box gap="sm" alignItems="center">
+            <Text color={EMBER.accent} bold>{'▐'}</Text>
+            <Box flexDirection="column">
+              <Text size="caption" color={EMBER.muted}>CHIEF OF STAFF</Text>
+              <Text size="heading" bold color={EMBER.fg}>{name}</Text>
+            </Box>
+          </Box>
+          <Box gap="xs" alignItems="center">
+            <Text color={live ? EMBER.ok : STATE_HEX.you}>{'●'}</Text>
+            <Text size="caption" color={EMBER.muted}>
+              {live ? `Live, updated ${ago(Math.max(0, at - view.updatedAt))}` : 'Offline'}
+            </Text>
+          </Box>
+        </Box>
+        <Box gap="xs" marginTop="xs">
+          {tile('you', view.you, 'Need you')}
+          {tile('active', view.active, 'Working')}
+          {tile('wait', view.wait, 'Waiting')}
+          {tile('stale', view.stale, 'Stale')}
+        </Box>
+        {graph}
+        <Box gap="xs" marginTop="xs">
+          <Button key="ask-needs" label="What needs me?" variant="primary" onPress={() => fillPrompt($, 'What needs me?')} />
+          <Button key="refresh" label="Refresh" variant="secondary" onPress={() => refreshPane($)} />
+          {view.speak !== null && (
+            <Button key="mute" label={view.speak ? 'Mute voice' : 'Unmute voice'} variant="secondary"
+              onPress={() => setSpeak($, !view.speak)} />
+          )}
+        </Box>
+        {view.speak === false && (
+          <Text size="footnote" color={EMBER.muted} wrap="wrap">Quiet mode. Replies show as text and are not spoken.</Text>
+        )}
+        <Text size="caption" color={EMBER.faint} wrap="wrap">Buttons put a request in your prompt box. Press Enter to send it.</Text>
+        {view.note !== '' && <Text size="footnote" color={STATE_HEX.active} wrap="wrap">{view.note}</Text>}
+        {!view.ok && <Text size="footnote" color={STATE_HEX.you} wrap="wrap">{view.error}</Text>}
+        {view.ok && view.rows.length === 0 && <Text color={EMBER.muted}>No other sessions to show.</Text>}
+        {section('you', 'Needs you')}
+        {section('active', 'Working')}
+        {section('wait', 'Waiting')}
+        {section('stale', 'Stale')}
+        {view.hidden > 0 && (
+          <Text size="caption" color={EMBER.faint}>{`${view.hidden} older sessions not shown. Ask the Chief for the full list.`}</Text>
+        )}
+      </Box>
+    )
+  })
+
+  // The Chief's session wears the console's ember look: the scene behind the transcript.
+  on('ui.render', { component: 'Backdrop' }, async ($, e, next) => {
+    if (!isChief || !isLookOn() || (e.surface !== 'desktop' && e.surface !== 'mobile')) return next(e)
+    const { Svg } = $.ui.resolve(e)
+    return <Svg source={SCENE} alt="A faint ember grid with a slow glow" isInteractive />
+  })
+
+  // The Chief's reply in the app's transcript: the [[confirm: yes | no]] line is for the
+  // console and the mod, never for Jay to read. It is hidden, and while it is the open
+  // question two buttons under the reply put the answer in the prompt box for Jay to send.
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    if (isChief && QUIET_REPLY.test(e.props.text)) {
+      const { Text } = $.ui.resolve(e)
+      return <Text size="caption" color={EMBER.faint}>Checked a notice. Nothing needs you.</Text>
+    }
+    if (!isChief || !CONFIRM_ANY.test(e.props.text)) return next(e)
+    const { text, confirm } = splitConfirm(e.props.text)
+    const drawn = await next({ ...e, props: { ...e.props, text } })
+    const ask = await read($, openAsk)
+    if (confirm === null || ask === null || ask.yes !== confirm.yes || ask.no !== confirm.no) return drawn
+    const { Box, Button } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {drawn}
+        <Box gap={1}>
+          <Button key="chief-ask-yes" variant="primary" label={confirm.yes} onPress={() => answerAsk($, confirm.yes)} />
+          <Button key="chief-ask-no" label={confirm.no} onPress={() => answerAsk($, confirm.no)} />
+        </Box>
+      </Box>
+    )
+  })
+
+  // A row above the prompt in the Chief's session while sessions wait on Jay.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!isChief || e.props.hasSurvey) return next(e)
+    const view = await read($, paneView)
+    if (view === null || view.you === 0) return next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    return (
+      <Box gap={1}>
+        <Text color={STATE_HEX.you} bold>{view.you} session{view.you === 1 ? '' : 's'} need{view.you === 1 ? 's' : ''} you</Text>
+        <Button key="chief-show" label="Show" onPress={() => openPane($)} />
+      </Box>
+    )
+  })
 }
 
 function isShellAllowed(command: unknown): boolean {
@@ -511,6 +733,8 @@ function keyOf(id: string, verb: ActionVerb): string {
 // the approvals his last yes gave.
 async function noteAnswer($: EngineInterface, typed: string, level: 'typed' | 'press'): Promise<void> {
   for (const [key, a] of approvals) if (a.isFromYes) approvals.delete(key)
+  // Any message from Jay answers or drops the open question, so its buttons go.
+  await update($, openAsk, () => null)
   if (asked === null) return
   if (isYes(typed, asked.yes, asked.no)) {
     const until = (await now($)) + APPROVAL_MS
@@ -783,7 +1007,11 @@ async function archiveDesktop($: EngineInterface, s: ChiefSession, req: ActionRe
     // Nothing ran, so the approval stays for the Chief's own call.
     if (approval !== undefined) approvals.set(keyOf(s.id, 'archive'), approval)
     if (req.origin === 'model') {
-      return { outcome: 'failed', detail: 'The app refused the archive. Try mcp__ccd_session_mgmt__archive_session.' }
+      return {
+        outcome: 'handedOff',
+        detail: 'The app runs its archive tool only when you call it yourself. Call ' +
+          `mcp__ccd_session_mgmt__archive_session now with session_id ${s.id}, then tell Jay whether it worked.`,
+      }
     }
     handOff($, `[Action from the console] Jay pressed Archive for ${sessionRef(s.id, s.title)}. ` +
       'Look it up with cos_sessions, apply your archive rules, then archive it with the archive_session ' +
@@ -811,7 +1039,13 @@ async function replyDesktop($: EngineInterface, s: ChiefSession, req: ActionRequ
     if (sent?.isDelivered === true) return { outcome: 'done', detail: 'Sent.' }
     if (sent !== null && sent.isDelivered === false) log($, `session.send: ${cleanLine(sent.reason, 160)}`)
   }
-  if (req.origin === 'model') return { outcome: 'failed', detail: 'The app refused the send. Try again in a moment.' }
+  if (req.origin === 'model') {
+    return {
+      outcome: 'handedOff',
+      detail: 'The app runs its send tool only when you call it yourself. Call mcp__ccd_session_mgmt__send_message ' +
+        `now with session_id ${s.id} and the same text, word for word, then tell Jay whether it went.`,
+    }
+  }
   handOff($, `[Action from the console] Jay typed a reply for ${sessionRef(s.id, s.title)} in the ` +
     'console reply box. Send the text between the two marker lines to that session with the send_message ' +
     'tool, word for word, then tell Jay in one short sentence that it went.\n' +
@@ -1194,6 +1428,8 @@ function become($: EngineInterface, open: boolean): Promise<void> {
       host = await detectCaps($)
       if ((await hello($)) === 'refused') return
       startLoop($)
+      await applyLook($)
+      await openPane($)
     } catch (err) {
       log($, `could not become the Chief: ${String(err)}`)
       startLoop($)
@@ -1301,10 +1537,13 @@ async function isHealthy($: EngineInterface): Promise<boolean> {
 // `python app.py start` brings the server up, or reports the one running; with
 // --open it also opens the console in the browser. The server never restarts itself:
 // an older one answers stale, and only an explicit /chief restarts it (plan 6.6).
+// `open` is an explicit /chief. The browser console opens only when the open_console
+// setting asks for it: the in-app pane is the default view (docs/plan.md, update 2026-11-15).
 async function ensureServer($: EngineInterface, open: boolean): Promise<void> {
   if (!open && (await isHealthy($))) return
   const app = `${$.plugin.root}/server/app.py`
-  const args = ['start', ...(open ? ['--open'] : [])]
+  const browser = open && options.open_console === true ? ['--open'] : []
+  const args = ['start', ...browser]
   let lastError = 'Python was not found.'
   for (const python of [['python'], ['py', '-3']]) {
     try {
@@ -1312,7 +1551,7 @@ async function ensureServer($: EngineInterface, open: boolean): Promise<void> {
       if (out.port !== null) {
         if (out.isStale && open) {
           log($, 'the running server is older: restarting it')
-          const again = await runApp($, [...python, app, 'restart', '--open'])
+          const again = await runApp($, [...python, app, 'restart', ...browser])
           if (again.port === null) throw new Error(again.error)
         } else if (out.isStale) {
           $.ui.toast('An older Chief of Staff server is running. Run /chief stop, then /chief, to update.')
@@ -1532,6 +1771,7 @@ function textOf(content: readonly unknown[]): string {
 async function sendReply($: EngineInterface, answer: string, turnId: string): Promise<void> {
   await post($, '/api/mod/busy', { busy: false, cliId: myId })
   if (answer.trim() === '') return
+  if (QUIET_REPLY.test(answer)) return
   const { text, confirm } = splitConfirm(answer)
   if (text === '' && confirm === null) return
   await post($, '/api/mod/reply', { text, turnId, ...(confirm !== null ? { confirm } : {}) })
@@ -1649,6 +1889,229 @@ function ago(ms: number): string {
   const hours = Math.round(minutes / 60)
   if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
   return `${Math.round(hours / 24)} days ago`
+}
+
+// ---------------------------------------------------------- in-app pane ---
+
+const PANE = 'chief-of-staff'
+const PANE_COMMAND = 'chief-pane'
+const QUIET_COMMAND = 'chief-quiet'
+const PANE_REFRESH_MS = 5000
+// Change the tag when ChiefPaneView's fields change: it declines what an older version stored.
+const paneView = atom({ plugin: 'chief-of-staff', key: 'pane' } as const, null, { shape: 'pane-3' })
+const staleShown = atom({ plugin: 'chief-of-staff', key: 'showStale' } as const, false)
+// The most cards one state's section draws; the pane scrolls.
+const PANE_MAX_ROWS = 40
+const openAsk = atom({ plugin: 'chief-of-staff', key: 'ask' } as const, null, { shape: 'ask-1' })
+// Any line of a reply that is a confirm line, as CONFIRM_LINE reads one line.
+const CONFIRM_ANY = /^\s*\[\[\s*confirm\s*:[^\]]*\]\]\s*$/im
+let paneGen = 0
+let commandAdded = false
+let quietAdded = false
+
+// The ember look is on unless the chief_theme setting turns it off.
+function isLookOn(): boolean {
+  return options.chief_theme !== false
+}
+
+// Puts the console's ember look on this session, where the app draws looks.
+async function applyLook($: EngineInterface): Promise<void> {
+  if (!isLookOn()) return
+  if (LOOK_BLOCKER !== null) {
+    log($, `look not set: ${LOOK_BLOCKER}`)
+    return
+  }
+  try {
+    const set = await $.theme.set(LOOK)
+    if (!set.isDrawn) log($, `look not drawn: ${String((set as { reason?: unknown }).reason ?? '')}`)
+  } catch (err) {
+    log($, `look: ${String(err)}`)
+  }
+}
+
+// Opens the pane, adds /chief-pane once, and starts the refresh loop. Chief session only.
+async function openPane($: EngineInterface): Promise<void> {
+  if (!commandAdded) {
+    try {
+      await $.command.register({ name: PANE_COMMAND, description: 'Show the Chief of Staff pane in this session' })
+      commandAdded = true
+    } catch (err) {
+      log($, `/${PANE_COMMAND}: ${String(err)}`)
+    }
+  }
+  if (!quietAdded) {
+    try {
+      await $.command.register({ name: QUIET_COMMAND, description: 'Quiet mode: stop or start speaking the Chief replies (on, off, or toggle)' })
+      quietAdded = true
+    } catch (err) {
+      log($, `/${QUIET_COMMAND}: ${String(err)}`)
+    }
+  }
+  try {
+    const opened = await $.ui.open({ id: PANE, title: chiefName(options.chief_name) })
+    if (!opened.isPlaced) log($, `pane waits to be drawn: ${String((opened as { reason?: unknown }).reason ?? '')}`)
+  } catch (err) {
+    log($, `pane: ${String(err)}`)
+  }
+  // The roster refreshes even when the pane could not open: the row above the prompt reads it.
+  startPaneLoop($)
+}
+
+function startPaneLoop($: EngineInterface): void {
+  paneGen += 1
+  const gen = paneGen
+  const tick = async (): Promise<void> => {
+    // Runs while this session is the Chief, pane open or closed: the row above the prompt
+    // reads the same roster. One local request every 5 seconds.
+    if (gen !== paneGen || !isChief) return
+    await refreshPane($)
+    $.clock.after(PANE_REFRESH_MS, () => void tick())
+  }
+  void tick()
+}
+
+async function refreshPane($: EngineInterface): Promise<void> {
+  const at = await now($)
+  let next: ChiefPaneView
+  try {
+    const res = await api($, 'GET', '/api/sessions')
+    if (!res.ok || res.json === null) throw new Error(`answered ${res.status}`)
+    const list = (Array.isArray(res.json.sessions) ? res.json.sessions : []) as ChiefSession[]
+    const others = list.filter(s => !s.isChief && s.id !== localId && s.cliId !== myId)
+    const inView = others.filter(s => s.inView !== false)
+    inView.sort((a, b) => (STATE_ORDER[a.state] ?? 9) - (STATE_ORDER[b.state] ?? 9) ||
+      (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0))
+    const count = (state: string) => inView.filter(s => s.state === state).length
+    next = {
+      ok: true,
+      error: '',
+      you: count('you'),
+      active: count('active'),
+      wait: count('wait'),
+      stale: count('stale'),
+      rows: inView.map(s => paneRow(s, at)),
+      hidden: others.length - inView.length,
+      note: res.json.liveStale === true ? 'Live status may be out of date.' : '',
+      updatedAt: at,
+      speak: speakOf(res.json.voice),
+    }
+  } catch (err) {
+    server = null
+    const old = await read($, paneView)
+    next = {
+      ...(old ?? { you: 0, active: 0, wait: 0, stale: 0, rows: [], hidden: 0, note: '', updatedAt: 0, speak: null }),
+      ok: false,
+      error: 'The Chief of Staff server is not answering. Type /chief to start it again.',
+    }
+    log($, `pane refresh: ${String(err)}`)
+  }
+  await update($, paneView, () => next)
+}
+
+// Whether replies are spoken, from the server's voice field; null when the voice is not installed.
+function speakOf(voice: unknown): boolean | null {
+  if (typeof voice !== 'object' || voice === null) return null
+  const v = voice as { installed?: unknown; speak?: unknown }
+  return v.installed === true && typeof v.speak === 'boolean' ? v.speak : null
+}
+
+// Quiet mode on (speak false) or off. The server stops what is being said and keeps the
+// choice across restarts. A local toggle for this computer, so it needs no prompt.
+async function setSpeak($: EngineInterface, speak: boolean): Promise<boolean> {
+  try {
+    const res = await api($, 'POST', '/api/voice/control', { speak })
+    if (!res.ok) throw new Error(`answered ${res.status}`)
+  } catch (err) {
+    log($, `voice control: ${String(err)}`)
+    return false
+  }
+  await refreshPane($)
+  return true
+}
+
+function paneRow(s: ChiefSession, at: number): ChiefPaneRow {
+  const a = s.actions
+  return {
+    id: s.id,
+    title: cleanLine(s.title, MAX_DATA_TITLE) || 'Untitled session',
+    state: s.state,
+    reason: cleanLine(s.needsAction ?? s.stateReason, 120),
+    ago: s.lastActivityAt ? ago(at - s.lastActivityAt) : '',
+    kind: kindOf(s),
+    repo: cleanLine(s.repo ?? '', 40),
+    branch: cleanLine(s.branch ?? '', 60),
+    prNumber: typeof s.prNumber === 'number' ? s.prNumber : null,
+    // An old server with no actions map: offer only what the Chief can still ask about.
+    reply: a?.reply ?? 'yes',
+    archive: a?.archive ?? 'no',
+    stop: a?.stop ?? 'no',
+    open: a?.open ?? 'no',
+  }
+}
+
+// The pane's requests, worded for the Chief. The id makes the session unambiguous.
+function askText(r: ChiefPaneRow): string {
+  return `What is happening in the session "${r.title}" (${r.id})?`
+}
+function replyText(r: ChiefPaneRow): string {
+  return `Reply to the session "${r.title}" (${r.id}) with: `
+}
+function archiveText(r: ChiefPaneRow): string {
+  return `Archive the session "${r.title}" (${r.id}).`
+}
+function stopText(r: ChiefPaneRow): string {
+  return `Stop the background session "${r.title}" (${r.id}).`
+}
+
+// Puts a request in the prompt box. Jay sends it with Enter, so it counts as his typing.
+// `canSend`: the text is a whole request, so it is sent when the box cannot take it. A reply
+// still needs Jay's words, so it is never sent half done.
+async function fillPrompt($: EngineInterface, text: string, canSend = true): Promise<void> {
+  let isFilled = false
+  try {
+    isFilled = (await $.prompt.fill({ text })).isFilled
+  } catch (err) {
+    log($, `fill: ${String(err)}`)
+  }
+  log($, `pane fill ${isFilled ? 'took' : 'not taken'}: ${cleanLine(text, 80)}`)
+  if (isFilled) return
+  if (!canSend) {
+    $.ui.toast('The prompt box could not take the text. Type your reply to the Chief instead.')
+    return
+  }
+  await sendAsJay($, text)
+}
+
+// Sends a request from a button as a turn of Jay's: what he pressed is what the Chief reads.
+// The Chief's guard counts it as a press (plan 5.9); the app's tools are then called by the
+// Chief itself, which the app allows, never by this mod's own code.
+async function sendAsJay($: EngineInterface, text: string): Promise<void> {
+  try {
+    await $.prompt.submit({ text, asUser: true })
+    log($, `button sent: ${cleanLine(text, 80)}`)
+  } catch (err) {
+    log($, `button send: ${String(err)}`)
+    $.ui.toast('Could not send that to the Chief.')
+  }
+}
+
+// A press on one of the two buttons under the Chief's question: it answers the question as
+// Jay's press, and the buttons go.
+async function answerAsk($: EngineInterface, label: string): Promise<void> {
+  await noteAnswer($, label, 'press')
+  await sendAsJay($, label)
+}
+
+// Open only shows the session in the app: no change to any session, so it runs at once.
+async function openFromPane($: EngineInterface, r: ChiefPaneRow): Promise<void> {
+  try {
+    const res = await post($, `/api/sessions/${encodeURIComponent(r.id)}/open`, {})
+    const isOpen = res !== undefined && res.ok
+    logAct($, 'open', r.id, 'pane', isOpen ? 'opened' : 'failed', '')
+    if (!isOpen) $.ui.toast('The Claude app did not open that session.')
+  } catch (err) {
+    log($, `pane open: ${String(err)}`)
+  }
 }
 
 // --------------------------------------------------------------- helpers ---

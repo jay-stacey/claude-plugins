@@ -16,7 +16,7 @@ from .config import in_quiet_hours
 from .transcripts import clip
 
 BATCH_S = 20
-MIN_GAP_S = 120
+MIN_GAP_S = 180        # at most one notice prompt every 3 minutes
 BUSY_RETRY_S = 5
 STALE_DIGEST_AFTER = 9 * 60    # minutes after midnight, local time
 MAX_STALE_NAMES = 5
@@ -147,10 +147,16 @@ class Notices:
         if self.flush_at is None:
             self.flush_at = now + BATCH_S
 
-    def due(self, now, *, chief_connected, chief_busy, notify_on, quiet, local_minutes):
-        """The prompt text to queue for the Chief now, or None."""
+    def due(self, now, *, chief_connected, chief_busy, notify_on, quiet, local_minutes, current=None):
+        """The prompt text to queue for the Chief now, or None. `current` maps session id to its
+        state now: a notice whose session has moved on since is a false alarm and is dropped."""
         if not self.pending or self.flush_at is None or now < self.flush_at:
             return None
+        if current is not None:
+            self.pending = [n for n in self.pending if still_true(n, current)]
+            if not self.pending:
+                self.flush_at = None
+                return None
         if not notify_on or not chief_connected or in_quiet_hours(quiet, local_minutes):
             self.pending, self.flush_at = [], None     # the toasts already went out
             return None
@@ -164,10 +170,26 @@ class Notices:
         self.pending, self.flush_at = [], None
         self.last_prompt_at = now
         body = " ".join(parts)
-        tail = ("Look it up with cos_sessions and tell Jay in one or two spoken sentences."
+        tail = ("Look it up with cos_sessions and tell Jay in one spoken sentence."
                 if len(parts) == 1
-                else "Look them up with cos_sessions and tell Jay in two or three spoken sentences, most urgent first.")
+                else "Look them up with cos_sessions and tell Jay the most urgent one in one spoken sentence, "
+                     "then say how many others changed.")
+        tail += " If nothing in it needs Jay or it is no longer true, answer with [[quiet]] alone."
         return f"[Notice, not from Jay] {body} {tail}"
+
+
+def still_true(notice, current):
+    """Whether a notice still holds: a session that waited on Jay still does, and one that
+    finished has not started working again. A session that is gone drops its notice."""
+    sid = notice.get("sessionId")
+    if not sid:
+        return True                     # the stale digest is about many sessions
+    state = current.get(sid)
+    if notice.get("kind") == "you":
+        return state == "you"
+    if notice.get("kind") == "done":
+        return state in ("wait", "you")
+    return state is not None
 
 
 def merge(notices):

@@ -1,5 +1,54 @@
 // The Chief of Staff mod's contract: the shapes it trades with the app server
-// (docs/contracts.md sections 4 and 5). The mod keeps no $.state values.
+// (docs/contracts.md sections 4 and 5), and the one $.state value its in-app pane draws.
+
+// One session row in the in-app Chief pane.
+export type ChiefPaneRow = {
+  id: string
+  title: string
+  state: ChiefSessionState
+  reason: string
+  ago: string
+  kind: ChiefSessionKind
+  repo: string
+  branch: string
+  prNumber: number | null
+  reply: Avail
+  archive: Avail
+  stop: Avail
+  open: Avail
+}
+
+// What the in-app Chief pane draws: the roster as the server last answered.
+export type ChiefPaneView = {
+  ok: boolean
+  error: string
+  you: number
+  active: number
+  wait: number
+  stale: number
+  rows: ChiefPaneRow[]
+  hidden: number
+  note: string
+  // When the server last answered, epoch ms; 0 before it ever did.
+  updatedAt: number
+  // Whether the Chief's replies are spoken: false in quiet mode, null when the voice is not installed
+  // or the server is too old to say.
+  speak: boolean | null
+}
+
+// The Chief's open question: the two button labels of its last reply's confirm line.
+export type ChiefOpenAsk = { yes: string; no: string }
+
+declare module 'claude-code' {
+  interface PluginState {
+    'chief-of-staff': {
+      pane: Shaped<ChiefPaneView | null>
+      ask: Shaped<ChiefOpenAsk | null>
+      // Whether the pane shows its stale sessions.
+      showStale: boolean
+    }
+  }
+}
 
 export type ChiefInboxItem =
   | { id: string; type: 'prompt'; text: string; from?: 'console' | 'voice' | 'notice'; hint?: string; jev?: JevDecision }
